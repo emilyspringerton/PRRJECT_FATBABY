@@ -1,0 +1,111 @@
+name: Construct Bundle
+
+on:
+  push:
+    branches:
+      - work
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  construct:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Normalize obvious alternate layout paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Repo inspection: no obvious alternate directory mappings are present.
+          # Keep this step to make future normalization explicit and minimal.
+          echo "No layout normalization needed for this repository."
+
+      - name: Detect obvious test command
+        id: detect-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test_cmd=""
+          if [[ -f go.mod ]]; then
+            test_cmd="go test ./..."
+          elif [[ -f package.json ]] && command -v npm >/dev/null 2>&1 && npm run | grep -qE '(^|[[:space:]])test([[:space:]]|$)'; then
+            test_cmd="npm test"
+          elif [[ -f Makefile ]] && grep -qE '^test:' Makefile; then
+            test_cmd="make test"
+          elif [[ -f justfile ]] && grep -qE '^test([[:space:]]|:)' justfile; then
+            test_cmd="just test"
+          elif compgen -G 'test_*.py' >/dev/null || compgen -G '*_test.py' >/dev/null; then
+            test_cmd="pytest"
+          fi
+
+          echo "test_cmd=${test_cmd}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${test_cmd}" ]]; then
+            echo "Detected test command: ${test_cmd}"
+          else
+            echo "No obvious test command detected. Tests will be skipped."
+          fi
+
+      - name: Set up Go
+        if: startsWith(steps.detect-tests.outputs.test_cmd, 'go test')
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Generate deterministic construct bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          out_file="PRRJECT_FATBABY_CONSTRUCT.txt"
+          run_number="${GITHUB_RUN_NUMBER:-local}"
+          {
+            echo "Repository: PRRJECT_FATBABY | Run: ${run_number}"
+            echo
+          } > "${out_file}"
+
+          # Deterministic file selection:
+          # - include source, configs, workflows, docs, and common project metadata
+          # - exclude generated/vendor/heavy directories and binary/media artifacts
+          while IFS= read -r relpath; do
+            {
+              echo "--- FILE START: ${relpath} ---"
+              cat "${relpath}"
+              echo
+              echo "--- FILE END: ${relpath} ---"
+              echo
+            } >> "${out_file}"
+          done < <(
+            find . \
+              \( -path './.git' -o -path './node_modules' -o -path './vendor' -o -path './dist' -o -path './build' -o -path './out' -o -path './coverage' -o -path './artifacts' -o -path './.next' -o -path './target' -o -path './bin' -o -path './obj' -o -path './tmp' -o -path './temp' -o -path './caches' \) -prune -o \
+              -type f \
+              \( \
+                -name '*.go' -o -name '*.mod' -o -name '*.sum' -o \
+                -name '*.md' -o -name '*.txt' -o \
+                -name '*.yaml' -o -name '*.yml' -o -name '*.toml' -o -name '*.json' -o \
+                -name '*.sql' -o -name '*.sh' -o \
+                -name 'Makefile' -o -name 'Dockerfile' -o -name '.gitignore' -o \
+                -path './.github/workflows/*.yml' -o -path './.github/workflows/*.yaml' \
+              \) \
+              ! -name 'PRRJECT_FATBABY_CONSTRUCT.txt' \
+              -print | sed 's#^./##' | LC_ALL=C sort
+          )
+
+      - name: Run tests (if detected)
+        if: steps.detect-tests.outputs.test_cmd != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          ${TEST_CMD}
+        env:
+          TEST_CMD: ${{ steps.detect-tests.outputs.test_cmd }}
+
+      - name: Upload construct artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PRRJECT_FATBABY-construct-${{ github.run_number }}-${{ github.sha }}
+          path: PRRJECT_FATBABY_CONSTRUCT.txt
+          if-no-files-found: error
