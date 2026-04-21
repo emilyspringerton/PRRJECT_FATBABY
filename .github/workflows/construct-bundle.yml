@@ -82,6 +82,7 @@ jobs:
               \( -path './.git' -o -path './node_modules' -o -path './vendor' -o -path './dist' -o -path './build' -o -path './out' -o -path './coverage' -o -path './artifacts' -o -path './.next' -o -path './target' -o -path './bin' -o -path './obj' -o -path './tmp' -o -path './temp' -o -path './caches' \) -prune -o \
               -type f \
               \( \
+                -path './fixtures/*' -o \
                 -name '*.go' -o -name '*.mod' -o -name '*.sum' -o \
                 -name '*.md' -o -name '*.txt' -o \
                 -name '*.yaml' -o -name '*.yml' -o -name '*.toml' -o -name '*.json' -o \
