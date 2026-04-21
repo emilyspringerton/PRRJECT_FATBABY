@@ -1,0 +1,86 @@
+{
+  "directory": {
+    "item": [
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "0001193125-26-027198-index-headers.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "0001193125-26-027198-index.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "0001193125-26-027198.txt",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "0001193125-26-027198-xbrl.zip",
+        "size": "34606",
+        "type": "compressed.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "FilingSummary.xml",
+        "size": "1666",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "MetaLinks.json",
+        "size": "23084",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "msft-20260128.htm",
+        "size": "62244",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "msft-20260128.xsd",
+        "size": "54459",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "msft-20260128_htm.xml",
+        "size": "7247",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "msft-ex99_1.htm",
+        "size": "903665",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "R1.htm",
+        "size": "44854",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "report.css",
+        "size": "2766",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-01-28 16:04:38",
+        "name": "Show.js",
+        "size": "1084",
+        "type": "text.gif"
+      }
+    ],
+    "name": "/Archives/edgar/data/789019/000119312526027198",
+    "parent-dir": "/Archives/edgar/data/789019"
+  }
+}

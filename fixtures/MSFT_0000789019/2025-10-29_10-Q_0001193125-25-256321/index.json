@@ -1,0 +1,632 @@
+{
+  "directory": {
+    "item": [
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "0001193125-25-256321-index-headers.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "0001193125-25-256321-index.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "0001193125-25-256321.txt",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "0001193125-25-256321-xbrl.zip",
+        "size": "334091",
+        "type": "compressed.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "FilingSummary.xml",
+        "size": "53387",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "MetaLinks.json",
+        "size": "1261748",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-20250930.htm",
+        "size": "5597461",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-20250930.xsd",
+        "size": "1492189",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-20250930_htm.xml",
+        "size": "7440319",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-ex15_1.htm",
+        "size": "6187",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-ex31_1.htm",
+        "size": "12455",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-ex31_2.htm",
+        "size": "12657",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-ex32_1.htm",
+        "size": "8216",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "msft-ex32_2.htm",
+        "size": "8344",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R1.htm",
+        "size": "60429",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R10.htm",
+        "size": "30587",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R11.htm",
+        "size": "68195",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R12.htm",
+        "size": "127115",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R13.htm",
+        "size": "1124407",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R14.htm",
+        "size": "476824",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R15.htm",
+        "size": "63493",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R16.htm",
+        "size": "67464",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R17.htm",
+        "size": "136221",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R18.htm",
+        "size": "291237",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R19.htm",
+        "size": "14881",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R2.htm",
+        "size": "88633",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R20.htm",
+        "size": "62609",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R21.htm",
+        "size": "299472",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R22.htm",
+        "size": "7922",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R23.htm",
+        "size": "114819",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R24.htm",
+        "size": "173487",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R25.htm",
+        "size": "226665",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R26.htm",
+        "size": "7652",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R27.htm",
+        "size": "62464",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R28.htm",
+        "size": "66034",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R29.htm",
+        "size": "128927",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R3.htm",
+        "size": "34650",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R30.htm",
+        "size": "1123207",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R31.htm",
+        "size": "463958",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R32.htm",
+        "size": "60182",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R33.htm",
+        "size": "66655",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R34.htm",
+        "size": "136342",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R35.htm",
+        "size": "287547",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R36.htm",
+        "size": "58644",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R37.htm",
+        "size": "299812",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R38.htm",
+        "size": "105333",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R39.htm",
+        "size": "172622",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R4.htm",
+        "size": "126554",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R40.htm",
+        "size": "209525",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R41.htm",
+        "size": "13040",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R42.htm",
+        "size": "43997",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R43.htm",
+        "size": "19336",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R44.htm",
+        "size": "8096",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R45.htm",
+        "size": "14590",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R46.htm",
+        "size": "14765",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R47.htm",
+        "size": "110403",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R48.htm",
+        "size": "8103",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R49.htm",
+        "size": "39004",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R5.htm",
+        "size": "13117",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R50.htm",
+        "size": "31038",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R51.htm",
+        "size": "18149",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R52.htm",
+        "size": "20904",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R53.htm",
+        "size": "100825",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R54.htm",
+        "size": "30520",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R55.htm",
+        "size": "13737",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R56.htm",
+        "size": "20193",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R57.htm",
+        "size": "7920",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R58.htm",
+        "size": "24548",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R59.htm",
+        "size": "30761",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R6.htm",
+        "size": "89764",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R60.htm",
+        "size": "6635",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R61.htm",
+        "size": "19573",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R62.htm",
+        "size": "106018",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R63.htm",
+        "size": "44493",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R64.htm",
+        "size": "6981",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R65.htm",
+        "size": "22499",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R66.htm",
+        "size": "9550",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R67.htm",
+        "size": "11594",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R68.htm",
+        "size": "11306",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R69.htm",
+        "size": "8726",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R7.htm",
+        "size": "45601",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R70.htm",
+        "size": "6302",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R71.htm",
+        "size": "8101",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R72.htm",
+        "size": "23953",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R73.htm",
+        "size": "12374",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R74.htm",
+        "size": "15444",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R75.htm",
+        "size": "39473",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R76.htm",
+        "size": "46920",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R77.htm",
+        "size": "7002",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R78.htm",
+        "size": "13676",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R79.htm",
+        "size": "14690",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R8.htm",
+        "size": "17737",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R80.htm",
+        "size": "16085",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R81.htm",
+        "size": "40307",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R82.htm",
+        "size": "17279",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R83.htm",
+        "size": "27571",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R84.htm",
+        "size": "10476",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R85.htm",
+        "size": "14220",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R86.htm",
+        "size": "29441",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R87.htm",
+        "size": "11248",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R88.htm",
+        "size": "12816",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "R9.htm",
+        "size": "11501",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "report.css",
+        "size": "2767",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2025-10-29 16:10:48",
+        "name": "Show.js",
+        "size": "1085",
+        "type": "text.gif"
+      }
+    ],
+    "name": "/Archives/edgar/data/789019/000119312525256321",
+    "parent-dir": "/Archives/edgar/data/789019"
+  }
+}

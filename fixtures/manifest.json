@@ -1,0 +1,243 @@
+{
+  "base_dir": "/content/drive/MyDrive/prrject_fatbaby_testdata",
+  "generated_by": "colab sec fixture downloader",
+  "targets": [
+    {
+      "cik": "0000320193",
+      "filings": [
+        {
+          "acceptance_datetime": "2026-04-20T21:29:51.000Z",
+          "accession_number": "0001140361-26-015711",
+          "cik": "0000320193",
+          "filing_date": "2026-04-20",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/index.json",
+          "form": "8-K",
+          "primary_doc_description": "8-K",
+          "primary_document": "ef20071035_8k.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm",
+          "ticker": "AAPL"
+        },
+        {
+          "acceptance_datetime": "2026-02-24T21:55:58.000Z",
+          "accession_number": "0001140361-26-006577",
+          "cik": "0000320193",
+          "filing_date": "2026-02-24",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126006577/index.json",
+          "form": "8-K",
+          "primary_doc_description": "8-K",
+          "primary_document": "ef20060722_8k.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126006577/ef20060722_8k.htm",
+          "ticker": "AAPL"
+        },
+        {
+          "acceptance_datetime": "2026-01-30T11:01:32.000Z",
+          "accession_number": "0000320193-26-000006",
+          "cik": "0000320193",
+          "filing_date": "2026-01-30",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/index.json",
+          "form": "10-Q",
+          "primary_doc_description": "10-Q",
+          "primary_document": "aapl-20251227.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+          "ticker": "AAPL"
+        },
+        {
+          "acceptance_datetime": "2025-10-31T10:01:26.000Z",
+          "accession_number": "0000320193-25-000079",
+          "cik": "0000320193",
+          "filing_date": "2025-10-31",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/index.json",
+          "form": "10-K",
+          "primary_doc_description": "10-K",
+          "primary_document": "aapl-20250927.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+          "ticker": "AAPL"
+        },
+        {
+          "acceptance_datetime": "2025-08-01T10:00:42.000Z",
+          "accession_number": "0000320193-25-000073",
+          "cik": "0000320193",
+          "filing_date": "2025-08-01",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/index.json",
+          "form": "10-Q",
+          "primary_doc_description": "10-Q",
+          "primary_document": "aapl-20250628.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm",
+          "ticker": "AAPL"
+        },
+        {
+          "acceptance_datetime": "2024-11-01T10:01:36.000Z",
+          "accession_number": "0000320193-24-000123",
+          "cik": "0000320193",
+          "filing_date": "2024-11-01",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/index.json",
+          "form": "10-K",
+          "primary_doc_description": "10-K",
+          "primary_document": "aapl-20240928.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+          "ticker": "AAPL"
+        }
+      ],
+      "submissions_url": "https://data.sec.gov/submissions/CIK0000320193.json",
+      "ticker": "AAPL"
+    },
+    {
+      "cik": "0000789019",
+      "filings": [
+        {
+          "acceptance_datetime": "2026-01-28T21:07:34.000Z",
+          "accession_number": "0001193125-26-027207",
+          "cik": "0000789019",
+          "filing_date": "2026-01-28",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526027207/index.json",
+          "form": "10-Q",
+          "primary_doc_description": "10-Q",
+          "primary_document": "msft-20251231.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526027207/msft-20251231.htm",
+          "ticker": "MSFT"
+        },
+        {
+          "acceptance_datetime": "2026-01-28T21:04:38.000Z",
+          "accession_number": "0001193125-26-027198",
+          "cik": "0000789019",
+          "filing_date": "2026-01-28",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526027198/index.json",
+          "form": "8-K",
+          "primary_doc_description": "8-K",
+          "primary_document": "msft-20260128.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526027198/msft-20260128.htm",
+          "ticker": "MSFT"
+        },
+        {
+          "acceptance_datetime": "2025-12-08T21:00:35.000Z",
+          "accession_number": "0001193125-25-311196",
+          "cik": "0000789019",
+          "filing_date": "2025-12-08",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312525311196/index.json",
+          "form": "8-K",
+          "primary_doc_description": "8-K",
+          "primary_document": "d34077d8k.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312525311196/d34077d8k.htm",
+          "ticker": "MSFT"
+        },
+        {
+          "acceptance_datetime": "2025-10-29T20:10:48.000Z",
+          "accession_number": "0001193125-25-256321",
+          "cik": "0000789019",
+          "filing_date": "2025-10-29",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312525256321/index.json",
+          "form": "10-Q",
+          "primary_doc_description": "10-Q",
+          "primary_document": "msft-20250930.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312525256321/msft-20250930.htm",
+          "ticker": "MSFT"
+        },
+        {
+          "acceptance_datetime": "2025-07-30T20:11:40.000Z",
+          "accession_number": "0000950170-25-100235",
+          "cik": "0000789019",
+          "filing_date": "2025-07-30",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/index.json",
+          "form": "10-K",
+          "primary_doc_description": "10-K",
+          "primary_document": "msft-20250630.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+          "ticker": "MSFT"
+        },
+        {
+          "acceptance_datetime": "2024-07-30T20:06:22.000Z",
+          "accession_number": "0000950170-24-087843",
+          "cik": "0000789019",
+          "filing_date": "2024-07-30",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/index.json",
+          "form": "10-K",
+          "primary_doc_description": "10-K",
+          "primary_document": "msft-20240630.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/msft-20240630.htm",
+          "ticker": "MSFT"
+        }
+      ],
+      "submissions_url": "https://data.sec.gov/submissions/CIK0000789019.json",
+      "ticker": "MSFT"
+    },
+    {
+      "cik": "0001045810",
+      "filings": [
+        {
+          "acceptance_datetime": "2026-03-06T16:11:25.000Z",
+          "accession_number": "0001045810-26-000024",
+          "cik": "0001045810",
+          "filing_date": "2026-03-06",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000024/index.json",
+          "form": "8-K",
+          "primary_doc_description": "8-K",
+          "primary_document": "nvda-20260302.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000024/nvda-20260302.htm",
+          "ticker": "NVDA"
+        },
+        {
+          "acceptance_datetime": "2026-02-25T16:42:19.000Z",
+          "accession_number": "0001045810-26-000021",
+          "cik": "0001045810",
+          "filing_date": "2026-02-25",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/index.json",
+          "form": "10-K",
+          "primary_doc_description": "10-K",
+          "primary_document": "nvda-20260125.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+          "ticker": "NVDA"
+        },
+        {
+          "acceptance_datetime": "2026-02-25T16:31:25.000Z",
+          "accession_number": "0001045810-26-000019",
+          "cik": "0001045810",
+          "filing_date": "2026-02-25",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000019/index.json",
+          "form": "8-K",
+          "primary_doc_description": "8-K",
+          "primary_document": "nvda-20260225.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000019/nvda-20260225.htm",
+          "ticker": "NVDA"
+        },
+        {
+          "acceptance_datetime": "2025-11-19T16:36:17.000Z",
+          "accession_number": "0001045810-25-000230",
+          "cik": "0001045810",
+          "filing_date": "2025-11-19",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/index.json",
+          "form": "10-Q",
+          "primary_doc_description": "10-Q",
+          "primary_document": "nvda-20251026.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm",
+          "ticker": "NVDA"
+        },
+        {
+          "acceptance_datetime": "2025-08-27T16:52:07.000Z",
+          "accession_number": "0001045810-25-000209",
+          "cik": "0001045810",
+          "filing_date": "2025-08-27",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000209/index.json",
+          "form": "10-Q",
+          "primary_doc_description": "10-Q",
+          "primary_document": "nvda-20250727.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000209/nvda-20250727.htm",
+          "ticker": "NVDA"
+        },
+        {
+          "acceptance_datetime": "2025-02-26T16:48:33.000Z",
+          "accession_number": "0001045810-25-000023",
+          "cik": "0001045810",
+          "filing_date": "2025-02-26",
+          "filing_index_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000023/index.json",
+          "form": "10-K",
+          "primary_doc_description": "10-K",
+          "primary_document": "nvda-20250126.htm",
+          "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000023/nvda-20250126.htm",
+          "ticker": "NVDA"
+        }
+      ],
+      "submissions_url": "https://data.sec.gov/submissions/CIK0001045810.json",
+      "ticker": "NVDA"
+    }
+  ]
+}

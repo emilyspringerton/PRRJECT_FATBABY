@@ -1,0 +1,110 @@
+{
+  "directory": {
+    "item": [
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "0001045810-26-000019-index-headers.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "0001045810-26-000019-index.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "0001045810-26-000019.txt",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "0001045810-26-000019-xbrl.zip",
+        "size": "41073",
+        "type": "compressed.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "FilingSummary.xml",
+        "size": "1695",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "MetaLinks.json",
+        "size": "17610",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "nvda-20260225.htm",
+        "size": "25378",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "nvda-20260225.xsd",
+        "size": "2125",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "nvda-20260225_htm.xml",
+        "size": "2711",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "nvda-20260225_lab.xml",
+        "size": "22403",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "nvda-20260225_pre.xml",
+        "size": "13326",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "nvdalogoa19.jpg",
+        "size": "13441",
+        "type": "image2.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "q4fy26cfocommentary.htm",
+        "size": "260422",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "q4fy26pr.htm",
+        "size": "393962",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "R1.htm",
+        "size": "38220",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "report.css",
+        "size": "2767",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-25 16:31:25",
+        "name": "Show.js",
+        "size": "1085",
+        "type": "text.gif"
+      }
+    ],
+    "name": "/Archives/edgar/data/1045810/000104581026000019",
+    "parent-dir": "/Archives/edgar/data/1045810"
+  }
+}

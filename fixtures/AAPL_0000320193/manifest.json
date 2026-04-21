@@ -1,0 +1,79 @@
+{
+  "cik": "0000320193",
+  "filings": [
+    {
+      "acceptance_datetime": "2026-04-20T21:29:51.000Z",
+      "accession_number": "0001140361-26-015711",
+      "cik": "0000320193",
+      "filing_date": "2026-04-20",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/index.json",
+      "form": "8-K",
+      "primary_doc_description": "8-K",
+      "primary_document": "ef20071035_8k.htm",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm",
+      "ticker": "AAPL"
+    },
+    {
+      "acceptance_datetime": "2026-02-24T21:55:58.000Z",
+      "accession_number": "0001140361-26-006577",
+      "cik": "0000320193",
+      "filing_date": "2026-02-24",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126006577/index.json",
+      "form": "8-K",
+      "primary_doc_description": "8-K",
+      "primary_document": "ef20060722_8k.htm",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126006577/ef20060722_8k.htm",
+      "ticker": "AAPL"
+    },
+    {
+      "acceptance_datetime": "2026-01-30T11:01:32.000Z",
+      "accession_number": "0000320193-26-000006",
+      "cik": "0000320193",
+      "filing_date": "2026-01-30",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/index.json",
+      "form": "10-Q",
+      "primary_doc_description": "10-Q",
+      "primary_document": "aapl-20251227.htm",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+      "ticker": "AAPL"
+    },
+    {
+      "acceptance_datetime": "2025-10-31T10:01:26.000Z",
+      "accession_number": "0000320193-25-000079",
+      "cik": "0000320193",
+      "filing_date": "2025-10-31",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/index.json",
+      "form": "10-K",
+      "primary_doc_description": "10-K",
+      "primary_document": "aapl-20250927.htm",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "ticker": "AAPL"
+    },
+    {
+      "acceptance_datetime": "2025-08-01T10:00:42.000Z",
+      "accession_number": "0000320193-25-000073",
+      "cik": "0000320193",
+      "filing_date": "2025-08-01",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/index.json",
+      "form": "10-Q",
+      "primary_doc_description": "10-Q",
+      "primary_document": "aapl-20250628.htm",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000073/aapl-20250628.htm",
+      "ticker": "AAPL"
+    },
+    {
+      "acceptance_datetime": "2024-11-01T10:01:36.000Z",
+      "accession_number": "0000320193-24-000123",
+      "cik": "0000320193",
+      "filing_date": "2024-11-01",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/index.json",
+      "form": "10-K",
+      "primary_doc_description": "10-K",
+      "primary_document": "aapl-20240928.htm",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "ticker": "AAPL"
+    }
+  ],
+  "submissions_url": "https://data.sec.gov/submissions/CIK0000320193.json",
+  "ticker": "AAPL"
+}

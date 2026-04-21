@@ -1,0 +1,104 @@
+{
+  "directory": {
+    "item": [
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "0001140361-26-015711-index-headers.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "0001140361-26-015711-index.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "0001140361-26-015711.txt",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "0001140361-26-015711-xbrl.zip",
+        "size": "15639",
+        "type": "compressed.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "aapl-20260417.xsd",
+        "size": "5320",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "aapl-20260417_def.xml",
+        "size": "19668",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "aapl-20260417_lab.xml",
+        "size": "29949",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "aapl-20260417_pre.xml",
+        "size": "22138",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "ef20071035_8k.htm",
+        "size": "38605",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "ef20071035_8k_htm.xml",
+        "size": "11693",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "FilingSummary.xml",
+        "size": "1798",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "logo_apple.jpg",
+        "size": "1264",
+        "type": "image2.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "MetaLinks.json",
+        "size": "25327",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "R1.htm",
+        "size": "55299",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "report.css",
+        "size": "2766",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-04-20 17:29:51",
+        "name": "Show.js",
+        "size": "1085",
+        "type": "text.gif"
+      }
+    ],
+    "name": "/Archives/edgar/data/320193/000114036126015711",
+    "parent-dir": "/Archives/edgar/data/320193"
+  }
+}

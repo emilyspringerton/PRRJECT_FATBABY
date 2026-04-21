@@ -1,0 +1,116 @@
+{
+  "directory": {
+    "item": [
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "0001140361-26-006577-index-headers.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "0001140361-26-006577-index.html",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "0001140361-26-006577.txt",
+        "size": "",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "0001140361-26-006577-xbrl.zip",
+        "size": "37961",
+        "type": "compressed.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "aapl-20260224.xsd",
+        "size": "5321",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "aapl-20260224_def.xml",
+        "size": "19669",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "aapl-20260224_lab.xml",
+        "size": "29950",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "aapl-20260224_pre.xml",
+        "size": "22139",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "ef20060722_8k.htm",
+        "size": "73012",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "ef20060722_8k_htm.xml",
+        "size": "11693",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "ef20060722_ex10-1.htm",
+        "size": "74614",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "ef20065677_ex10-2.htm",
+        "size": "35680",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "FilingSummary.xml",
+        "size": "1798",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "logo_apple.jpg",
+        "size": "1264",
+        "type": "image2.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "MetaLinks.json",
+        "size": "25327",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "R1.htm",
+        "size": "55300",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "report.css",
+        "size": "2767",
+        "type": "text.gif"
+      },
+      {
+        "last-modified": "2026-02-24 16:55:58",
+        "name": "Show.js",
+        "size": "1085",
+        "type": "text.gif"
+      }
+    ],
+    "name": "/Archives/edgar/data/320193/000114036126006577",
+    "parent-dir": "/Archives/edgar/data/320193"
+  }
+}
