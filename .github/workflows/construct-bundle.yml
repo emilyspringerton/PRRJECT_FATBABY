@@ -98,7 +98,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ${TEST_CMD}
+          # Go repos without a fully populated go.sum can fail in clean CI checkouts.
+          # Use -mod=mod to allow module metadata to be resolved during test execution.
+          if [[ "${TEST_CMD}" == "go test ./..." ]]; then
+            go test -mod=mod ./...
+          else
+            ${TEST_CMD}
+          fi
         env:
           TEST_CMD: ${{ steps.detect-tests.outputs.test_cmd }}
 
