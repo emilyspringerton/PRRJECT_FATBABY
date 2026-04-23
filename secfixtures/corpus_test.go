@@ -1,7 +1,9 @@
 package secfixtures_test
 
 import (
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -34,13 +36,19 @@ func TestCorpusDiscovery_IsDeterministicAndNonEmpty(t *testing.T) {
 	}
 
 	for i := range first {
-		if first[i].RelDir != second[i].RelDir {
-			t.Fatalf("determinism failure at %d: %s != %s", i, first[i].RelDir, second[i].RelDir)
+		a, b := first[i], second[i]
+		if a.RelDir != b.RelDir {
+			t.Fatalf("determinism failure at %d: %s != %s", i, a.RelDir, b.RelDir)
 		}
-		if strings.Join(first[i].AllFiles, "|") != strings.Join(second[i].AllFiles, "|") {
-			t.Fatalf("determinism failure for files in %s", first[i].RelDir)
+		if strings.Join(a.FilesRelativeToUnitRoot, "|") != strings.Join(b.FilesRelativeToUnitRoot, "|") {
+			t.Fatalf("determinism failure for files in %s", a.RelDir)
+		}
+		if a.IssuerDir == "" || a.FilingDir == "" {
+			t.Fatalf("missing issuer/filing derivation for unit %s", a.RelDir)
 		}
 	}
+
+	t.Logf("discovered %d fixture units under %s", len(first), root)
 }
 
 func TestCorpusMetadataJSON_IsLoadableAndHasCoreShape(t *testing.T) {
@@ -56,13 +64,29 @@ func TestCorpusMetadataJSON_IsLoadableAndHasCoreShape(t *testing.T) {
 		}
 		metadataCount++
 
-		metadata, raw, err := secfixtures.LoadMetadata(unit.MetadataPath)
+		if _, statErr := os.Stat(unit.MetadataPath); statErr != nil {
+			t.Fatalf("metadata file missing for unit %s path %s: %v", unit.RelDir, unit.MetadataPath, statErr)
+		}
+
+		m, err := secfixtures.LoadMetadata(unit.MetadataPath)
 		if err != nil {
 			t.Fatalf("metadata load failed for %s: %v", unit.MetadataPath, err)
 		}
-		if err := secfixtures.ValidateMetadataCore(metadata, raw); err != nil {
-			t.Fatalf("metadata core validation failed for %s: %v", unit.MetadataPath, err)
+
+		requireNonEmpty := func(label, value string) {
+			if strings.TrimSpace(value) == "" {
+				t.Fatalf("metadata %s empty for unit %s (%s)", label, unit.RelDir, unit.MetadataPath)
+			}
 		}
+
+		requireNonEmpty("accession_number", m.AccessionNumber)
+		requireNonEmpty("cik", m.CIK)
+		requireNonEmpty("filing_date", m.FilingDate)
+		requireNonEmpty("form", m.Form)
+		requireNonEmpty("ticker", m.Ticker)
+		requireNonEmpty("primary_document", m.PrimaryDocument)
+		requireNonEmpty("filing_index_url", m.FilingIndexURL)
+		requireNonEmpty("primary_document_url", m.PrimaryDocumentURL)
 	}
 
 	if metadataCount == 0 {
@@ -70,7 +94,7 @@ func TestCorpusMetadataJSON_IsLoadableAndHasCoreShape(t *testing.T) {
 	}
 }
 
-func TestCorpusIndexJSON_IsLoadableAndReferencesPrimaryDocWhenPresent(t *testing.T) {
+func TestCorpusIndexJSON_IsLoadableAndDeterministic(t *testing.T) {
 	units, err := secfixtures.DiscoverFixtureUnits(fixturesRoot(t))
 	if err != nil {
 		t.Fatalf("discover units: %v", err)
@@ -83,48 +107,29 @@ func TestCorpusIndexJSON_IsLoadableAndReferencesPrimaryDocWhenPresent(t *testing
 		}
 		indexCount++
 
-		indexData, err := secfixtures.LoadIndex(unit.IndexPath)
+		if _, statErr := os.Stat(unit.IndexPath); statErr != nil {
+			t.Fatalf("index file missing for unit %s path %s: %v", unit.RelDir, unit.IndexPath, statErr)
+		}
+
+		idx, err := secfixtures.LoadIndex(unit.IndexPath)
 		if err != nil {
 			t.Fatalf("index load failed for %s: %v", unit.IndexPath, err)
 		}
-		if len(indexData.Items) == 0 {
-			t.Fatalf("index contains no directory.item entries: %s", unit.IndexPath)
+		if len(idx.Directory.Items) == 0 {
+			t.Fatalf("index has empty directory.item for %s", unit.IndexPath)
 		}
 
-		if unit.MetadataPath == "" {
-			continue
-		}
-
-		metadata, _, err := secfixtures.LoadMetadata(unit.MetadataPath)
-		if err != nil {
-			t.Fatalf("metadata load failed for %s: %v", unit.MetadataPath, err)
-		}
-		if strings.TrimSpace(metadata.PrimaryDocument) == "" {
-			continue
-		}
-
-		primaryLower := strings.ToLower(metadata.PrimaryDocument)
-		inIndex := false
-		for _, item := range indexData.Items {
-			if strings.ToLower(item.Name) == primaryLower {
-				inIndex = true
-				break
+		names := make([]string, 0, len(idx.Directory.Items))
+		for _, item := range idx.Directory.Items {
+			if strings.TrimSpace(item.Name) == "" {
+				t.Fatalf("index item has empty name in %s", unit.IndexPath)
 			}
+			names = append(names, strings.ToLower(item.Name))
 		}
-		if inIndex {
-			continue
-		}
-
-		inDir := false
-		for _, file := range unit.AllFiles {
-			if strings.ToLower(filepath.Base(file)) == primaryLower {
-				inDir = true
-				break
-			}
-		}
-
-		if !inDir {
-			t.Fatalf("primary_document %q not found in index entries or fixture dir for %s", metadata.PrimaryDocument, unit.RelDir)
+		sortedNames := append([]string{}, names...)
+		sort.Strings(sortedNames)
+		if strings.Join(names, "|") != strings.Join(sortedNames, "|") {
+			t.Fatalf("index items should be deterministic/sorted after load for %s", unit.IndexPath)
 		}
 	}
 
@@ -133,91 +138,212 @@ func TestCorpusIndexJSON_IsLoadableAndReferencesPrimaryDocWhenPresent(t *testing
 	}
 }
 
-func TestCorpusRawDocuments_AreReadableNonEmptyAndClassifiable(t *testing.T) {
+func TestCorpusMetadataIndex_Relationships(t *testing.T) {
 	units, err := secfixtures.DiscoverFixtureUnits(fixturesRoot(t))
 	if err != nil {
 		t.Fatalf("discover units: %v", err)
 	}
 
-	rawCount := 0
+	registry := secfixtures.DefaultWeirdnessRegistry()
+	withBoth := 0
 	for _, unit := range units {
-		for _, docPath := range unit.RawCandidatePaths {
-			rawCount++
-			classification, size, err := secfixtures.ReadAndClassifyDocument(docPath)
-			if err != nil {
-				t.Fatalf("raw document smoke failure for %s: %v", docPath, err)
+		if unit.MetadataPath == "" || unit.IndexPath == "" {
+			continue
+		}
+		withBoth++
+
+		m, err := secfixtures.LoadMetadata(unit.MetadataPath)
+		if err != nil {
+			t.Fatalf("metadata load failed for %s: %v", unit.MetadataPath, err)
+		}
+		idx, err := secfixtures.LoadIndex(unit.IndexPath)
+		if err != nil {
+			t.Fatalf("index load failed for %s: %v", unit.IndexPath, err)
+		}
+
+		if _, known := registry.ReasonForRelDir(unit.RelDir); !known {
+			primary := strings.ToLower(strings.TrimSpace(m.PrimaryDocument))
+			seen := false
+			for _, item := range idx.Directory.Items {
+				if strings.ToLower(item.Name) == primary {
+					seen = true
+					break
+				}
 			}
-			if size <= 0 {
-				t.Fatalf("raw document %s reported non-positive size %d", docPath, size)
+			if !seen {
+				t.Fatalf("metadata primary_document %q not present in index items for unit %s", m.PrimaryDocument, unit.RelDir)
 			}
-			if strings.TrimSpace(classification.Kind) == "" {
-				t.Fatalf("raw document %s returned empty classification", docPath)
+		}
+
+		if !strings.Contains(strings.ToLower(m.FilingIndexURL), strings.ToLower(strings.TrimLeft(m.CIK, "0"))) {
+			t.Fatalf("filing_index_url does not include cik %q for unit %s url=%s", m.CIK, unit.RelDir, m.FilingIndexURL)
+		}
+		accessionNoDash := strings.ReplaceAll(strings.ToLower(m.AccessionNumber), "-", "")
+		if !strings.Contains(strings.ToLower(m.FilingIndexURL), accessionNoDash) &&
+			!strings.Contains(strings.ToLower(idx.Directory.Name), accessionNoDash) &&
+			!strings.Contains(strings.ToLower(idx.Directory.ParentDir), accessionNoDash) {
+			t.Fatalf("accession %q not found in filing_index_url/index directory fields for unit %s", m.AccessionNumber, unit.RelDir)
+		}
+
+		normalizedCIK := strings.TrimLeft(strings.ToLower(m.CIK), "0")
+		if normalizedCIK != "" {
+			if !strings.Contains(strings.ToLower(idx.Directory.Name), normalizedCIK) &&
+				!strings.Contains(strings.ToLower(idx.Directory.ParentDir), normalizedCIK) {
+				t.Fatalf("index directory fields do not appear to align with cik %q for unit %s", m.CIK, unit.RelDir)
 			}
 		}
 	}
-
-	if rawCount == 0 {
-		t.Fatalf("expected at least one candidate raw document in corpus")
+	if withBoth == 0 {
+		t.Fatalf("expected at least one fixture with both metadata and index")
 	}
 }
 
-func TestCorpusSummary_ReportsBroadCoverageStats(t *testing.T) {
+func TestCorpusOnDiskVsIndex_Relationships(t *testing.T) {
 	units, err := secfixtures.DiscoverFixtureUnits(fixturesRoot(t))
 	if err != nil {
 		t.Fatalf("discover units: %v", err)
 	}
 
-	type stats struct {
-		units            int
-		withMetadata     int
-		withIndex        int
-		withRawDocs      int
-		rawDocs          int
-		inlineXBRL       int
-		htmlDocs         int
-		xmlDocs          int
-		txtDocs          int
-		unknownClassDocs int
-	}
-
-	s := stats{units: len(units)}
 	for _, unit := range units {
+		diskSet := map[string]bool{}
+		for _, relFile := range unit.FilesRelativeToUnitRoot {
+			diskSet[strings.ToLower(relFile)] = true
+			diskSet[strings.ToLower(filepath.Base(relFile))] = true
+		}
+
 		if unit.MetadataPath != "" {
-			s.withMetadata++
-		}
-		if unit.IndexPath != "" {
-			s.withIndex++
-		}
-		if len(unit.RawCandidatePaths) > 0 {
-			s.withRawDocs++
-		}
-
-		for _, docPath := range unit.RawCandidatePaths {
-			classification, _, err := secfixtures.ReadAndClassifyDocument(docPath)
+			m, err := secfixtures.LoadMetadata(unit.MetadataPath)
 			if err != nil {
-				t.Fatalf("summary classifier failed for %s: %v", docPath, err)
+				t.Fatalf("metadata load failed for %s: %v", unit.MetadataPath, err)
 			}
-			s.rawDocs++
-			if classification.InlineXBRL {
-				s.inlineXBRL++
+			if strings.TrimSpace(m.PrimaryDocument) != "" {
+				if !diskSet[strings.ToLower(m.PrimaryDocument)] {
+					t.Fatalf("primary document %q from metadata missing on disk for unit %s", m.PrimaryDocument, unit.RelDir)
+				}
 			}
-			switch classification.Kind {
-			case "html":
-				s.htmlDocs++
-			case "xml":
-				s.xmlDocs++
-			case "txt":
-				s.txtDocs++
-			default:
-				s.unknownClassDocs++
+		}
+
+		if unit.IndexPath != "" {
+			idx, err := secfixtures.LoadIndex(unit.IndexPath)
+			if err != nil {
+				t.Fatalf("index load failed for %s: %v", unit.IndexPath, err)
+			}
+
+			missingCount := 0
+			matchCount := 0
+			for _, item := range idx.Directory.Items {
+				if strings.TrimSpace(item.Name) == "" {
+					continue
+				}
+				if !diskSet[strings.ToLower(item.Name)] {
+					missingCount++
+					continue
+				}
+				matchCount++
+			}
+
+			if matchCount == 0 {
+				t.Fatalf("index/disk contradiction for unit %s: index has %d entries but none are present on disk", unit.RelDir, len(idx.Directory.Items))
+			}
+			t.Logf("unit %s index vs disk coverage: matches=%d missing=%d total=%d", unit.RelDir, matchCount, missingCount, len(idx.Directory.Items))
+		}
+
+		for _, interesting := range []string{"filingsummary.xml", "metalink.json", "metallinks.json"} {
+			if diskSet[interesting] {
+				foundCompanion := false
+				for _, c := range unit.CompanionPaths {
+					if strings.EqualFold(filepath.Base(c), interesting) {
+						foundCompanion = true
+						break
+					}
+				}
+				if !foundCompanion {
+					t.Fatalf("interesting companion file %q exists on disk but not detected in companion inventory for unit %s", interesting, unit.RelDir)
+				}
 			}
 		}
 	}
+}
 
-	if s.units == 0 || s.rawDocs == 0 {
-		t.Fatalf("expected non-empty corpus stats: %+v", s)
+func TestPrimaryDocumentClassification_ForEachFixture(t *testing.T) {
+	units, err := secfixtures.DiscoverFixtureUnits(fixturesRoot(t))
+	if err != nil {
+		t.Fatalf("discover units: %v", err)
 	}
 
-	t.Logf("SEC corpus summary: units=%d with_metadata=%d with_index=%d with_raw_docs=%d raw_docs=%d inline_xbrl=%d html=%d xml=%d txt=%d unknown=%d",
-		s.units, s.withMetadata, s.withIndex, s.withRawDocs, s.rawDocs, s.inlineXBRL, s.htmlDocs, s.xmlDocs, s.txtDocs, s.unknownClassDocs)
+	classified := 0
+	for _, unit := range units {
+		var docPath string
+		if unit.MetadataPath != "" {
+			m, err := secfixtures.LoadMetadata(unit.MetadataPath)
+			if err != nil {
+				t.Fatalf("metadata load failed for %s: %v", unit.MetadataPath, err)
+			}
+			if strings.TrimSpace(m.PrimaryDocument) != "" {
+				docPath = filepath.Join(unit.RootDir, m.PrimaryDocument)
+			}
+		}
+		if docPath == "" && len(unit.PrimaryCandidatePaths) > 0 {
+			docPath = unit.PrimaryCandidatePaths[0]
+		}
+		if docPath == "" {
+			continue
+		}
+		classified++
+
+		class, size, err := secfixtures.ReadAndClassifyDocument(docPath)
+		if err != nil {
+			t.Fatalf("classification failed for %s (unit=%s): %v", docPath, unit.RelDir, err)
+		}
+		if size <= 0 {
+			t.Fatalf("non-positive document size for %s (unit=%s)", docPath, unit.RelDir)
+		}
+		if strings.TrimSpace(class.Kind) == "" {
+			t.Fatalf("empty classification kind for %s (unit=%s)", docPath, unit.RelDir)
+		}
+	}
+
+	if classified == 0 {
+		t.Fatalf("expected at least one classified primary document")
+	}
+}
+
+func TestCorpusSummary_ReportsCoverageStats(t *testing.T) {
+	units, err := secfixtures.DiscoverFixtureUnits(fixturesRoot(t))
+	if err != nil {
+		t.Fatalf("discover units: %v", err)
+	}
+
+	summary, err := secfixtures.BuildCorpusSummary(units)
+	if err != nil {
+		t.Fatalf("build summary: %v", err)
+	}
+	if summary.TotalUnits == 0 {
+		t.Fatalf("summary should report non-zero total units")
+	}
+	if summary.WithMetadata == 0 || summary.WithIndex == 0 || summary.WithBoth == 0 {
+		t.Fatalf("summary should report metadata/index coverage: %+v", summary)
+	}
+	if len(summary.Forms) == 0 || len(summary.ByIssuer) == 0 || len(summary.ByDocClass) == 0 {
+		t.Fatalf("summary should report forms/issuer/class coverage: %+v", summary)
+	}
+
+	t.Logf("SEC corpus summary: total=%d with_metadata=%d with_index=%d with_both=%d with_primary_candidates=%d",
+		summary.TotalUnits, summary.WithMetadata, summary.WithIndex, summary.WithBoth, summary.WithPrimaryCandidates)
+	for _, k := range secfixtures.SortedMapKeys(summary.Forms) {
+		t.Logf("form[%s]=%d", k, summary.Forms[k])
+	}
+	for _, k := range secfixtures.SortedMapKeys(summary.ByIssuer) {
+		t.Logf("issuer[%s]=%d", k, summary.ByIssuer[k])
+	}
+	for _, k := range secfixtures.SortedMapKeys(summary.ByDocClass) {
+		t.Logf("docclass[%s]=%d", k, summary.ByDocClass[k])
+	}
+}
+
+func TestWeirdnessRegistry_ExistsForFutureExceptions(t *testing.T) {
+	r := secfixtures.DefaultWeirdnessRegistry()
+	if r.ByRelDir == nil || r.ByAccession == nil {
+		t.Fatalf("default weirdness registry maps should be initialized")
+	}
 }

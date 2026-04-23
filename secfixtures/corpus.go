@@ -10,37 +10,50 @@ import (
 	"strings"
 )
 
-// FixtureUnit is a discovered fixture directory and a lightweight inventory
-// of known files in that directory.
+// FixtureUnit represents one filing fixture unit rooted at fixtures/<issuer>/<filing>/.
 type FixtureUnit struct {
-	AbsDir            string
-	RelDir            string
-	MetadataPath      string
-	IndexPath         string
-	AllFiles          []string
-	RawCandidatePaths []string
+	RootDir                 string
+	RelDir                  string
+	IssuerDir               string
+	FilingDir               string
+	MetadataPath            string
+	IndexPath               string
+	AllFiles                []string // absolute, deterministic
+	FilesRelativeToUnitRoot []string // deterministic
+	PrimaryCandidatePaths   []string // absolute, deterministic
+	CompanionPaths          []string // absolute, deterministic
 }
 
-// Metadata captures the filing-level fields currently used by v1 corpus tests.
+// Metadata captures the filing-level fields currently used by corpus tests.
 type Metadata struct {
-	AcceptanceDatetime string `json:"acceptance_datetime"`
-	AccessionNumber    string `json:"accession_number"`
-	CIK                string `json:"cik"`
-	FilingDate         string `json:"filing_date"`
-	Form               string `json:"form"`
-	PrimaryDocument    string `json:"primary_document"`
-	Ticker             string `json:"ticker"`
+	Ticker                string `json:"ticker"`
+	CIK                   string `json:"cik"`
+	AccessionNumber       string `json:"accession_number"`
+	FilingDate            string `json:"filing_date"`
+	Form                  string `json:"form"`
+	PrimaryDocument       string `json:"primary_document"`
+	PrimaryDocumentURL    string `json:"primary_document_url"`
+	FilingIndexURL        string `json:"filing_index_url"`
+	AcceptanceDatetime    string `json:"acceptance_datetime"`
+	PrimaryDocDescription string `json:"primary_doc_description"`
 }
 
-// IndexData is a normalized view of directory.item entries from SEC index.json.
+// IndexData is a normalized view of directory data from SEC index.json.
 type IndexData struct {
-	Items []IndexItem
+	Directory IndexDirectory
+}
+
+type IndexDirectory struct {
+	Name      string
+	ParentDir string
+	Items     []IndexItem
 }
 
 type IndexItem struct {
-	Name string
-	Type string
-	Size string
+	Name         string
+	Type         string
+	Size         string
+	LastModified string
 }
 
 func DiscoverFixtureUnits(fixturesRoot string) ([]FixtureUnit, error) {
@@ -49,7 +62,14 @@ func DiscoverFixtureUnits(fixturesRoot string) ([]FixtureUnit, error) {
 		return nil, fmt.Errorf("resolve fixtures root %q: %w", fixturesRoot, err)
 	}
 
-	dirFiles := map[string][]string{}
+	type agg struct {
+		root      string
+		issuerDir string
+		filingDir string
+		files     []string
+	}
+	unitsByRel := map[string]*agg{}
+
 	err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -58,125 +78,108 @@ func DiscoverFixtureUnits(fixturesRoot string) ([]FixtureUnit, error) {
 			return nil
 		}
 
-		dir := filepath.Dir(path)
-		dirFiles[dir] = append(dirFiles[dir], path)
+		rel, relErr := filepath.Rel(absRoot, path)
+		if relErr != nil {
+			return fmt.Errorf("compute rel path for %q: %w", path, relErr)
+		}
+		rel = filepath.ToSlash(rel)
+		parts := strings.Split(rel, "/")
+		if len(parts) < 3 {
+			// e.g. fixtures/manifest.json or fixtures/<issuer>/manifest.json
+			return nil
+		}
+
+		key := strings.Join(parts[:2], "/")
+		item := unitsByRel[key]
+		if item == nil {
+			item = &agg{
+				root:      filepath.Join(absRoot, parts[0], parts[1]),
+				issuerDir: parts[0],
+				filingDir: parts[1],
+			}
+			unitsByRel[key] = item
+		}
+		item.files = append(item.files, path)
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("walk fixtures root %q: %w", absRoot, err)
 	}
 
-	dirs := make([]string, 0, len(dirFiles))
-	for dir := range dirFiles {
-		dirs = append(dirs, dir)
+	relKeys := make([]string, 0, len(unitsByRel))
+	for key := range unitsByRel {
+		relKeys = append(relKeys, key)
 	}
-	sort.Strings(dirs)
+	sort.Strings(relKeys)
 
-	units := make([]FixtureUnit, 0, len(dirs))
-	for _, dir := range dirs {
-		files := dirFiles[dir]
-		sort.Strings(files)
+	units := make([]FixtureUnit, 0, len(relKeys))
+	for _, relKey := range relKeys {
+		a := unitsByRel[relKey]
+		sort.Strings(a.files)
 
-		unit := FixtureUnit{
-			AbsDir:   dir,
-			AllFiles: append([]string{}, files...),
+		u := FixtureUnit{
+			RootDir:   a.root,
+			RelDir:    relKey,
+			IssuerDir: a.issuerDir,
+			FilingDir: a.filingDir,
+			AllFiles:  append([]string{}, a.files...),
 		}
 
-		rel, relErr := filepath.Rel(absRoot, dir)
-		if relErr != nil {
-			unit.RelDir = dir
-		} else {
-			unit.RelDir = filepath.ToSlash(rel)
-		}
+		for _, absFile := range a.files {
+			relFile, relErr := filepath.Rel(u.RootDir, absFile)
+			if relErr != nil {
+				relFile = filepath.Base(absFile)
+			}
+			relFile = filepath.ToSlash(relFile)
+			u.FilesRelativeToUnitRoot = append(u.FilesRelativeToUnitRoot, relFile)
 
-		for _, file := range files {
-			name := strings.ToLower(filepath.Base(file))
-			switch name {
+			baseLower := strings.ToLower(filepath.Base(absFile))
+			switch baseLower {
 			case "metadata.json":
-				unit.MetadataPath = file
+				u.MetadataPath = absFile
+				continue
 			case "index.json":
-				unit.IndexPath = file
+				u.IndexPath = absFile
+				continue
 			}
 
-			if isRawCandidate(file) {
-				unit.RawCandidatePaths = append(unit.RawCandidatePaths, file)
+			if isPrimaryCandidate(absFile) {
+				u.PrimaryCandidatePaths = append(u.PrimaryCandidatePaths, absFile)
+			} else {
+				u.CompanionPaths = append(u.CompanionPaths, absFile)
 			}
 		}
-		sort.Strings(unit.RawCandidatePaths)
-		units = append(units, unit)
+
+		sort.Strings(u.FilesRelativeToUnitRoot)
+		sort.Strings(u.PrimaryCandidatePaths)
+		sort.Strings(u.CompanionPaths)
+		units = append(units, u)
 	}
 
 	return units, nil
 }
 
-func isRawCandidate(path string) bool {
-	name := strings.ToLower(filepath.Base(path))
+func isPrimaryCandidate(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	if strings.HasSuffix(name, ".json") {
-		return false
-	}
-
 	switch ext {
-	case ".htm", ".html", ".xml", ".txt", ".xsd":
+	case ".htm", ".html", ".xml", ".txt":
 		return true
 	default:
 		return false
 	}
 }
 
-func LoadMetadata(path string) (Metadata, map[string]json.RawMessage, error) {
+func LoadMetadata(path string) (Metadata, error) {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
-		return Metadata{}, nil, fmt.Errorf("read metadata %q: %w", path, err)
+		return Metadata{}, fmt.Errorf("read metadata %q: %w", path, err)
 	}
 
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(bytes, &raw); err != nil {
-		return Metadata{}, nil, fmt.Errorf("parse metadata json %q: %w", path, err)
+	var m Metadata
+	if err := json.Unmarshal(bytes, &m); err != nil {
+		return Metadata{}, fmt.Errorf("decode metadata %q: %w", path, err)
 	}
-
-	var metadata Metadata
-	if err := json.Unmarshal(bytes, &metadata); err != nil {
-		return Metadata{}, nil, fmt.Errorf("decode metadata fields %q: %w", path, err)
-	}
-
-	return metadata, raw, nil
-}
-
-func ValidateMetadataCore(m Metadata, raw map[string]json.RawMessage) error {
-	var issues []string
-
-	requireIfPresent := func(key, value string) {
-		if _, ok := raw[key]; ok && strings.TrimSpace(value) == "" {
-			issues = append(issues, fmt.Sprintf("%s present but empty", key))
-		}
-	}
-
-	requireIfPresent("form", m.Form)
-	requireIfPresent("accession_number", m.AccessionNumber)
-	requireIfPresent("cik", m.CIK)
-	requireIfPresent("filing_date", m.FilingDate)
-	requireIfPresent("primary_document", m.PrimaryDocument)
-
-	if len(raw) > 0 {
-		if strings.TrimSpace(m.Form) == "" {
-			issues = append(issues, "missing form")
-		}
-		if strings.TrimSpace(m.AccessionNumber) == "" {
-			issues = append(issues, "missing accession_number")
-		}
-		if strings.TrimSpace(m.CIK) == "" {
-			issues = append(issues, "missing cik")
-		}
-		if strings.TrimSpace(m.FilingDate) == "" {
-			issues = append(issues, "missing filing_date")
-		}
-	}
-
-	if len(issues) > 0 {
-		return fmt.Errorf(strings.Join(issues, "; "))
-	}
-	return nil
+	return m, nil
 }
 
 func LoadIndex(path string) (IndexData, error) {
@@ -185,32 +188,36 @@ func LoadIndex(path string) (IndexData, error) {
 		return IndexData{}, fmt.Errorf("read index %q: %w", path, err)
 	}
 
-	var root map[string]json.RawMessage
-	if err := json.Unmarshal(bytes, &root); err != nil {
+	var rawRoot map[string]json.RawMessage
+	if err := json.Unmarshal(bytes, &rawRoot); err != nil {
 		return IndexData{}, fmt.Errorf("parse index json %q: %w", path, err)
 	}
 
-	directoryRaw, ok := root["directory"]
+	dirRaw, ok := rawRoot["directory"]
 	if !ok {
-		return IndexData{}, fmt.Errorf("missing directory object")
+		return IndexData{}, fmt.Errorf("index %q missing directory object", path)
 	}
 
-	var directory map[string]json.RawMessage
-	if err := json.Unmarshal(directoryRaw, &directory); err != nil {
-		return IndexData{}, fmt.Errorf("decode directory object: %w", err)
+	var rawDir map[string]json.RawMessage
+	if err := json.Unmarshal(dirRaw, &rawDir); err != nil {
+		return IndexData{}, fmt.Errorf("index %q decode directory object: %w", path, err)
 	}
 
-	itemRaw, ok := directory["item"]
+	var out IndexData
+	_ = decodeString(rawDir["name"], &out.Directory.Name)
+	_ = decodeString(rawDir["parent-dir"], &out.Directory.ParentDir)
+
+	itemRaw, ok := rawDir["item"]
 	if !ok {
-		return IndexData{}, fmt.Errorf("missing directory.item")
+		return IndexData{}, fmt.Errorf("index %q missing directory.item", path)
 	}
 
 	items, err := decodeIndexItems(itemRaw)
 	if err != nil {
-		return IndexData{}, err
+		return IndexData{}, fmt.Errorf("index %q decode directory.item: %w", path, err)
 	}
-
-	return IndexData{Items: items}, nil
+	out.Directory.Items = items
+	return out, nil
 }
 
 func decodeIndexItems(raw json.RawMessage) ([]IndexItem, error) {
@@ -231,20 +238,37 @@ func normalizeIndexItems(rawItems []map[string]json.RawMessage) []IndexItem {
 	items := make([]IndexItem, 0, len(rawItems))
 	for _, rawItem := range rawItems {
 		var item IndexItem
-		_ = decodeJSONString(rawItem["name"], &item.Name)
-		_ = decodeJSONString(rawItem["type"], &item.Type)
-		_ = decodeJSONString(rawItem["size"], &item.Size)
+		_ = decodeString(rawItem["name"], &item.Name)
+		_ = decodeString(rawItem["type"], &item.Type)
+		_ = decodeString(rawItem["size"], &item.Size)
+		_ = decodeString(rawItem["last-modified"], &item.LastModified)
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool {
+		if strings.EqualFold(items[i].Name, items[j].Name) {
+			return strings.ToLower(items[i].Type) < strings.ToLower(items[j].Type)
+		}
 		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
 	})
 	return items
 }
 
-func decodeJSONString(raw json.RawMessage, out *string) error {
+func decodeString(raw json.RawMessage, out *string) error {
 	if len(raw) == 0 {
 		return nil
 	}
-	return json.Unmarshal(raw, out)
+	if err := json.Unmarshal(raw, out); err == nil {
+		return nil
+	}
+	var num json.Number
+	if err := json.Unmarshal(raw, &num); err == nil {
+		*out = num.String()
+		return nil
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		*out = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", f), "0"), ".")
+		return nil
+	}
+	return fmt.Errorf("decode json scalar as string")
 }
