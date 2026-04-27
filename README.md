@@ -59,6 +59,31 @@ func main() {
 go test ./...
 ```
 
+## SEC watchlist discovery (phase 1)
+
+This repo now includes a conservative SEC submissions discovery tool:
+
+- Watchlist config: `config/watchlist.json`
+- Command: `cmd/secwatch/main.go`
+- Discovery package: `secwatch/`
+
+Run a safe dry-run poll:
+
+```bash
+go run ./cmd/secwatch \
+  -watchlist ./config/watchlist.json \
+  -store ./var/secwatch \
+  -dry-run
+```
+
+Run real mode (persists `filing_discovered` events in the file-backed event store):
+
+```bash
+go run ./cmd/secwatch \
+  -watchlist ./config/watchlist.json \
+  -store ./var/secwatch
+```
+
 ## Project layout
 
 - `eventstore/types.go`: core event/record types and `EventStore` interface.

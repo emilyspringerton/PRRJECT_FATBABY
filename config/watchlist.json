@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "ticker": "AAPL",
+      "company_name": "Apple Inc.",
+      "cik": "320193",
+      "allowed_forms": ["10-K", "10-Q", "8-K"],
+      "enabled": true,
+      "poll_priority": 1,
+      "notes": "core megacap coverage"
+    },
+    {
+      "ticker": "MSFT",
+      "company_name": "Microsoft Corporation",
+      "cik": "789019",
+      "allowed_forms": ["10-K", "10-Q", "8-K"],
+      "enabled": true,
+      "poll_priority": 1,
+      "notes": "core megacap coverage"
+    },
+    {
+      "ticker": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "cik": "1045810",
+      "allowed_forms": ["10-K", "10-Q", "8-K"],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "core semiconductor coverage"
+    }
+  ]
+}
