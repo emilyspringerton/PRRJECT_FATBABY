@@ -93,6 +93,49 @@ go run ./cmd/secwatch \
   -poll-interval 5m
 ```
 
+## Track A — modest historical backfill
+
+Not “download the SEC.”
+Not “mirror EDGAR.”
+
+A controlled rolling backfill for your watched issuers/forms.
+
+This gives you:
+
+- temporal depth,
+- repeated quarterly structure,
+- amendments,
+- issuer-specific drift,
+- parser regression coverage,
+- and eventually training/eval material.
+
+### Backfill philosophy
+
+Use **shallow breadth first, then selective depth**:
+
+1. Pull a few years for each watched issuer.
+2. Cover a focused form set (`10-K`, `10-Q`, `8-K`, plus `10-K/A` / `10-Q/A` when present).
+3. Keep strict per-issuer and per-run caps so ingestion stays deterministic and cheap.
+4. Persist a local manifest with enough metadata to replay fixture generation.
+
+### Practical starting point
+
+- Time window: last **2–3 years** per issuer.
+- Forms: start with `10-K`, `10-Q`, `8-K` (+ amendments).
+- Per run cap: ~25 filings max total (e.g., 5–10 per issuer).
+- Corpus policy: only keep primary filing HTML plus JSON metadata/index.
+
+### Recommended rollout phases
+
+1. **Phase A1 (breadth):** Populate all watched issuers with at least one annual + one quarterly filing.
+2. **Phase A2 (quarterly depth):** Fill missing quarter chains for each issuer.
+3. **Phase A3 (amendments):** Explicitly add amendment forms and verify supersession handling.
+4. **Phase A4 (drift):** Extend selected issuers further back for parser regression and historical edge cases.
+
+### Why this works for this repo
+
+The repository already keeps fixture snapshots by issuer under `fixtures/` alongside `manifest.json` files. A rolling backfill strategy keeps fixture volume manageable while still increasing parser and discovery coverage over time.
+
 ## Project layout
 
 - `eventstore/types.go`: core event/record types and `EventStore` interface.
