@@ -84,6 +84,15 @@ go run ./cmd/secwatch \
   -store ./var/secwatch
 ```
 
+Run continuously with a conservative polling cadence:
+
+```bash
+go run ./cmd/secwatch \
+  -watchlist ./config/watchlist.json \
+  -store ./var/secwatch \
+  -poll-interval 5m
+```
+
 ## Project layout
 
 - `eventstore/types.go`: core event/record types and `EventStore` interface.

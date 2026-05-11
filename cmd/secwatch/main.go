@@ -24,6 +24,8 @@ func main() {
 		timeout       = flag.Duration("timeout", 25*time.Second, "request timeout")
 		retries       = flag.Int("retries", 4, "max retries")
 		concurrency   = flag.Int("concurrency", 2, "bounded worker concurrency")
+		pollInterval  = flag.Duration("poll-interval", 0, "optional fixed interval between poll rounds (0 = run once)")
+		maxPolls      = flag.Int("max-polls", 0, "optional max poll rounds when poll-interval > 0 (0 = unbounded)")
 	)
 	flag.Parse()
 
@@ -39,15 +41,44 @@ func main() {
 		MaxRetries:   *retries,
 	})
 
-	_, err := secwatch.RunDiscovery(ctx, secwatch.RunnerConfig{
-		WatchlistPath: *watchlistPath,
-		StoreRoot:     *storeRoot,
-		DryRun:        *dryRun,
-		Concurrency:   *concurrency,
-		Logger:        logger,
-		Client:        client,
-	})
-	if err != nil {
-		logger.Fatalf("secwatch run failed: %v", err)
+	run := func(round int) error {
+		_, err := secwatch.RunDiscovery(ctx, secwatch.RunnerConfig{
+			WatchlistPath: *watchlistPath,
+			StoreRoot:     *storeRoot,
+			DryRun:        *dryRun,
+			Concurrency:   *concurrency,
+			Logger:        logger,
+			Client:        client,
+		})
+		if err != nil {
+			return err
+		}
+		if round > 0 {
+			logger.Printf("secwatch poll round=%d complete", round)
+		}
+		return nil
+	}
+
+	if *pollInterval <= 0 {
+		if err := run(0); err != nil {
+			logger.Fatalf("secwatch run failed: %v", err)
+		}
+		return
+	}
+
+	round := 0
+	for {
+		round++
+		if err := run(round); err != nil {
+			logger.Printf("secwatch run failed round=%d: %v", round, err)
+		}
+		if *maxPolls > 0 && round >= *maxPolls {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(*pollInterval):
+		}
 	}
 }
