@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fatbaby RTI Dashboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #06080f;
+      color: #e7edf8;
+    }
+    .wrap { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+    h1 { margin: 0 0 12px; font-size: 18px; color: #a7b6d6; letter-spacing: .05em; }
+    #status { font-size: 12px; margin-bottom: 16px; color: #89a2c9; }
+    #feed { display: grid; gap: 10px; }
+    .card {
+      border: 1px solid #1f2b45;
+      border-left-width: 4px;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #0c1221;
+      animation: flash 900ms ease-out;
+    }
+    .sec { border-left-color: #3a86ff; }
+    .pr-newswire, .prnewswire { border-left-color: #00c853; }
+    .meta { font-size: 12px; color: #90a7cb; margin-bottom: 6px; display:flex; justify-content: space-between; gap:8px; }
+    .headline { font-size: 14px; line-height: 1.4; color: #e9f0ff; }
+    @keyframes flash {
+      from { box-shadow: 0 0 0 2px rgba(120,160,255,0.7); transform: translateY(-3px); }
+      to { box-shadow: 0 0 0 0 rgba(120,160,255,0); transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>PROJECT FATBABY // REAL-TIME INTELLIGENCE</h1>
+    <div id="status">Connecting…</div>
+    <div id="feed"></div>
+  </div>
+  <script>
+    const feed = document.getElementById('feed');
+    const statusNode = document.getElementById('status');
+    const seen = new Set();
+
+    function relTime(ts) {
+      const d = new Date(ts);
+      const s = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (s < 60) return `${s}s ago`;
+      if (s < 3600) return `${Math.floor(s/60)}m ago`;
+      if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+      return `${Math.floor(s/86400)}d ago`;
+    }
+
+    function normalize(rec) {
+      const ev = rec.event || {};
+      const data = ev.data || {};
+      const t = (ev.type || '').toLowerCase();
+      if (t.includes('filing')) {
+        return `${data.form || data.filing_type || ev.type || 'Filing'} ${data.accession || data.cik ? `(${data.accession || data.cik})` : ''}`.trim();
+      }
+      if (t.includes('press') || t.includes('news')) {
+        return data.headline || data.title || data.subject || ev.type || 'Press release';
+      }
+      return data.headline || data.title || data.summary || JSON.stringify(data);
+    }
+
+    function sourceClass(source) {
+      const s = (source || '').toLowerCase();
+      if (s.includes('sec')) return 'sec';
+      if (s.includes('pr')) return 'pr-newswire';
+      return '';
+    }
+
+    function render(rec) {
+      if (seen.has(rec.sequence)) return;
+      seen.add(rec.sequence);
+
+      const ev = rec.event || {};
+      const card = document.createElement('article');
+      card.className = `card ${sourceClass(ev.source)}`;
+
+      const ticker = ev.aggregate_key || 'N/A';
+      card.innerHTML = `
+        <div class="meta">
+          <span>${ev.source || 'unknown'} · ${ticker}</span>
+          <span title="${ev.occurred_at || rec.appended_at}">${relTime(ev.occurred_at || rec.appended_at)}</span>
+        </div>
+        <div class="headline">${normalize(rec)}</div>
+      `;
+
+      feed.prepend(card);
+      while (feed.children.length > 300) feed.removeChild(feed.lastChild);
+    }
+
+    const es = new EventSource('/events');
+    es.onopen = () => statusNode.textContent = 'Live';
+    es.onerror = () => statusNode.textContent = 'Disconnected, retrying…';
+    es.addEventListener('record', (msg) => {
+      try { render(JSON.parse(msg.data)); } catch (_) {}
+    });
+  </script>
+</body>
+</html>
