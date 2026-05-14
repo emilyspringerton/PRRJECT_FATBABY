@@ -44,6 +44,7 @@ func main() {
 
 	if b, _ := json.Marshal(map[string]any{"workers": *workers, "poll_interval": pollInterval.String()}); len(b) > 0 {
 		logger.Printf("processor starting %s", b)
+		logger.Printf("data directory %s", storeRoot)
 	}
 	if err := processor.Run(ctx, processor.WorkerConfig{Store: store, Provider: &stubProvider{}, Logger: logger, Workers: *workers, PollInterval: *pollInterval, UserAgent: *ua, MaxDocBytes: *maxDocBytes}); err != nil && err != context.Canceled {
 		logger.Fatalf("processor run failed: %v", err)
