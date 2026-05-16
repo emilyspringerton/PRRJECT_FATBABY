@@ -59,7 +59,7 @@ func main() {
 		PollInterval:   *pollInterval,
 		UserAgent:      *ua,
 		MaxDocBytes:    *maxDocBytes,
-		Logger:         la,
+		Logger:         *la,
 	}); err != nil && err != context.Canceled {
 		logger.Fatalf("body crawler exited: %v", err)
 	}
