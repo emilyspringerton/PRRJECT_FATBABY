@@ -438,7 +438,7 @@ func (s *Server) runToolLoop(msgs []map[string]any) (string, []map[string]string
 	toolCalls := []map[string]string{}
 	for i := 0; i < s.cfg.MaxToolIters; i++ {
 		s.limiter.Wait()
-		payload := map[string]any{"model": "claude-sonnet-4-20250514", "max_tokens": 4096, "system": emilySystemPrompt, "tools": s.d.AnthropicDefs(), "messages": msgs}
+		payload := map[string]any{"model": "claude-sonnet-4-5-20251001", "max_tokens": 4096, "system": emilySystemPrompt, "tools": s.d.AnthropicDefs(), "messages": msgs}
 		b, _ := json.Marshal(payload)
 		req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(b))
 		req.Header.Set("x-api-key", s.cfg.APIKey)
