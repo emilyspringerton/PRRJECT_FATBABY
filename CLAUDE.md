@@ -26,6 +26,7 @@ impact analysis), and streams them via SSE dashboard and a TCP feed server.
 | feedserver | `go run ./cmd/feedserver` | TCP framed feed for downstream consumers |
 | broker | `go run ./cmd/broker` | Tenant-aware proxy with hot-reload registry |
 | signalapi | `go run ./cmd/signalapi` | HTTP API for querying signals |
+| observation-watcher | `go run ./cmd/observation-watcher` | Invokes Claude Code when Emily publishes a new observation |
 
 Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log`.
 
@@ -60,15 +61,22 @@ The intended pattern for recursive self-improvement on this codebase:
 
 4. **Loop**: Emily picks up the new behavior after the process restarts.
 
-To wire this up, create `./var/emily-observations/` and have Emily write findings there. Then invoke
-Claude Code pointing at those findings:
+To wire this up, create `./var/emily-observations/` and have Emily write findings there. Emily
+publishes via the `fatbaby_write_observation` tool; the canonical file is
+`./var/emily-observations/latest.json` with a timestamped archive sibling.
+
+Then run `cmd/observation-watcher` to invoke Claude Code each time a new observation appears:
 
 ```bash
-claude --dangerously-skip-permissions \
-  "Read ./var/emily-observations/latest.json and fix the issues Emily found. Run go test ./... before committing."
+go run ./cmd/observation-watcher                       # polls every 10s, invokes `claude`
+go run ./cmd/observation-watcher -one-shot -dry-run    # log-only single check, for cron
 ```
 
-This can be run on a cron or triggered by a file watcher (`inotifywait`, `fswatch`).
+It polls `latest.json`, distinguishes new observations by the `timestamp` field, persists a cursor at
+`./var/emily-observations/.last-processed`, and shells out to `claude --dangerously-skip-permissions
+"<prompt referencing latest.json>"`. Override the command with `-cmd` / `OBSERVATION_CMD`, and the
+flags with `-extra-args` / `OBSERVATION_CMD_ARGS`. Can also be driven from cron or `inotifywait`
+instead.
 
 ## Coding conventions
 
