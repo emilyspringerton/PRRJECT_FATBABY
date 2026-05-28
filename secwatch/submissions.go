@@ -41,7 +41,7 @@ func ParseRecentFilings(body []byte, ticker string) ([]Filing, error) {
 			AccessionNumber: strings.TrimSpace(recent.AccessionNumber[i]),
 			Form:            strings.ToUpper(strings.TrimSpace(recent.Form[i])),
 			FilingDate:      strings.TrimSpace(recent.FilingDate[i]),
-			PrimaryDocument: strings.TrimSpace(recent.PrimaryDocument[i]),
+			PrimaryDocument: DocumentURL(cik, strings.TrimSpace(recent.AccessionNumber[i]), strings.TrimSpace(recent.PrimaryDocument[i])),
 			SubmissionsURL:  SubmissionsURL(cik),
 		}
 		if i < len(recent.AcceptanceDateTime) {

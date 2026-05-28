@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/identity"
+	"github.com/example/prrject-fatbaby/internal/issuerregistry"
 )
 
 func TestLoadSeenIdentities(t *testing.T) {
@@ -79,6 +81,23 @@ func TestRunDiscovery_DryRunAndRealMode(t *testing.T) {
 	}
 	if hits < 3 {
 		t.Fatalf("expected server hit for each run, got=%d", hits)
+	}
+}
+
+func TestDiscoveryEventData_TickerPopulated(t *testing.T) {
+	reg := issuerregistry.New(map[string][]identity.SecurityRef{})
+	f := Filing{
+		Ticker:          "NVDA",
+		CIK:             "0001045810",
+		AccessionNumber: "0001045810-26-000001",
+		Form:            "8-K",
+		FilingDate:      "2026-05-01",
+		PrimaryDocument: "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000001/nvda8k.htm",
+		SubmissionsURL:  SubmissionsURL("0001045810"),
+	}
+	data := discoveryEventData(f, time.Now().UTC(), reg)
+	if data.Ticker != "NVDA" {
+		t.Errorf("Ticker got %q want NVDA", data.Ticker)
 	}
 }
 

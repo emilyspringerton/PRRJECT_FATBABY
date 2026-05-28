@@ -40,3 +40,29 @@ func TestParseRecentFilings_LengthMismatch(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestParseRecentFilings_PrimaryDocumentIsFullURL(t *testing.T) {
+	payload := []byte(`{
+        "cik": "1321655",
+        "filings": {"recent": {
+            "accessionNumber": ["0001193125-22-144264"],
+            "form":            ["8-K"],
+            "filingDate":      ["2022-05-10"],
+            "primaryDocument": ["d259921d8k.htm"]
+        }}
+    }`)
+	filings, err := ParseRecentFilings(payload, "PLTR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filings) != 1 {
+		t.Fatalf("expected 1 filing got %d", len(filings))
+	}
+	want := "https://www.sec.gov/Archives/edgar/data/1321655/000119312522144264/d259921d8k.htm"
+	if filings[0].PrimaryDocument != want {
+		t.Errorf("PrimaryDocument\n got  %q\n want %q", filings[0].PrimaryDocument, want)
+	}
+	if filings[0].Ticker != "PLTR" {
+		t.Errorf("Ticker got %q want PLTR", filings[0].Ticker)
+	}
+}

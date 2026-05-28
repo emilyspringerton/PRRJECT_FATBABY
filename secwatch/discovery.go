@@ -156,6 +156,7 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 }
 
 type FilingDiscovered struct {
+	Ticker          string                     `json:"ticker,omitempty"`
 	CIK             string                     `json:"cik"`
 	AccessionNumber string                     `json:"accession_number"`
 	FormType        string                     `json:"form_type"`
@@ -191,6 +192,7 @@ func discoveryEventData(f Filing, now time.Time, reg *issuerregistry.IssuerRegis
 		id.PrimaryTicker = &first
 	}
 	payload := FilingDiscovered{
+		Ticker:          f.Ticker,
 		CIK:             f.CIK,
 		AccessionNumber: f.AccessionNumber,
 		FormType:        f.Form,

@@ -44,3 +44,23 @@ func NormalizeCIK(cik string) string {
 func SubmissionsURL(cik string) string {
 	return fmt.Sprintf("https://data.sec.gov/submissions/CIK%s.json", NormalizeCIK(cik))
 }
+
+// DocumentURL constructs the fully-qualified EDGAR document URL.
+// CIK is stripped of leading zeros for the path segment.
+// AccessionNumber has hyphens removed.
+// Example output:
+//
+//	https://www.sec.gov/Archives/edgar/data/1321655/000119312522144264/d259921d8k.htm
+func DocumentURL(cik, accessionNumber, primaryDocument string) string {
+	if strings.TrimSpace(primaryDocument) == "" {
+		return ""
+	}
+	cikStripped := strings.TrimLeft(NormalizeCIK(cik), "0")
+	accessionClean := strings.ReplaceAll(strings.TrimSpace(accessionNumber), "-", "")
+	return fmt.Sprintf(
+		"https://www.sec.gov/Archives/edgar/data/%s/%s/%s",
+		cikStripped,
+		accessionClean,
+		strings.TrimSpace(primaryDocument),
+	)
+}
