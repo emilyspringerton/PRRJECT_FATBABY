@@ -348,6 +348,61 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		b, _ := json.MarshalIndent(resp, "", "  ")
 		return string(b), nil
 	})
+
+	d.Register(ToolDef{Name: "fatbaby_write_observation", Description: "Publish a structured observation to var/emily-observations/latest.json (and a timestamped archive copy). This is the handoff point for the Emily ↔ Claude Code feedback loop — Claude Code reads latest.json as its task prompt.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{
+		"summary":  {Type: "string", Description: "One-line headline of what Emily observed."},
+		"severity": {Type: "string", Description: "info|warn|error — how urgent this is."},
+		"findings": {Type: "string", Description: "Detailed multi-line description of what was observed and which processes/tickers are involved."},
+		"suggested_fix": {Type: "string", Description: "Concrete suggestion for what Claude Code should change in the source, if any."},
+	}, Required: []string{"summary", "findings"}}}, func(args map[string]any) (string, error) {
+		summary, _ := args["summary"].(string)
+		findings, _ := args["findings"].(string)
+		severity, _ := args["severity"].(string)
+		suggested, _ := args["suggested_fix"].(string)
+		if strings.TrimSpace(summary) == "" || strings.TrimSpace(findings) == "" {
+			return "", errors.New("summary and findings are required")
+		}
+		if severity == "" {
+			severity = "info"
+		}
+		dir := filepath.Join(fatbabyRoot, "var", "emily-observations")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", err
+		}
+		now := time.Now().UTC()
+		obs := map[string]any{
+			"timestamp":     now.Format(time.RFC3339),
+			"summary":       summary,
+			"severity":      severity,
+			"findings":      findings,
+			"suggested_fix": suggested,
+		}
+		b, err := json.MarshalIndent(obs, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		latest := filepath.Join(dir, "latest.json")
+		if err := os.WriteFile(latest, b, 0o644); err != nil {
+			return "", err
+		}
+		archive := filepath.Join(dir, now.Format("20060102T150405Z")+".json")
+		if err := os.WriteFile(archive, b, 0o644); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("wrote observation severity=%s latest=%s archive=%s", severity, latest, archive), nil
+	})
+
+	d.Register(ToolDef{Name: "fatbaby_read_observation", Description: "Read back the most recent observation Emily published. Useful before writing a new one to avoid duplicating a still-open finding.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		p := filepath.Join(fatbabyRoot, "var", "emily-observations", "latest.json")
+		b, err := os.ReadFile(p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "no observations yet", nil
+			}
+			return "", err
+		}
+		return string(b), nil
+	})
 }
 
 const emilySystemPrompt = `You are Emily, the operations agent for prrject-fatbaby — a Go-based financial signal intelligence pipeline.
@@ -384,7 +439,16 @@ Five processes write to or read from three event stores:
 - The processor uses a stub LLM provider; signal_generated events are stubs. source_document_persisted events contain the real cleaned filing text.
 - The news site reads source_document_persisted, not signal_generated.
 - var/secwatch is the canonical store for the news site pipeline. var/prwatch and var/prwatch-body are separate.
-- EDGAR rate limit is 10 requests/second; secwatch defaults to 2 RPS — do not advise users to raise it beyond 5.`
+- EDGAR rate limit is 10 requests/second; secwatch defaults to 2 RPS — do not advise users to raise it beyond 5.
+
+## Reporting findings to Claude Code
+
+When you detect a problem the source code should be changed to fix — stalled processors, parse errors,
+dropped tickers, suspicious zero-counts, mis-routed events — call fatbaby_write_observation with a
+clear summary, severity, findings, and suggested_fix. Claude Code reads var/emily-observations/latest.json
+as its task prompt. Before writing, call fatbaby_read_observation to avoid restating a finding that is
+already open. Do not write observations for transient state (e.g. a process you just stopped); only for
+issues that need code changes.`
 
 var chatHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Emily — fatbaby ops</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:20px auto}#history{height:65vh;overflow:auto;border:1px solid #ccc;padding:12px}textarea{width:100%;height:90px}button{margin-top:8px}</style></head><body><h2>Emily — fatbaby ops</h2><div id="history"></div><p id="thinking" style="display:none">thinking…</p><textarea id="input" placeholder="Type message; Ctrl+Enter to send"></textarea><br><button id="send">Send</button><script>const history=[];const div=document.getElementById('history');const thinking=document.getElementById('thinking');function render(){div.innerHTML='';for(const m of history){const d=document.createElement('div');d.innerHTML='<b>'+m.role+':</b> '+(m.content||'');div.appendChild(d);if(m.role==='assistant'&&m.tool_calls){for(const t of m.tool_calls){const det=document.createElement('details');det.innerHTML='<summary>'+t.tool+'</summary><pre>'+(t.result||'')+'</pre>';div.appendChild(det)}}}div.scrollTop=div.scrollHeight}async function send(){const v=document.getElementById('input').value.trim();if(!v)return;history.push({role:'user',content:v});document.getElementById('input').value='';render();thinking.style.display='block';const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history.map(x=>({role:x.role,content:x.content}))})});const j=await r.json();thinking.style.display='none';history.push({role:'assistant',content:j.reply,tool_calls:j.tool_calls||[]});render()}document.getElementById('send').onclick=send;document.getElementById('input').addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter')send()});</script></body></html>`
 

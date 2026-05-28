@@ -1,0 +1,14 @@
+# Runtime data — append-only NDJSON event stores, fetched bodies, logs, observations.
+/var/
+/cmd/*/var/
+/data/
+/bar.bak/
+
+# Conversation state for emily-agent.
+/conversations/
+
+# Local env / editor noise.
+.env
+.env.*
+*.log
+.DS_Store
