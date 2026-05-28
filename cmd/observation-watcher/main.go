@@ -6,6 +6,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -59,9 +61,20 @@ func main() {
 	}
 }
 
-// pollOnce checks latest.json, and if its timestamp is newer than the cursor,
-// invokes the configured command and updates the cursor. Returns true if an
-// observation was processed.
+// observationHash captures the content of an observation that, when changed,
+// represents a genuinely new finding worth re-triggering Claude Code over.
+// Timestamp is excluded so Emily can re-publish the same finding without
+// causing spurious re-runs.
+func observationHash(o observation) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "severity=%s\nsummary=%s\nfindings=%s\nsuggested_fix=%s\n",
+		o.Severity, o.Summary, o.Findings, o.SuggestedFix)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// pollOnce checks latest.json, and if its content hash differs from the
+// cursor, invokes the configured command and updates the cursor. Returns
+// true if an observation was processed.
 func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool) (bool, error) {
 	b, err := os.ReadFile(latestPath)
 	if err != nil {
@@ -77,13 +90,14 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool) (b
 	if obs.Timestamp == "" {
 		return false, fmt.Errorf("observation missing timestamp")
 	}
+	hash := observationHash(obs)
 	last, _ := os.ReadFile(cursorPath)
-	if strings.TrimSpace(string(last)) == obs.Timestamp {
+	if strings.TrimSpace(string(last)) == hash {
 		return false, nil
 	}
 
 	prompt := buildPrompt(latestPath, obs)
-	log.Printf("new observation timestamp=%s severity=%s summary=%q", obs.Timestamp, obs.Severity, obs.Summary)
+	log.Printf("new observation timestamp=%s severity=%s summary=%q hash=%s", obs.Timestamp, obs.Severity, obs.Summary, hash[:12])
 
 	if !dryRun {
 		args := splitArgs(extraArgs)
@@ -96,7 +110,7 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool) (b
 		}
 	}
 
-	if err := os.WriteFile(cursorPath, []byte(obs.Timestamp), 0o644); err != nil {
+	if err := os.WriteFile(cursorPath, []byte(hash), 0o644); err != nil {
 		return false, fmt.Errorf("update cursor: %w", err)
 	}
 	return true, nil

@@ -37,12 +37,13 @@ func TestPollOnceProcessesNewObservation(t *testing.T) {
 	dir := t.TempDir()
 	latest := filepath.Join(dir, "latest.json")
 	cursor := filepath.Join(dir, ".last-processed")
-	writeObs(t, latest, observation{
+	obs := observation{
 		Timestamp: "2026-05-28T12:00:00Z",
 		Summary:   "stalled processor",
 		Severity:  "warn",
 		Findings:  "no events for 30m",
-	})
+	}
+	writeObs(t, latest, obs)
 
 	processed, err := pollOnce(latest, cursor, "true", "", true)
 	if err != nil {
@@ -55,54 +56,100 @@ func TestPollOnceProcessesNewObservation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cursor missing: %v", err)
 	}
-	if string(got) != "2026-05-28T12:00:00Z" {
-		t.Errorf("cursor = %q, want timestamp", string(got))
+	if string(got) != observationHash(obs) {
+		t.Errorf("cursor = %q, want hash", string(got))
 	}
 }
 
-func TestPollOnceSkipsAlreadyProcessed(t *testing.T) {
+func TestPollOnceSkipsSameContentEvenIfTimestampChanged(t *testing.T) {
+	// Emily may re-publish the same finding on every tick. Watcher must
+	// dedupe by content, not just timestamp — otherwise Claude Code gets
+	// re-triggered on every tick with no real new work to do.
 	dir := t.TempDir()
 	latest := filepath.Join(dir, "latest.json")
 	cursor := filepath.Join(dir, ".last-processed")
-	writeObs(t, latest, observation{
+	first := observation{
 		Timestamp: "2026-05-28T12:00:00Z",
 		Summary:   "stalled processor",
-		Findings:  "x",
-	})
-	if err := os.WriteFile(cursor, []byte("2026-05-28T12:00:00Z"), 0o644); err != nil {
-		t.Fatal(err)
+		Severity:  "warn",
+		Findings:  "no events for 30m",
 	}
+	writeObs(t, latest, first)
+	if _, err := pollOnce(latest, cursor, "true", "", true); err != nil {
+		t.Fatalf("poll1: %v", err)
+	}
+
+	second := first
+	second.Timestamp = "2026-05-28T12:05:00Z"
+	writeObs(t, latest, second)
 	processed, err := pollOnce(latest, cursor, "true", "", true)
 	if err != nil {
-		t.Fatalf("poll: %v", err)
+		t.Fatalf("poll2: %v", err)
 	}
 	if processed {
-		t.Error("processed should be false when timestamp matches cursor")
+		t.Error("expected dedupe: same content, only timestamp changed")
 	}
 }
 
-func TestPollOnceProcessesNewerObservation(t *testing.T) {
+func TestPollOnceProcessesContentChange(t *testing.T) {
 	dir := t.TempDir()
 	latest := filepath.Join(dir, "latest.json")
 	cursor := filepath.Join(dir, ".last-processed")
-	if err := os.WriteFile(cursor, []byte("2026-05-28T11:00:00Z"), 0o644); err != nil {
-		t.Fatal(err)
+	first := observation{
+		Timestamp: "2026-05-28T11:00:00Z",
+		Summary:   "stalled processor",
+		Findings:  "no events for 30m",
 	}
-	writeObs(t, latest, observation{
+	writeObs(t, latest, first)
+	if _, err := pollOnce(latest, cursor, "true", "", true); err != nil {
+		t.Fatalf("poll1: %v", err)
+	}
+
+	second := observation{
 		Timestamp: "2026-05-28T12:00:00Z",
-		Summary:   "new issue",
-		Findings:  "y",
-	})
+		Summary:   "different issue",
+		Findings:  "ticker dropped",
+	}
+	writeObs(t, latest, second)
 	processed, err := pollOnce(latest, cursor, "true", "", true)
 	if err != nil {
-		t.Fatalf("poll: %v", err)
+		t.Fatalf("poll2: %v", err)
 	}
 	if !processed {
-		t.Error("processed should be true when timestamp differs")
+		t.Error("expected processed=true when content changed")
 	}
 	got, _ := os.ReadFile(cursor)
-	if string(got) != "2026-05-28T12:00:00Z" {
-		t.Errorf("cursor not updated; got %q", string(got))
+	if string(got) != observationHash(second) {
+		t.Errorf("cursor not updated to new hash")
+	}
+}
+
+func TestPollOnceProcessesSeverityChange(t *testing.T) {
+	// Same summary/findings but escalating severity must re-trigger.
+	dir := t.TempDir()
+	latest := filepath.Join(dir, "latest.json")
+	cursor := filepath.Join(dir, ".last-processed")
+	first := observation{
+		Timestamp: "2026-05-28T11:00:00Z",
+		Severity:  "warn",
+		Summary:   "stalled processor",
+		Findings:  "no events for 30m",
+	}
+	writeObs(t, latest, first)
+	if _, err := pollOnce(latest, cursor, "true", "", true); err != nil {
+		t.Fatalf("poll1: %v", err)
+	}
+
+	second := first
+	second.Severity = "error"
+	second.Timestamp = "2026-05-28T11:01:00Z"
+	writeObs(t, latest, second)
+	processed, err := pollOnce(latest, cursor, "true", "", true)
+	if err != nil {
+		t.Fatalf("poll2: %v", err)
+	}
+	if !processed {
+		t.Error("expected severity escalation to re-trigger")
 	}
 }
 
