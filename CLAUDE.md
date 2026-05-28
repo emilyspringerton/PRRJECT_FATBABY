@@ -35,6 +35,13 @@ Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log
 Emily (`cmd/emily-agent`) is an LLM-powered ops agent that can start/stop pipeline processes,
 read logs, count documents, and check system status via tool calls. She runs on `:8080` by default.
 
+She exposes two HTTP endpoints:
+- `POST /chat` — interactive chat (used by the embedded web UI at `/`).
+- `POST /tick` — unattended health sweep. Seeded with a fixed prompt that tells Emily to inspect
+  process status, log tails, and signal counts, and publish an observation via
+  `fatbaby_write_observation` only when something is actually wrong. Drive this from cron or
+  systemd to make the feedback loop autonomous.
+
 Key env vars:
 ```
 ANTHROPIC_API_KEY=...

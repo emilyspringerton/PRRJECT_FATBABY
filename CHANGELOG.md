@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 - Added `fatbaby_write_observation` and `fatbaby_read_observation` tools to `cmd/emily-agent` so Emily can publish structured findings to `var/emily-observations/latest.json` — the handoff file for the Emily ↔ Claude Code feedback loop. Extended Emily's system prompt to describe when to use them.
 - Added `cmd/emily-agent/observation_test.go` covering the new write/read observation tools: latest+archive emission, default severity, required-field validation, and round-trip read.
 - Added `cmd/observation-watcher`, the trigger half of the Emily ↔ Claude Code feedback loop. It polls `var/emily-observations/latest.json`, persists a timestamp cursor at `.last-processed`, and shells out to `claude --dangerously-skip-permissions` (overridable) with a prompt referencing the observation. Updated CLAUDE.md to document it.
+- Added `POST /tick` to `cmd/emily-agent` so an external scheduler (cron, systemd timer, GitHub Actions) can ask Emily to do an unattended health sweep and publish an observation only when warranted. Refactored `Server` to allow injecting the Anthropic URL so the tick handler is testable end-to-end via `httptest`.
 
 ## 2026-05-21
 - Added a TCP feed server with framed protocol and session streaming support.

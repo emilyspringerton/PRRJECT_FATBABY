@@ -453,18 +453,21 @@ issues that need code changes.`
 var chatHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Emily — fatbaby ops</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:20px auto}#history{height:65vh;overflow:auto;border:1px solid #ccc;padding:12px}textarea{width:100%;height:90px}button{margin-top:8px}</style></head><body><h2>Emily — fatbaby ops</h2><div id="history"></div><p id="thinking" style="display:none">thinking…</p><textarea id="input" placeholder="Type message; Ctrl+Enter to send"></textarea><br><button id="send">Send</button><script>const history=[];const div=document.getElementById('history');const thinking=document.getElementById('thinking');function render(){div.innerHTML='';for(const m of history){const d=document.createElement('div');d.innerHTML='<b>'+m.role+':</b> '+(m.content||'');div.appendChild(d);if(m.role==='assistant'&&m.tool_calls){for(const t of m.tool_calls){const det=document.createElement('details');det.innerHTML='<summary>'+t.tool+'</summary><pre>'+(t.result||'')+'</pre>';div.appendChild(det)}}}div.scrollTop=div.scrollHeight}async function send(){const v=document.getElementById('input').value.trim();if(!v)return;history.push({role:'user',content:v});document.getElementById('input').value='';render();thinking.style.display='block';const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history.map(x=>({role:x.role,content:x.content}))})});const j=await r.json();thinking.style.display='none';history.push({role:'assistant',content:j.reply,tool_calls:j.tool_calls||[]});render()}document.getElementById('send').onclick=send;document.getElementById('input').addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter')send()});</script></body></html>`
 
 type Server struct {
-	cfg     Config
-	d       *ToolDispatcher
-	limiter *rateLimiter
-	client  *http.Client
-	mu      sync.Mutex
+	cfg         Config
+	d           *ToolDispatcher
+	limiter     *rateLimiter
+	client      *http.Client
+	mu          sync.Mutex
+	anthropicURL string
 }
+
+const defaultAnthropicURL = "https://api.anthropic.com/v1/messages"
 
 func NewServer(cfg Config) *Server {
 	d := NewToolDispatcher()
 	registerGitTools(d, cfg.ConversationDir)
 	registerFatbabyTools(d, cfg.FatbabyRoot)
-	return &Server{cfg: cfg, d: d, limiter: newRateLimiter(cfg.RateLimitRPM), client: &http.Client{Timeout: 90 * time.Second}}
+	return &Server{cfg: cfg, d: d, limiter: newRateLimiter(cfg.RateLimitRPM), client: &http.Client{Timeout: 90 * time.Second}, anthropicURL: defaultAnthropicURL}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -482,7 +485,32 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleChat(w, r)
 		return
 	}
+	if r.URL.Path == "/tick" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleTick(w, r)
+		return
+	}
 	http.NotFound(w, r)
+}
+
+// tickPrompt is the autonomous health-check prompt fed to Emily when an
+// external scheduler hits /tick. It must instruct her to publish an
+// observation only when something is actually wrong, to avoid trampling
+// over an existing open finding.
+const tickPrompt = `Do an unattended health sweep of the fatbaby pipeline. ` +
+	`First call fatbaby_read_observation to see if a finding is already open — if it is and still applies, do nothing. ` +
+	`Otherwise inspect process status, recent log tails, and signal/source-document counts. ` +
+	`If you find a real problem that needs source-code changes, call fatbaby_write_observation with a clear summary, severity, findings, and suggested_fix. ` +
+	`If everything looks normal, reply "ok" and write nothing. Never write an observation for transient or self-inflicted state.`
+
+func (s *Server) handleTick(w http.ResponseWriter, _ *http.Request) {
+	msgs := []map[string]any{{"role": "user", "content": tickPrompt}}
+	reply, calls := s.runToolLoop(msgs)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"reply": reply, "tool_calls": calls})
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
@@ -504,7 +532,7 @@ func (s *Server) runToolLoop(msgs []map[string]any) (string, []map[string]string
 		s.limiter.Wait()
 		payload := map[string]any{"model": "claude-sonnet-4-6", "max_tokens": 4096, "system": emilySystemPrompt, "tools": s.d.AnthropicDefs(), "messages": msgs}
 		b, _ := json.Marshal(payload)
-		req, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(b))
+		req, _ := http.NewRequest(http.MethodPost, s.anthropicURL, bytes.NewReader(b))
 		req.Header.Set("x-api-key", s.cfg.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
 		req.Header.Set("content-type", "application/json")
@@ -581,6 +609,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/", s)
 	mux.Handle("/chat", s)
+	mux.Handle("/tick", s)
 	log.Printf("emily-agent listening addr=:%s model=%s tools=%d fatbaby_root=%s", cfg.Port, "claude-sonnet-4-20250514", len(s.d.Defs()), cfg.FatbabyRoot)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, mux))
 }
