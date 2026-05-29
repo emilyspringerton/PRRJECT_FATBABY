@@ -1,0 +1,158 @@
+package entitygraph
+
+import (
+	"testing"
+)
+
+func TestScoreDirectorVotes_Friction(t *testing.T) {
+	r := DefaultRules()
+	votes := []VoteResult{
+		{Name: "Frank C. Herringer", ForVotes: 1_213_200_000, AgainstVotes: 221_400_000, AbstainVotes: 8_500_000, ApprovalPct: 0.843},
+	}
+	sigs := ScoreDirectorVotes(votes, "SCHW", r)
+	if len(sigs) == 0 {
+		t.Fatal("expected signals, got none")
+	}
+	frictionCount := 0
+	for _, s := range sigs {
+		if s.Type == SignalDirectorFriction {
+			frictionCount++
+			if s.Severity != SeverityMedium {
+				t.Errorf("Herringer friction severity = %s, want medium", s.Severity)
+			}
+		}
+	}
+	if frictionCount == 0 {
+		t.Error("expected director_friction signal for Herringer at 84.3%, got none")
+	}
+}
+
+func TestScoreDirectorVotes_HighTrust(t *testing.T) {
+	r := DefaultRules()
+	votes := []VoteResult{
+		{Name: "Marianne C. Brown", ForVotes: 1_397_200_000, AgainstVotes: 26_800_000, AbstainVotes: 5_000_000, ApprovalPct: 0.979},
+	}
+	sigs := ScoreDirectorVotes(votes, "SCHW", r)
+	found := false
+	for _, s := range sigs {
+		if s.Type == SignalHighTrustDirector {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected high_trust_director signal for Brown at 97.9%, got none")
+	}
+}
+
+func TestScoreDirectorVotes_FamilyControl(t *testing.T) {
+	r := DefaultRules()
+	votes := []VoteResult{
+		{Name: "Carolyn Schwab-Pomerantz", ApprovalPct: 0.963, ForVotes: 1_380_000_000, AgainstVotes: 38_000_000, AbstainVotes: 11_000_000},
+	}
+	sigs := ScoreDirectorVotes(votes, "SCHW", r)
+	found := false
+	for _, s := range sigs {
+		if s.Type == SignalFamilyControl {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected family_control signal for Schwab-Pomerantz, got none")
+	}
+}
+
+func TestScoreDirectorDecay(t *testing.T) {
+	r := DefaultRules()
+
+	// 3-year decline: 89.1% → 86.5% → 84.3%
+	history := []float64{0.891, 0.865, 0.843}
+	sig := ScoreDirectorDecay("Frank C. Herringer", "SCHW", history, r)
+	if sig == nil {
+		t.Fatal("expected decay signal for consistently declining director, got nil")
+	}
+	if sig.Type != SignalDirectorDecay {
+		t.Errorf("signal type = %s, want director_decay", sig.Type)
+	}
+
+	// Insufficient data (1 point).
+	sig2 := ScoreDirectorDecay("Someone Else", "SCHW", []float64{0.95}, r)
+	if sig2 != nil {
+		t.Error("expected nil signal for single data point, got non-nil")
+	}
+
+	// Flat trend — no decay.
+	sig3 := ScoreDirectorDecay("Stable Director", "SCHW", []float64{0.95, 0.95, 0.96}, r)
+	if sig3 != nil {
+		t.Error("expected nil for flat trend, got non-nil")
+	}
+}
+
+func TestScoreProposals_Entrenchment(t *testing.T) {
+	r := DefaultRules()
+	outstanding := int64(1_900_456_000)
+	proposals := []ProposalResult{
+		{
+			Description:      "Declassify the Board of Directors",
+			ForVotes:         1_319_800_000,
+			AgainstVotes:     116_300_000,
+			AbstainVotes:     9_100_000,
+			TotalOutstanding: outstanding,
+			RequiredPct:      0.80,
+			Passed:           false,
+		},
+	}
+	sigs := ScoreProposals(proposals, "SCHW", r)
+	found := false
+	for _, s := range sigs {
+		if s.Type == SignalGovernanceEntrenchment {
+			found = true
+			if s.Severity != SeverityHigh {
+				t.Errorf("entrenchment severity = %s, want high", s.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected governance_entrenchment signal for failed supermajority vote")
+	}
+}
+
+func TestScoreProposals_CompConcern(t *testing.T) {
+	r := DefaultRules()
+	proposals := []ProposalResult{
+		{
+			Description:  "Advisory Vote on Executive Compensation",
+			ForVotes:     1_000_000_000,
+			AgainstVotes: 450_000_000,
+			AbstainVotes: 50_000_000,
+			Passed:       true,
+		},
+	}
+	sigs := ScoreProposals(proposals, "TEST", r)
+	found := false
+	for _, s := range sigs {
+		if s.Type == SignalCompensationConcern {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected compensation_concern signal for high opposition vote")
+	}
+}
+
+func TestCanonicalize(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"Frank C. Herringer", "frank-c-herringer"},
+		{"Carolyn Schwab-Pomerantz", "carolyn-schwab-pomerantz"},
+		{"Walter W. Bettinger II", "walter-w-bettinger-ii"},
+		{"Marianne C. Brown", "marianne-c-brown"},
+	}
+	for _, tc := range cases {
+		got := Canonicalize(tc.in)
+		if got != tc.want {
+			t.Errorf("Canonicalize(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

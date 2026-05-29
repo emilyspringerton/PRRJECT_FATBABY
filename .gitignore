@@ -7,6 +7,19 @@
 # Conversation state for emily-agent.
 /conversations/
 
+# Compiled binaries dropped in repo root by `go build ./cmd/...`.
+/entity-graph
+/secwatch
+/prwatch
+/processor
+/dashboard
+/feedserver
+/broker
+/signalapi
+/newssite
+/emily-agent
+/observation-watcher
+
 # Local env / editor noise.
 .env
 .env.*

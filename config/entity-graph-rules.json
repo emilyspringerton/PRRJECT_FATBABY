@@ -1,0 +1,19 @@
+{
+  "_comment": "Signal scoring thresholds for the entity-graph intelligence engine. Claude Code may modify this file as part of the recursive self-improvement loop. Changes take effect on the next processing batch without a process restart.",
+  "friction_threshold": 0.85,
+  "high_trust_min_approval": 0.95,
+  "high_trust_min_filings": 1,
+  "decay_min_years": 2,
+  "decay_min_drop_pp": 2.0,
+  "entrenchment_min_for": 0.80,
+  "broker_nonvote_anomaly_threshold": 0.15,
+  "comp_exec_alert_threshold": 0.30,
+  "family_name_keywords": [
+    "schwab",
+    "walton",
+    "mars",
+    "buffett",
+    "fidelity",
+    "johnson"
+  ]
+}
