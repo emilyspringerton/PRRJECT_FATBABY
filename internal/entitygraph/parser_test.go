@@ -76,6 +76,52 @@ func TestParseItem507_SCHW(t *testing.T) {
 	}
 }
 
+// TestParseItem507_SupermajorityWithoutThe verifies the parser handles "80% of outstanding shares"
+// (no "the") — a common EDGAR filing variant that previously would fail to detect the threshold.
+func TestParseItem507_SupermajorityWithoutThe(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+As of March 1, 2026 there were 500,000,000 common shares outstanding.
+Proposal 2 Declassify the Board.
+This proposal required 80% of outstanding shares to pass.
+For Against Abstain Broker Non-Votes
+412,000,000 55,000,000 8,000,000 25,000,000
+The proposal did not pass because it did not receive the required 80% of outstanding shares.
+John A. Smith 300,000,000 10,000,000 5,000,000 25,000,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.Proposals) == 0 {
+		t.Fatal("expected at least 1 proposal, got 0")
+	}
+	prop := result.Proposals[0]
+	if prop.RequiredPct == 0 {
+		t.Error("expected supermajority RequiredPct to be detected (without 'the'), got 0")
+	}
+	if prop.Passed {
+		t.Error("proposal should have Passed=false (did not receive required 80%)")
+	}
+}
+
+// TestParseItem507_ProposalNumbering10Plus verifies proposals numbered 10+ are split correctly.
+func TestParseItem507_ProposalNumbering10Plus(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+As of March 1, 2026 there were 500,000,000 shares of common stock outstanding.
+John A. Smith 300,000,000 10,000,000 5,000,000 25,000,000
+Proposal 10 Ratification of Auditor.
+For Against Abstain
+450,000,000 30,000,000 20,000,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.Proposals) == 0 {
+		t.Error("expected Proposal 10 to be parsed; got 0 proposals")
+	}
+}
+
 func TestParseItem507_NoSection(t *testing.T) {
 	_, err := ParseItem507("This is a regular 8-K with no vote section.")
 	if err == nil {

@@ -15,5 +15,6 @@
     "buffett",
     "fidelity",
     "johnson"
-  ]
+  ],
+  "abstention_spike_threshold": 0.10
 }

@@ -139,6 +139,51 @@ func TestScoreProposals_CompConcern(t *testing.T) {
 	}
 }
 
+func TestScoreProposals_AbstentionSpike(t *testing.T) {
+	r := DefaultRules()
+	proposals := []ProposalResult{
+		{
+			Description:  "Ratification of Auditor",
+			ForVotes:     1_400_000_000,
+			AgainstVotes: 50_000_000,
+			AbstainVotes: 250_000_000, // ~14.7% abstention — above 10% threshold
+			Passed:       true,
+		},
+	}
+	sigs := ScoreProposals(proposals, "TEST", r)
+	found := false
+	for _, s := range sigs {
+		if s.Type == SignalAbstentionSpike {
+			found = true
+			if s.Score < 0.14 || s.Score > 0.16 {
+				t.Errorf("abstention_spike score = %.3f, want ~0.147", s.Score)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected abstention_spike signal for 14.7% abstention rate, got none")
+	}
+}
+
+func TestScoreProposals_NoAbstentionSpike_BelowThreshold(t *testing.T) {
+	r := DefaultRules()
+	proposals := []ProposalResult{
+		{
+			Description:  "Advisory Vote on Executive Compensation",
+			ForVotes:     1_500_000_000,
+			AgainstVotes: 100_000_000,
+			AbstainVotes: 50_000_000, // ~3% abstention — below 10% threshold
+			Passed:       true,
+		},
+	}
+	sigs := ScoreProposals(proposals, "TEST", r)
+	for _, s := range sigs {
+		if s.Type == SignalAbstentionSpike {
+			t.Error("unexpected abstention_spike signal for 3% abstention rate")
+		}
+	}
+}
+
 func TestCanonicalize(t *testing.T) {
 	cases := []struct {
 		in   string

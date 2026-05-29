@@ -41,10 +41,14 @@ var (
 	re507Section = regexp.MustCompile(`(?i)Item\s+5\.07`)
 
 	// reOutstandingShares captures the total outstanding share count from the preamble.
-	reOutstandingShares = regexp.MustCompile(`(?i)([\d,]+)\s+shares\s+of\s+common\s+stock\s+outstanding`)
+	// Handles variants: "N shares of common stock outstanding", "N shares of Common Stock outstanding",
+	// "N common shares outstanding".
+	reOutstandingShares = regexp.MustCompile(`(?i)([\d,]+)\s+(?:shares\s+of\s+(?:common\s+)?stock|common\s+shares)\s+outstanding`)
 
 	// reSupermajority captures a supermajority threshold percentage.
-	reSupermajority = regexp.MustCompile(`(?i)(\d{2,3})%\s+of\s+the\s+outstanding\s+shares`)
+	// Handles variants: "80% of the outstanding shares", "80% of outstanding shares",
+	// "80% of all outstanding shares".
+	reSupermajority = regexp.MustCompile(`(?i)(\d{2,3})%\s+of\s+(?:all\s+)?(?:the\s+)?outstanding\s+shares`)
 
 	// reCommas strips comma separators from numbers.
 	reCommas = regexp.MustCompile(`,`)
@@ -142,8 +146,9 @@ func extractDirectorVotes(body string) []VoteResult {
 func extractProposals(body string, outstanding int64) []ProposalResult {
 	var results []ProposalResult
 
-	// Split body on proposal markers (Proposal 2, Proposal 3, ...) to process each chunk.
-	proposalSplitter := regexp.MustCompile(`(?i)Proposal\s+[2-9]\s+`)
+	// Split body on proposal markers (Proposal 2, Proposal 3, ..., Proposal 19).
+	// Use a word-boundary anchor so "Proposal 4:" and "Proposal 4." also split correctly.
+	proposalSplitter := regexp.MustCompile(`(?i)Proposal\s+(?:[2-9]|1\d)\b`)
 	splits := proposalSplitter.FindAllStringIndex(body, -1)
 	for i, loc := range splits {
 		start := loc[0]

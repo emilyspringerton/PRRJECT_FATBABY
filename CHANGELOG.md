@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 (recursive self-improvement cycle 1)
+
+- **Parser robustness** (`internal/entitygraph/parser.go`): Strengthened three regexes for live EDGAR text variance: (1) `reSupermajority` now matches "80% of outstanding shares" without requiring "the" (`(?:all\s+)?(?:the\s+)?` optional); (2) `reOutstandingShares` now also handles "N common shares outstanding" and "N shares of stock outstanding"; (3) `proposalSplitter` now matches proposal numbers 10–19 and uses a word-boundary anchor so "Proposal 4:" splits correctly. These fix the seed observation gap about missing entrenchment signals.
+- **New signal: `abstention_spike`** (`internal/entitygraph/signals.go`, `rules.go`, `config/entity-graph-rules.json`): Implements the northstar spec vote-pattern signal. Fires when proposal abstention rate exceeds `abstention_spike_threshold` (default 10%). Added `AbstentionSpikeThreshold` to `Rules` struct with hot-reload support and two new tests.
+- **Observation diagnostics** (`internal/entitygraph/observer.go`, `cmd/entity-graph/main.go`): Added `proposals_processed` field to `Observation`. `detectGaps` now distinguishes "proposals not found in text" (parser failure) from "proposals found but no signal fired" (threshold issue). `request_for_claude` explicitly flags the proposal-splitter as the failure point when 0 proposals are parsed. `BuildObservation` signature updated to accept `proposalsProcessed int`.
+
 ## 2026-05-29
 
 - Added `internal/entitygraph` package: Phase 1 of the northstar 8-K Intelligence Engine. Parses SEC 8-K Item 5.07 vote results (director nominee names, for/against/abstain/broker-non-vote counts, approval percentages) including compound hyphenated surnames (e.g. "Schwab-Pomerantz"). Builds a PersonNode entity graph stored as NDJSON, generates co-appearance edges between board co-members, and emits six governance signal types: `director_friction`, `high_trust_director`, `director_decay`, `family_control`, `governance_entrenchment`, and `broker_nonvote_anomaly`. Signal thresholds are hot-reloadable from `config/entity-graph-rules.json` — Claude Code can modify this file as part of the recursive self-improvement loop.

@@ -103,9 +103,10 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	}
 
 	var (
-		allSignals  []entitygraph.Signal
-		parseErrors []entitygraph.ParseError
-		processed   int
+		allSignals         []entitygraph.Signal
+		parseErrors        []entitygraph.ParseError
+		processed          int
+		totalProposals     int
 	)
 
 	for _, r := range recs {
@@ -165,7 +166,8 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, rules)
 		allSignals = append(allSignals, dirSigs...)
 		allSignals = append(allSignals, propSigs...)
-		logger.Printf("signals ticker=%s dir_signals=%d prop_signals=%d", doc.Ticker, len(dirSigs), len(propSigs))
+		totalProposals += len(result.Proposals)
+		logger.Printf("signals ticker=%s dir_signals=%d prop_signals=%d proposals=%d", doc.Ticker, len(dirSigs), len(propSigs), len(result.Proposals))
 	}
 
 	newCursor := recs[len(recs)-1].Sequence + 1
@@ -184,7 +186,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		}
 		logger.Printf("batch complete processed=%d directors=%d signals=%d parse_errors=%d", processed, len(graph.Nodes), len(allSignals), len(parseErrors))
 
-		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes))
+		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes), totalProposals)
 		if err := entitygraph.PublishObservation(obs, cfg.obsDir); err != nil {
 			logger.Printf("publish observation err=%v", err)
 		} else {

@@ -28,6 +28,7 @@ const (
 	SignalBrokerNonVoteAnomaly   SignalType = "broker_nonvote_anomaly"
 	SignalCompensationConcern    SignalType = "compensation_concern"
 	SignalAuditorChange          SignalType = "auditor_change"
+	SignalAbstentionSpike        SignalType = "abstention_spike"
 )
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -230,6 +231,26 @@ func ScoreProposals(proposals []ProposalResult, ticker string, r Rules) []Signal
 					Interpretation: fmt.Sprintf("Advisory compensation vote received %.1f%% opposition. Exceeds %.0f%% alert threshold; potential ESG or pay-for-performance concern.", againstPct*100, r.CompExecAlertThreshold*100),
 				})
 			}
+		}
+
+		// Abstention spike: unusual abstention rate may indicate shareholder confusion or protest.
+		abstainPct := float64(p.AbstainVotes) / float64(total)
+		if abstainPct >= r.AbstentionSpikeThreshold {
+			descShort := p.Description
+			if len(descShort) > 60 {
+				descShort = descShort[:60]
+			}
+			out = append(out, Signal{
+				SignalID:       fmt.Sprintf("abstention_spike_%s_prop%d", strings.ToLower(ticker), i+2),
+				Type:           SignalAbstentionSpike,
+				Ticker:         ticker,
+				Severity:       SeverityLow,
+				Confidence:     0.60,
+				Score:          abstainPct,
+				DetectedAt:     today,
+				ValidThrough:   nextYear,
+				Interpretation: fmt.Sprintf("Proposal '%s' abstention rate %.1f%% exceeds %.0f%% threshold; may indicate shareholder confusion, protest vote, or inadequate disclosure.", descShort, abstainPct*100, r.AbstentionSpikeThreshold*100),
+			})
 		}
 	}
 	return out

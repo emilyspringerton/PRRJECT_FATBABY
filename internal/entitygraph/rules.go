@@ -46,6 +46,11 @@ type Rules struct {
 	// director seat (matched against canonical name). The check is supplemental;
 	// direct board seat context overrides this when available.
 	FamilyNameKeywords []string `json:"family_name_keywords"`
+
+	// AbstentionSpikeThreshold: abstention votes as a fraction of total votes cast;
+	// above this triggers an abstention_spike signal indicating possible shareholder
+	// confusion or protest. Default 0.10 (10%).
+	AbstentionSpikeThreshold float64 `json:"abstention_spike_threshold"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -60,6 +65,7 @@ func DefaultRules() Rules {
 		BrokerNonVoteAnomalyThreshold: 0.15,
 		CompExecAlertThreshold:        0.30,
 		FamilyNameKeywords:            []string{"schwab", "walton", "mars", "buffett"},
+		AbstentionSpikeThreshold:      0.10,
 	}
 }
 
@@ -104,6 +110,9 @@ func LoadRules(path string) Rules {
 	}
 	if len(r.FamilyNameKeywords) == 0 {
 		r.FamilyNameKeywords = defaults.FamilyNameKeywords
+	}
+	if r.AbstentionSpikeThreshold == 0 {
+		r.AbstentionSpikeThreshold = defaults.AbstentionSpikeThreshold
 	}
 	return r
 }
