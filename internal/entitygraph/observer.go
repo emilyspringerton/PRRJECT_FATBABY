@@ -12,17 +12,20 @@ import (
 // after each entity-graph processing run. It is picked up by observation-watcher
 // and fed to Claude Code for recursive self-improvement.
 type Observation struct {
-	Timestamp        string           `json:"timestamp"`
-	Status           string           `json:"status"` // ok | needs_attention | error
-	Subject          string           `json:"subject"`
-	FilingsProcessed int              `json:"filings_processed"`
-	DirectorsFound   int              `json:"directors_found"`
-	SignalsGenerated int              `json:"signals_generated"`
-	SignalsByType    map[string]int   `json:"signals_by_type"`
-	Gaps             []string         `json:"gaps"`
-	ParseErrors      []ParseError     `json:"parse_errors,omitempty"`
-	HighSeverity     []SignalSummary  `json:"high_severity_signals,omitempty"`
-	RequestForClaude string           `json:"request_for_claude,omitempty"`
+	Timestamp        string          `json:"timestamp"`
+	// Source identifies the emitting subsystem; observation-watcher uses this
+	// to select the appropriate refinement prompt template.
+	Source           string          `json:"source"` // always "entity-graph"
+	Status           string          `json:"status"` // ok | needs_attention | error
+	Subject          string          `json:"subject"`
+	FilingsProcessed int             `json:"filings_processed"`
+	DirectorsFound   int             `json:"directors_found"`
+	SignalsGenerated int             `json:"signals_generated"`
+	SignalsByType    map[string]int  `json:"signals_by_type"`
+	Gaps             []string        `json:"gaps"`
+	ParseErrors      []ParseError    `json:"parse_errors,omitempty"`
+	HighSeverity     []SignalSummary `json:"high_severity_signals,omitempty"`
+	RequestForClaude string          `json:"request_for_claude,omitempty"`
 }
 
 // ParseError records a filing that could not be fully parsed.
@@ -74,6 +77,7 @@ func BuildObservation(
 
 	obs := Observation{
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
+		Source:           "entity-graph",
 		Status:           status,
 		Subject:          fmt.Sprintf("Entity graph run: %d filings, %d directors, %d signals", processed, nodeCount, len(signals)),
 		FilingsProcessed: processed,

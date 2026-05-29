@@ -24,7 +24,7 @@ func writeObs(t *testing.T, path string, obs observation) {
 
 func TestPollOnceNoFile(t *testing.T) {
 	dir := t.TempDir()
-	processed, err := pollOnce(filepath.Join(dir, "latest.json"), filepath.Join(dir, ".last-processed"), "true", "", true)
+	processed, err := pollOnce(filepath.Join(dir, "latest.json"), filepath.Join(dir, ".last-processed"), "true", "", true, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestPollOnceProcessesNewObservation(t *testing.T) {
 	}
 	writeObs(t, latest, obs)
 
-	processed, err := pollOnce(latest, cursor, "true", "", true)
+	processed, err := pollOnce(latest, cursor, "true", "", true, "")
 	if err != nil {
 		t.Fatalf("poll: %v", err)
 	}
@@ -75,14 +75,14 @@ func TestPollOnceSkipsSameContentEvenIfTimestampChanged(t *testing.T) {
 		Findings:  "no events for 30m",
 	}
 	writeObs(t, latest, first)
-	if _, err := pollOnce(latest, cursor, "true", "", true); err != nil {
+	if _, err := pollOnce(latest, cursor, "true", "", true, ""); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 
 	second := first
 	second.Timestamp = "2026-05-28T12:05:00Z"
 	writeObs(t, latest, second)
-	processed, err := pollOnce(latest, cursor, "true", "", true)
+	processed, err := pollOnce(latest, cursor, "true", "", true, "")
 	if err != nil {
 		t.Fatalf("poll2: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestPollOnceProcessesContentChange(t *testing.T) {
 		Findings:  "no events for 30m",
 	}
 	writeObs(t, latest, first)
-	if _, err := pollOnce(latest, cursor, "true", "", true); err != nil {
+	if _, err := pollOnce(latest, cursor, "true", "", true, ""); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 
@@ -111,7 +111,7 @@ func TestPollOnceProcessesContentChange(t *testing.T) {
 		Findings:  "ticker dropped",
 	}
 	writeObs(t, latest, second)
-	processed, err := pollOnce(latest, cursor, "true", "", true)
+	processed, err := pollOnce(latest, cursor, "true", "", true, "")
 	if err != nil {
 		t.Fatalf("poll2: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestPollOnceProcessesSeverityChange(t *testing.T) {
 		Findings:  "no events for 30m",
 	}
 	writeObs(t, latest, first)
-	if _, err := pollOnce(latest, cursor, "true", "", true); err != nil {
+	if _, err := pollOnce(latest, cursor, "true", "", true, ""); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 
@@ -144,7 +144,7 @@ func TestPollOnceProcessesSeverityChange(t *testing.T) {
 	second.Severity = "error"
 	second.Timestamp = "2026-05-28T11:01:00Z"
 	writeObs(t, latest, second)
-	processed, err := pollOnce(latest, cursor, "true", "", true)
+	processed, err := pollOnce(latest, cursor, "true", "", true, "")
 	if err != nil {
 		t.Fatalf("poll2: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestPollOnceRejectsMissingTimestamp(t *testing.T) {
 	if err := os.WriteFile(latest, []byte(`{"summary":"x","findings":"y"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := pollOnce(latest, filepath.Join(dir, ".last-processed"), "true", "", true)
+	_, err := pollOnce(latest, filepath.Join(dir, ".last-processed"), "true", "", true, "")
 	if err == nil {
 		t.Fatal("expected error for missing timestamp")
 	}
@@ -173,7 +173,7 @@ func TestBuildPromptContainsKeyFields(t *testing.T) {
 	p := buildPrompt("var/emily-observations/latest.json", observation{
 		Summary:  "ticker dropped",
 		Severity: "error",
-	})
+	}, "")
 	for _, want := range []string{"var/emily-observations/latest.json", "ticker dropped", "error", "go test"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q: %s", want, p)
@@ -181,13 +181,51 @@ func TestBuildPromptContainsKeyFields(t *testing.T) {
 	}
 }
 
+func TestBuildPromptEntityGraph(t *testing.T) {
+	// Write a temporary rules file so the prompt inlines it.
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.json")
+	if err := os.WriteFile(rulesPath, []byte(`{"friction_threshold":0.85}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := observation{
+		Timestamp:        "2026-05-29T10:00:00Z",
+		Source:           "entity-graph",
+		Status:           "needs_attention",
+		Subject:          "Entity graph run: 1 filings, 4 directors, 3 signals",
+		FilingsProcessed: 1,
+		DirectorsFound:   4,
+		SignalsGenerated: 3,
+		SignalsByType:    map[string]int{"director_friction": 1, "high_trust_director": 2},
+		Gaps:             []string{"No entrenchment signals detected"},
+		RequestForClaude: "Should entrenchment_min_for be lowered?",
+	}
+	p := buildPrompt("var/emily-observations/latest.json", obs, rulesPath)
+
+	for _, want := range []string{
+		"entity-graph",
+		"needs_attention",
+		"4 directors",
+		"No entrenchment signals detected",
+		"Should entrenchment_min_for be lowered",
+		"friction_threshold",
+		"config/entity-graph-rules.json",
+		"go test",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("entity-graph prompt missing %q", want)
+		}
+	}
+}
+
 func TestSplitArgs(t *testing.T) {
 	cases := map[string][]string{
-		"":                              nil,
-		"   ":                           nil,
-		"--foo":                         {"--foo"},
-		"--foo --bar baz":               {"--foo", "--bar", "baz"},
-		"  --dangerously-skip-permissions  ": {"--dangerously-skip-permissions"},
+		"":                                    nil,
+		"   ":                                 nil,
+		"--foo":                               {"--foo"},
+		"--foo --bar baz":                     {"--foo", "--bar", "baz"},
+		"  --dangerously-skip-permissions  ":  {"--dangerously-skip-permissions"},
 	}
 	for in, want := range cases {
 		got := splitArgs(in)
