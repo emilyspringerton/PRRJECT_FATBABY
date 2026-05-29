@@ -1,0 +1,220 @@
+package entitygraph
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// GroundTruth records whether a signal's prediction was validated by a real event.
+type GroundTruth string
+
+const (
+	// GTConfirmed: the predicted event occurred within the signal's ValidThrough window.
+	GTConfirmed GroundTruth = "confirmed"
+	// GTRefuted: the prediction window expired with no matching event observed.
+	GTRefuted GroundTruth = "refuted"
+	// GTPending: the signal is still within its prediction window; outcome unknown.
+	GTPending GroundTruth = "pending"
+)
+
+// AccuracyRecord tracks ground truth for a single signal prediction.
+// Persisted in var/entity-graph/accuracy.ndjson as append-only NDJSON.
+type AccuracyRecord struct {
+	SignalID      string      `json:"signal_id"`
+	Ticker        string      `json:"ticker"`
+	SignalType    SignalType  `json:"signal_type"`
+	PredictedAt   string      `json:"predicted_at"`
+	ValidThrough  string      `json:"valid_through"`
+	Outcome       GroundTruth `json:"outcome"`
+	EvidenceDate  string      `json:"evidence_date,omitempty"`
+	EvidenceType  string      `json:"evidence_type,omitempty"` // "activist_13d", etc.
+	Notes         string      `json:"notes,omitempty"`
+	RecordedAt    string      `json:"recorded_at"`
+}
+
+// AccuracyReport summarises prediction performance for one signal type.
+type AccuracyReport struct {
+	SignalType       SignalType `json:"signal_type"`
+	TotalPredictions int       `json:"total_predictions"`
+	Confirmed        int       `json:"confirmed"`
+	Refuted          int       `json:"refuted"`
+	Pending          int       `json:"pending"`
+	// Precision = confirmed / (confirmed + refuted); 0 when no resolved predictions.
+	Precision float64 `json:"precision"`
+}
+
+// Schd13Filing represents a Schedule 13D or 13G filing discovered on EDGAR.
+// Persisted in var/schd13/filings.ndjson.
+type Schd13Filing struct {
+	Ticker     string `json:"ticker"`
+	TargetCIK  string `json:"target_cik"`
+	FilingDate string `json:"filing_date"` // YYYY-MM-DD
+	FilingType string `json:"filing_type"` // "SC 13D", "SC 13G", "SC 13D/A"
+	FilerName  string `json:"filer_name"`
+	Accession  string `json:"accession"`
+}
+
+// CorrelateActivistRisk checks whether activist_risk signals preceded 13D/13G filings.
+// For each activist_risk signal it searches filings for the same ticker:
+//   - If a 13D/13D-A is found with FilingDate in [PredictedAt, ValidThrough], outcome = confirmed.
+//   - If the ValidThrough window has passed with no matching filing, outcome = refuted.
+//   - Otherwise outcome = pending.
+//
+// Returns one AccuracyRecord per activist_risk signal in the input.
+func CorrelateActivistRisk(signals []Signal, filings []Schd13Filing) []AccuracyRecord {
+	// Index 13D/13D-A filing dates by ticker for fast lookup.
+	filingDatesByTicker := map[string][]string{}
+	for _, f := range filings {
+		if f.FilingType == "SC 13D" || f.FilingType == "SC 13D/A" {
+			filingDatesByTicker[f.Ticker] = append(filingDatesByTicker[f.Ticker], f.FilingDate)
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalActivistRisk {
+			continue
+		}
+
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, fd := range filingDatesByTicker[s.Ticker] {
+			if fd >= s.DetectedAt && fd <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = fd
+				notes = fmt.Sprintf("SC 13D filed %s — within activist_risk prediction window [%s, %s]", fd, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("Prediction window [%s, %s] expired; no SC 13D filed for %s", s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "activist_13d",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// BuildAccuracyReports aggregates AccuracyRecords into per-signal-type summaries.
+func BuildAccuracyReports(records []AccuracyRecord) []AccuracyReport {
+	byType := map[SignalType]*AccuracyReport{}
+	for _, r := range records {
+		rpt, ok := byType[r.SignalType]
+		if !ok {
+			rpt = &AccuracyReport{SignalType: r.SignalType}
+			byType[r.SignalType] = rpt
+		}
+		rpt.TotalPredictions++
+		switch r.Outcome {
+		case GTConfirmed:
+			rpt.Confirmed++
+		case GTRefuted:
+			rpt.Refuted++
+		case GTPending:
+			rpt.Pending++
+		}
+	}
+	var out []AccuracyReport
+	for _, rpt := range byType {
+		if rpt.Confirmed+rpt.Refuted > 0 {
+			rpt.Precision = float64(rpt.Confirmed) / float64(rpt.Confirmed+rpt.Refuted)
+		}
+		out = append(out, *rpt)
+	}
+	return out
+}
+
+// LoadSchd13Filings reads all Schd13Filing records from <dir>/filings.ndjson.
+func LoadSchd13Filings(dir string) ([]Schd13Filing, error) {
+	path := filepath.Join(dir, "filings.ndjson")
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	var filings []Schd13Filing
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		var rec Schd13Filing
+		if json.Unmarshal(sc.Bytes(), &rec) == nil {
+			filings = append(filings, rec)
+		}
+	}
+	return filings, sc.Err()
+}
+
+// WriteSchd13Filings appends filing records to <dir>/filings.ndjson.
+func WriteSchd13Filings(dir string, filings []Schd13Filing) error {
+	if len(filings) == 0 {
+		return nil
+	}
+	return appendNDJSON(filepath.Join(dir, "filings.ndjson"), func(enc *json.Encoder) error {
+		for i := range filings {
+			if err := enc.Encode(&filings[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
+func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
+	path := filepath.Join(dir, "accuracy.ndjson")
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	var records []AccuracyRecord
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		var r AccuracyRecord
+		if json.Unmarshal(sc.Bytes(), &r) == nil {
+			records = append(records, r)
+		}
+	}
+	return records, sc.Err()
+}
+
+// WriteAccuracyRecords appends accuracy records to <dir>/accuracy.ndjson.
+func WriteAccuracyRecords(dir string, records []AccuracyRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	return appendNDJSON(filepath.Join(dir, "accuracy.ndjson"), func(enc *json.Encoder) error {
+		for i := range records {
+			if err := enc.Encode(&records[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

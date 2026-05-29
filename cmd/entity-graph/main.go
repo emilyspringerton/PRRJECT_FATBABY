@@ -32,6 +32,7 @@ import (
 func main() {
 	storeRoot := flag.String("store", filepath.Join("var", "secwatch"), "secwatch event store root")
 	graphDir := flag.String("graph-dir", filepath.Join("var", "entity-graph"), "output directory for graph NDJSON files")
+	schd13Dir := flag.String("schd13-dir", filepath.Join("var", "schd13"), "directory containing schd13-watcher filings.ndjson for accuracy tracking")
 	obsDir := flag.String("obs-dir", filepath.Join("var", "emily-observations"), "observation output directory")
 	rulesPath := flag.String("rules", filepath.Join("config", "entity-graph-rules.json"), "signal scoring rules (hot-reloaded each batch)")
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "how often to poll the event store")
@@ -61,6 +62,7 @@ func main() {
 	for {
 		cursor = runBatch(ctx, store, logger, runConfig{
 			graphDir:   *graphDir,
+			schd13Dir:  *schd13Dir,
 			obsDir:     *obsDir,
 			rulesPath:  *rulesPath,
 			cursorPath: *cursorPath,
@@ -79,6 +81,7 @@ func main() {
 
 type runConfig struct {
 	graphDir   string
+	schd13Dir  string
 	obsDir     string
 	rulesPath  string
 	cursorPath string
@@ -254,6 +257,27 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 	newCursor := recs[len(recs)-1].Sequence + 1
 
+	// Retrospective accuracy: correlate activist_risk predictions with 13D filings
+	// loaded from the schd13-watcher's output directory.
+	var accuracyReports []entitygraph.AccuracyReport
+	if cfg.schd13Dir != "" {
+		schd13Filings, err := entitygraph.LoadSchd13Filings(cfg.schd13Dir)
+		if err != nil {
+			logger.Printf("load schd13 filings err=%v (non-fatal)", err)
+		}
+		if len(schd13Filings) > 0 {
+			allHistorical, _ := entitygraph.LoadSignals(cfg.graphDir)
+			accuracyRecords := entitygraph.CorrelateActivistRisk(append(allHistorical, allSignals...), schd13Filings)
+			if len(accuracyRecords) > 0 {
+				if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
+					logger.Printf("write accuracy records err=%v", err)
+				}
+				accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
+				logger.Printf("accuracy records=%d reports=%d", len(accuracyRecords), len(accuracyReports))
+			}
+		}
+	}
+
 	if processed > 0 {
 		if err := graph.FlushNodes(cfg.graphDir); err != nil {
 			logger.Printf("flush nodes err=%v", err)
@@ -271,7 +295,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		}
 		logger.Printf("batch complete processed=%d directors=%d signals=%d parse_errors=%d", processed, len(graph.Nodes), len(allSignals), len(parseErrors))
 
-		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes), totalProposals)
+		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes), totalProposals, accuracyReports)
 		if err := entitygraph.PublishObservation(obs, cfg.obsDir); err != nil {
 			logger.Printf("publish observation err=%v", err)
 		} else {

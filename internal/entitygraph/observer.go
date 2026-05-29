@@ -15,18 +15,23 @@ type Observation struct {
 	Timestamp string `json:"timestamp"`
 	// Source identifies the emitting subsystem; observation-watcher uses this
 	// to select the appropriate refinement prompt template.
-	Source             string          `json:"source"` // always "entity-graph"
-	Status             string          `json:"status"` // ok | needs_attention | error
-	Subject            string          `json:"subject"`
-	FilingsProcessed   int             `json:"filings_processed"`
-	DirectorsFound     int             `json:"directors_found"`
-	ProposalsProcessed int             `json:"proposals_processed"`
-	SignalsGenerated   int             `json:"signals_generated"`
-	SignalsByType      map[string]int  `json:"signals_by_type"`
-	Gaps               []string        `json:"gaps"`
-	ParseErrors        []ParseError    `json:"parse_errors,omitempty"`
-	HighSeverity       []SignalSummary `json:"high_severity_signals,omitempty"`
-	RequestForClaude   string          `json:"request_for_claude,omitempty"`
+	Source             string           `json:"source"` // always "entity-graph"
+	Status             string           `json:"status"` // ok | needs_attention | error
+	Subject            string           `json:"subject"`
+	FilingsProcessed   int              `json:"filings_processed"`
+	DirectorsFound     int              `json:"directors_found"`
+	ProposalsProcessed int              `json:"proposals_processed"`
+	SignalsGenerated   int              `json:"signals_generated"`
+	SignalsByType      map[string]int   `json:"signals_by_type"`
+	Gaps               []string         `json:"gaps"`
+	ParseErrors        []ParseError     `json:"parse_errors,omitempty"`
+	HighSeverity       []SignalSummary  `json:"high_severity_signals,omitempty"`
+	// AccuracyScores holds retrospective accuracy reports for signal types
+	// whose predictions can be validated against real-world events (e.g.
+	// activist_risk vs observed 13D filings). Populated when accuracy records
+	// exist in var/entity-graph/accuracy.ndjson.
+	AccuracyScores     []AccuracyReport `json:"accuracy_scores,omitempty"`
+	RequestForClaude   string           `json:"request_for_claude,omitempty"`
 }
 
 // ParseError records a filing that could not be fully parsed.
@@ -50,12 +55,15 @@ type SignalSummary struct {
 // proposalsProcessed is the total number of non-director proposals parsed across
 // all filings in the batch; it is included in the observation so Claude can
 // distinguish "proposals not found in text" from "proposals found but no signal fired".
+// accuracyReports (optional) carries retrospective accuracy summaries from
+// CorrelateActivistRisk / BuildAccuracyReports; pass nil when no records exist.
 func BuildObservation(
 	processed int,
 	signals []Signal,
 	parseErrors []ParseError,
 	nodeCount int,
 	proposalsProcessed int,
+	accuracyReports []AccuracyReport,
 ) Observation {
 	// Zero-fill all known signal types so the observation always shows complete coverage,
 	// making it easy to distinguish "this signal was evaluated and didn't fire" from
@@ -99,6 +107,7 @@ func BuildObservation(
 		Gaps:               gaps,
 		ParseErrors:        parseErrors,
 		HighSeverity:       highSev,
+		AccuracyScores:     accuracyReports,
 	}
 
 	if len(parseErrors) > 0 || len(gaps) > 0 {

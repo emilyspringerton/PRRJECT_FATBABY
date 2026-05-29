@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 — Cycle 7: retrospective accuracy tracking + Schedule 13D/13G watcher (Phase 4)
+
+- **`internal/entitygraph/accuracy.go`** (new): Retrospective accuracy infrastructure.
+  - `GroundTruth` type: `confirmed` / `refuted` / `pending`.
+  - `AccuracyRecord` — maps a signal prediction to its real-world outcome; persisted in `var/entity-graph/accuracy.ndjson`.
+  - `AccuracyReport` — per-signal-type summary: total/confirmed/refuted/pending/precision.
+  - `Schd13Filing` — representation of an SEC Schedule 13D/13G filing; persisted in `var/schd13/filings.ndjson`.
+  - `CorrelateActivistRisk(signals, filings)` — for each `activist_risk` signal checks whether an SC 13D was filed within the prediction window [DetectedAt, ValidThrough]. 13D filed in-window → confirmed; window expired with no 13D → refuted; window still open → pending. SC 13G (passive holder) and pre-signal filings do not confirm.
+  - `BuildAccuracyReports(records)` — aggregates records into summary reports; precision = confirmed/(confirmed+refuted).
+  - `LoadSchd13Filings` / `WriteSchd13Filings` — NDJSON store at `var/schd13/filings.ndjson`.
+  - `LoadAccuracyRecords` / `WriteAccuracyRecords` — NDJSON store at `var/entity-graph/accuracy.ndjson`.
+- **`internal/entitygraph/accuracy_test.go`** (new): 8 tests covering confirmed/refuted/pending classification, 13G passive-holder exclusion, pre-signal filing exclusion, multi-ticker isolation, precision calculation with all-pending inputs.
+- **`cmd/schd13-watcher/main.go`** (new): EDGAR poller for Schedule 13D/13G filings.
+  - Reads `config/watchlist.json` (enabled entries only); queries EDGAR EFTS full-text search (`efts.sec.gov/LATEST/search-index`) for SC 13D/13G/amendments referencing each target CIK in the last N days.
+  - Appends new filings to `var/schd13/filings.ndjson`.
+  - After writing, loads all historical signals and runs `CorrelateActivistRisk` → writes accuracy records → logs precision summary per signal type.
+  - Flags: `-watchlist`, `-graph-dir`, `-out-dir`, `-lookback` (days, default 90), `-poll-interval` (default 6h), `-one-shot`, `-dry-run`.
+- **Observation gains `accuracy_scores`** (`internal/entitygraph/observer.go`): `AccuracyScores []AccuracyReport` field added. When accuracy records exist, the observation reports signal precision so Claude/Emily can see whether activist_risk predictions are being validated by real 13D filings.
+- **`cmd/entity-graph/main.go`** wired: `-schd13-dir` flag (default `var/schd13`). After composite scoring, loads `filings.ndjson` from schd13-dir, runs `CorrelateActivistRisk` against all historical + current signals, writes accuracy records, and passes reports to `BuildObservation`.
+- **`BuildObservation` signature updated**: Added `accuracyReports []AccuracyReport` parameter (pass nil when no records).
+- **44 tests, all passing.**
+
 ## 2026-05-29 — Cycle 6: governance_health_index, filing date fix, gap detector cleanup, signal tracing
 
 - **New signal: `governance_health_index`** (`internal/entitygraph/signals.go`, `rules.go`, `config/entity-graph-rules.json`, `cmd/entity-graph/main.go`):
