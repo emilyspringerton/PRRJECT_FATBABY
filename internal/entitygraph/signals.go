@@ -32,6 +32,7 @@ const (
 	SignalNominationRejection    SignalType = "nomination_rejection"
 	SignalActivistRisk           SignalType = "activist_risk"
 	SignalDirectorLink           SignalType = "director_link"
+	SignalGovernanceHealth       SignalType = "governance_health_index"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -49,6 +50,7 @@ var AllSignalTypes = []SignalType{
 	SignalNominationRejection,
 	SignalActivistRisk,
 	SignalDirectorLink,
+	SignalGovernanceHealth,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -404,6 +406,94 @@ func ScoreDirectorLinks(graph *Graph, allSignals []Signal) []Signal {
 func isCompVote(desc string) bool {
 	dl := strings.ToLower(desc)
 	return strings.Contains(dl, "compensation") || strings.Contains(dl, "executive") || strings.Contains(dl, "say-on-pay")
+}
+
+// ScoreGovernanceHealth computes a composite governance health index for a ticker
+// based on all signals within the trailing windowDays. Score ranges [0.0, 1.0]:
+// 1.0 = excellent governance (all high-trust, no adverse signals),
+// 0.0 = severe governance crisis (multiple critical adverse signals).
+//
+// Scoring: start at 1.0, subtract a weighted penalty for each adverse signal,
+// add +0.05 per high_trust_director signal (capped at +0.20). Does not count
+// other governance_health_index signals to avoid circular compounding.
+// Returns nil if no signals are found for the ticker in the window.
+func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *Signal {
+	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
+
+	penalties := map[SignalType]float64{
+		SignalNominationRejection:    0.40,
+		SignalGovernanceEntrenchment: 0.30,
+		SignalActivistRisk:           0.25,
+		SignalAuditorChange:          0.20,
+		SignalDirectorFriction:       0.20,
+		SignalCompensationConcern:    0.15,
+		SignalDirectorDecay:          0.10,
+		SignalFamilyControl:          0.10,
+		SignalDirectorLink:           0.10,
+		SignalBrokerNonVoteAnomaly:   0.05,
+		SignalAbstentionSpike:        0.05,
+	}
+
+	score := 1.0
+	trustBonus := 0.0
+	signalCount := 0
+
+	for _, s := range allSignals {
+		if s.Ticker != ticker || s.DetectedAt < cutoff || s.Type == SignalGovernanceHealth {
+			continue
+		}
+		signalCount++
+		if s.Type == SignalHighTrustDirector {
+			trustBonus += 0.05
+		} else if p, ok := penalties[s.Type]; ok {
+			score -= p
+		}
+	}
+
+	if signalCount == 0 {
+		return nil
+	}
+
+	if trustBonus > 0.20 {
+		trustBonus = 0.20
+	}
+	score += trustBonus
+	if score < 0.0 {
+		score = 0.0
+	}
+	if score > 1.0 {
+		score = 1.0
+	}
+
+	sev := SeverityLow
+	conf := 0.70
+	var interp string
+	switch {
+	case score < 0.40:
+		sev = SeverityHigh
+		conf = 0.80
+		interp = fmt.Sprintf("Composite governance health score for %s: %.2f/1.00 — severe concerns. Multiple adverse signals co-present within %d days; elevated probability of activist intervention or board restructuring.", ticker, score, windowDays)
+	case score < 0.60:
+		sev = SeverityMedium
+		conf = 0.75
+		interp = fmt.Sprintf("Composite governance health score for %s: %.2f/1.00 — moderate concerns. Adverse governance signals present within %d days; monitor for escalation.", ticker, score, windowDays)
+	default:
+		interp = fmt.Sprintf("Composite governance health score for %s: %.2f/1.00 — healthy governance. Minimal adverse signals within %d days.", ticker, score, windowDays)
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	return &Signal{
+		SignalID:       fmt.Sprintf("governance_health_%s_%s", strings.ToLower(ticker), today),
+		Type:           SignalGovernanceHealth,
+		Ticker:         ticker,
+		Severity:       sev,
+		Confidence:     conf,
+		Score:          score,
+		DetectedAt:     today,
+		ValidThrough:   nextYear,
+		Interpretation: interp,
+	}
 }
 
 // ScoreAuditorChange emits an auditor_change signal when a company switches its

@@ -125,24 +125,16 @@ func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highS
 	return base
 }
 
-// detectGaps inspects signal coverage and returns human-readable gap descriptions.
+// detectGaps inspects parsing completeness and returns gap descriptions for actual
+// pipeline failures. Signal absences (no friction, no entrenchment, no family control)
+// are not gaps — they are expected outcomes for well-governed companies.
 func detectGaps(signals []Signal, nodeCount int, byType map[string]int, proposalsProcessed int) []string {
 	var gaps []string
 	if nodeCount == 0 {
-		gaps = append(gaps, "No directors extracted — Item 5.07 parsing may have failed")
+		gaps = append(gaps, "No directors extracted — Item 5.07 parsing may have failed for this filing")
 	}
-	if byType[string(SignalDirectorFriction)] == 0 && nodeCount > 3 {
-		gaps = append(gaps, "No friction signals on a board with 4+ directors — friction_threshold may be too low or all directors have high approval")
-	}
-	if byType[string(SignalGovernanceEntrenchment)] == 0 {
-		if proposalsProcessed == 0 {
-			gaps = append(gaps, "No entrenchment signals and 0 proposals parsed — proposal-splitter regex likely did not match filing text format")
-		} else {
-			gaps = append(gaps, fmt.Sprintf("No entrenchment signals despite %d proposals parsed — no supermajority failure found, or entrenchment_min_for threshold too high", proposalsProcessed))
-		}
-	}
-	if byType[string(SignalFamilyControl)] == 0 && nodeCount > 0 {
-		gaps = append(gaps, "No family control signals — verify family_name_keywords match director canonical names in this filing set")
+	if nodeCount > 0 && proposalsProcessed == 0 {
+		gaps = append(gaps, "0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go")
 	}
 	return gaps
 }

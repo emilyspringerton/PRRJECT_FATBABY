@@ -61,6 +61,11 @@ type Rules struct {
 	// to check whether governance_entrenchment and director_friction co-occur.
 	// Default 365 (1 year) — typical activist campaign gestation period.
 	ActivistRiskWindowDays int `json:"activist_risk_window_days"`
+
+	// GovernanceHealthWindowDays: lookback window (in days) used by ScoreGovernanceHealth
+	// when aggregating all signal types into a composite health index.
+	// Default 365 — matches activist_risk window so both composites use the same view.
+	GovernanceHealthWindowDays int `json:"governance_health_window_days"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -78,6 +83,7 @@ func DefaultRules() Rules {
 		AbstentionSpikeThreshold:      0.10,
 		NominationRejectionThreshold:  0.50,
 		ActivistRiskWindowDays:        365,
+		GovernanceHealthWindowDays:    365,
 	}
 }
 
@@ -131,6 +137,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.ActivistRiskWindowDays == 0 {
 		r.ActivistRiskWindowDays = defaults.ActivistRiskWindowDays
+	}
+	if r.GovernanceHealthWindowDays == 0 {
+		r.GovernanceHealthWindowDays = defaults.GovernanceHealthWindowDays
 	}
 	return r
 }

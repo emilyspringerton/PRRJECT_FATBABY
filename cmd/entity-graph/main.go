@@ -156,7 +156,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			continue
 		}
 
-		filingDate := time.Now().UTC().Format("2006-01-02")
+		// Use the filing's persisted-at date as the canonical date so the same
+		// filing always gets the same date regardless of when entity-graph runs.
+		filingDate := doc.PersistedAt.Format("2006-01-02")
+		if doc.PersistedAt.IsZero() {
+			filingDate = time.Now().UTC().Format("2006-01-02")
+		}
 		var canonIDs []string
 
 		for _, vote := range result.DirectorVotes {
@@ -179,6 +184,21 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 		dirSigs := entitygraph.ScoreDirectorVotes(result.DirectorVotes, doc.Ticker, rules)
 		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, rules)
+
+		// Tag all per-filing signals with their source identity for traceability.
+		for i := range dirSigs {
+			if dirSigs[i].Metadata == nil {
+				dirSigs[i].Metadata = map[string]string{}
+			}
+			dirSigs[i].Metadata["source_identity"] = doc.Identity
+		}
+		for i := range propSigs {
+			if propSigs[i].Metadata == nil {
+				propSigs[i].Metadata = map[string]string{}
+			}
+			propSigs[i].Metadata["source_identity"] = doc.Identity
+		}
+
 		allSignals = append(allSignals, dirSigs...)
 		allSignals = append(allSignals, propSigs...)
 		totalProposals += len(result.Proposals)
@@ -220,6 +240,16 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	if len(linkSigs) > 0 {
 		logger.Printf("director_link signals=%d", len(linkSigs))
 		allSignals = append(allSignals, linkSigs...)
+	}
+
+	// governance_health_index: composite health score per ticker.
+	// Re-compute combined to include director_link signals before scoring.
+	combined = append(combined, linkSigs...)
+	for ticker := range batchTickers {
+		if sig := entitygraph.ScoreGovernanceHealth(ticker, combined, rules.GovernanceHealthWindowDays); sig != nil {
+			logger.Printf("governance_health ticker=%s score=%.3f severity=%s", ticker, sig.Score, sig.Severity)
+			allSignals = append(allSignals, *sig)
+		}
 	}
 
 	newCursor := recs[len(recs)-1].Sequence + 1

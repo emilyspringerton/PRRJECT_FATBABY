@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 — Cycle 6: governance_health_index, filing date fix, gap detector cleanup, signal tracing
+
+- **New signal: `governance_health_index`** (`internal/entitygraph/signals.go`, `rules.go`, `config/entity-graph-rules.json`, `cmd/entity-graph/main.go`):
+  - `ScoreGovernanceHealth(ticker, allSignals, windowDays)` — composite health score [0.0, 1.0] derived from all signals in the trailing window. Penalties: nomination_rejection(-0.40), entrenchment(-0.30), activist_risk(-0.25), auditor_change(-0.20), friction(-0.20), comp_concern(-0.15), decay/family/director_link(-0.10 each), BNV/abstention(-0.05 each). Bonus: +0.05 per high_trust director, capped at +0.20. SCHW 2026 pattern scores ~0.30 (severity: high). A clean five-director board with no adverse signals scores ~1.0 (low). The score gives a single rankable number for cross-company governance comparisons.
+  - `governance_health_window_days` (default 365) added to `Rules` with hot-reload support.
+  - Wired in `cmd/entity-graph/main.go` after `director_link` scoring; fires per ticker in batch using `combined` signals.
+  - Added to `AllSignalTypes` so it zero-fills in observations.
+  - 5 new tests: healthy board (score > 0.80, low severity), SCHW-like adverse combo (score ≤ 0.45, high), no-signals → nil, cross-ticker isolation, nomination_rejection+entrenchment combo.
+- **Bug fix: filing date accuracy** (`cmd/entity-graph/main.go`): Changed `filingDate := time.Now().UTC()` to `doc.PersistedAt.Format("2006-01-02")` (zero-value fallback to today). The same filing now always receives the same canonical date regardless of when entity-graph processes it. Previously, re-runs on different days could create duplicate `FilingAppearance` records with different dates, corrupting the multi-filing history that `director_decay` relies on.
+- **Fix: detectGaps false positives** (`internal/entitygraph/observer.go`): Removed three gap checks that fired incorrectly for healthy non-family companies: "No friction signals on 4+ director board", "No entrenchment despite N proposals parsed", and "No family control signals". These conditions are expected for well-governed Phase 3 companies (GS, MS, C, IBKR) and were causing spurious `needs_attention` observations. Only genuine parsing failures remain: `nodeCount == 0` (parser completely missed directors) and `proposalsProcessed == 0` despite having directors (proposal-splitter failure).
+- **Signal source tracing** (`cmd/entity-graph/main.go`): Per-filing signals (director votes, proposals) now carry `source_identity = doc.Identity` in their `Metadata` map. Enables retrospective accuracy tracking: a future process can look up which filing triggered a given signal. Composite signals (activist_risk, director_link, governance_health) are multi-source and remain untagged.
+- **35 tests, all passing.**
+
 ## 2026-05-29 — Cycle 5: director centrality, observer gate, compaction + README
 
 - **Director centrality** (`internal/entitygraph/graph.go`): Added `Centrality int` field to `PersonNode`. Recomputed in `UpsertPerson` after every filing append as the count of distinct tickers in the node's filing history. A director with `Centrality >= 3` is a bridge node — their friction signals propagate risk across multiple companies. Field is persisted in `nodes.ndjson` and surfaced in `fatbaby_entity_graph` tool output.

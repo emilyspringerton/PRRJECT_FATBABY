@@ -354,3 +354,96 @@ func TestCanonicalize(t *testing.T) {
 		}
 	}
 }
+
+func TestScoreGovernanceHealth_HealthyBoard(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	// Five high-trust directors, no adverse signals.
+	var sigs []Signal
+	for i := 0; i < 5; i++ {
+		sigs = append(sigs, Signal{Type: SignalHighTrustDirector, Ticker: "GS", DetectedAt: today, Score: 0.97})
+	}
+	sig := ScoreGovernanceHealth("GS", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	if sig.Type != SignalGovernanceHealth {
+		t.Errorf("type = %s, want governance_health_index", sig.Type)
+	}
+	if sig.Score < 0.80 {
+		t.Errorf("healthy board score = %.2f, want >= 0.80", sig.Score)
+	}
+	if sig.Severity != SeverityLow {
+		t.Errorf("severity = %s, want low for healthy board", sig.Severity)
+	}
+}
+
+func TestScoreGovernanceHealth_SCHWLikeBoard(t *testing.T) {
+	// SCHW 2026 pattern: friction + entrenchment + activist_risk + family + BNV + 4x high-trust.
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "SCHW", DetectedAt: today, Score: 0.843},
+		{Type: SignalGovernanceEntrenchment, Ticker: "SCHW", DetectedAt: today, Score: 0.913},
+		{Type: SignalActivistRisk, Ticker: "SCHW", DetectedAt: today, Score: 0.157},
+		{Type: SignalFamilyControl, Ticker: "SCHW", DetectedAt: today, Score: 0.963},
+		{Type: SignalBrokerNonVoteAnomaly, Ticker: "SCHW", DetectedAt: today, Score: 0.142},
+		{Type: SignalHighTrustDirector, Ticker: "SCHW", DetectedAt: today, Score: 0.979},
+		{Type: SignalHighTrustDirector, Ticker: "SCHW", DetectedAt: today, Score: 0.972},
+		{Type: SignalHighTrustDirector, Ticker: "SCHW", DetectedAt: today, Score: 0.968},
+		{Type: SignalHighTrustDirector, Ticker: "SCHW", DetectedAt: today, Score: 0.963},
+	}
+	sig := ScoreGovernanceHealth("SCHW", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	// Penalties: friction(-0.20) + entrenchment(-0.30) + activist_risk(-0.25) +
+	//            family(-0.10) + BNV(-0.05) = -0.90
+	// Bonuses: 4x high_trust = +0.20 (capped)
+	// Expected score: 1.0 - 0.90 + 0.20 = 0.30
+	if sig.Score > 0.45 {
+		t.Errorf("SCHW-like board score = %.2f, want <= 0.45 given multiple adverse signals", sig.Score)
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high for SCHW-like adverse signal combination", sig.Severity)
+	}
+}
+
+func TestScoreGovernanceHealth_NoSignals_ReturnsNil(t *testing.T) {
+	if sig := ScoreGovernanceHealth("EMPTY", []Signal{}, 365); sig != nil {
+		t.Error("expected nil for ticker with no signals, got non-nil")
+	}
+}
+
+func TestScoreGovernanceHealth_IgnoresOtherTickers(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "OTHER", DetectedAt: today, Score: 0.75},
+		{Type: SignalHighTrustDirector, Ticker: "MS", DetectedAt: today, Score: 0.96},
+	}
+	sig := ScoreGovernanceHealth("MS", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal for MS, got nil")
+	}
+	// Only the MS high_trust signal should count; OTHER's friction should be ignored.
+	if sig.Score < 0.80 {
+		t.Errorf("MS score = %.2f, want >= 0.80 (OTHER's friction should be excluded)", sig.Score)
+	}
+}
+
+func TestScoreGovernanceHealth_NomRejection_Critical(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalNominationRejection, Ticker: "TEST", DetectedAt: today, Score: 0.38},
+		{Type: SignalGovernanceEntrenchment, Ticker: "TEST", DetectedAt: today, Score: 0.91},
+	}
+	sig := ScoreGovernanceHealth("TEST", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	// nomination_rejection(-0.40) + entrenchment(-0.30) = -0.70 → score 0.30
+	if sig.Score > 0.40 {
+		t.Errorf("critical signals score = %.2f, want <= 0.40", sig.Score)
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high", sig.Severity)
+	}
+}
