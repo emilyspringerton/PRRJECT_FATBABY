@@ -51,6 +51,11 @@ type Rules struct {
 	// above this triggers an abstention_spike signal indicating possible shareholder
 	// confusion or protest. Default 0.10 (10%).
 	AbstentionSpikeThreshold float64 `json:"abstention_spike_threshold"`
+
+	// NominationRejectionThreshold: director approval below this fraction triggers
+	// a nomination_rejection (critical) signal. Under majority voting standards,
+	// sub-threshold directors must submit resignations. Default 0.50 (50%).
+	NominationRejectionThreshold float64 `json:"nomination_rejection_threshold"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -66,6 +71,7 @@ func DefaultRules() Rules {
 		CompExecAlertThreshold:        0.30,
 		FamilyNameKeywords:            []string{"schwab", "walton", "mars", "buffett"},
 		AbstentionSpikeThreshold:      0.10,
+		NominationRejectionThreshold:  0.50,
 	}
 }
 
@@ -113,6 +119,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.AbstentionSpikeThreshold == 0 {
 		r.AbstentionSpikeThreshold = defaults.AbstentionSpikeThreshold
+	}
+	if r.NominationRejectionThreshold == 0 {
+		r.NominationRejectionThreshold = defaults.NominationRejectionThreshold
 	}
 	return r
 }

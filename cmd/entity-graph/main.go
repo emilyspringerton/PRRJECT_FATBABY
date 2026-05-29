@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -170,6 +171,11 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		logger.Printf("signals ticker=%s dir_signals=%d prop_signals=%d proposals=%d", doc.Ticker, len(dirSigs), len(propSigs), len(result.Proposals))
 	}
 
+	// Score director decay using multi-filing approval history from the graph.
+	// Only nodes with 2+ filings at the same ticker produce a decay signal.
+	decaySigs := scoreDecayFromGraph(graph, rules, logger)
+	allSignals = append(allSignals, decaySigs...)
+
 	newCursor := recs[len(recs)-1].Sequence + 1
 
 	if processed > 0 {
@@ -196,6 +202,38 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 	saveCursor(cfg.cursorPath, newCursor, logger)
 	return newCursor
+}
+
+// scoreDecayFromGraph computes director_decay signals from multi-filing approval
+// histories stored in the in-memory graph. For each node with 2+ appearances at
+// the same ticker, it sorts filings by date and calls ScoreDirectorDecay.
+func scoreDecayFromGraph(graph *entitygraph.Graph, rules entitygraph.Rules, logger *log.Logger) []entitygraph.Signal {
+	var out []entitygraph.Signal
+	for _, node := range graph.Nodes {
+		// Group filings by ticker.
+		byTicker := map[string][]entitygraph.FilingAppearance{}
+		for _, f := range node.Filings {
+			byTicker[f.Ticker] = append(byTicker[f.Ticker], f)
+		}
+		for ticker, filings := range byTicker {
+			if len(filings) < rules.DecayMinYears {
+				continue
+			}
+			sort.Slice(filings, func(i, j int) bool {
+				return filings[i].FilingDate < filings[j].FilingDate
+			})
+			history := make([]float64, len(filings))
+			for i, f := range filings {
+				history[i] = f.ApprovalPct
+			}
+			sig := entitygraph.ScoreDirectorDecay(node.Name, ticker, history, rules)
+			if sig != nil {
+				logger.Printf("decay signal director=%s ticker=%s filings=%d avg_drop=%.2f%%", node.Name, ticker, len(filings), sig.Score*100)
+				out = append(out, *sig)
+			}
+		}
+	}
+	return out
 }
 
 func loadCursor(path string, logger *log.Logger) uint64 {

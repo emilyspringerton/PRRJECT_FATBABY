@@ -29,7 +29,23 @@ const (
 	SignalCompensationConcern    SignalType = "compensation_concern"
 	SignalAuditorChange          SignalType = "auditor_change"
 	SignalAbstentionSpike        SignalType = "abstention_spike"
+	SignalNominationRejection    SignalType = "nomination_rejection"
 )
+
+// AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
+// in observations so every type shows up whether or not it fired.
+var AllSignalTypes = []SignalType{
+	SignalDirectorFriction,
+	SignalHighTrustDirector,
+	SignalDirectorDecay,
+	SignalFamilyControl,
+	SignalGovernanceEntrenchment,
+	SignalBrokerNonVoteAnomaly,
+	SignalCompensationConcern,
+	SignalAuditorChange,
+	SignalAbstentionSpike,
+	SignalNominationRejection,
+}
 
 // Signal represents a governance intelligence signal generated from parsed filings.
 type Signal struct {
@@ -63,6 +79,23 @@ func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
 	var out []Signal
 
 	switch {
+	case v.ApprovalPct < r.NominationRejectionThreshold:
+		// Director failed to secure majority support — critical governance signal.
+		// Under majority voting standards (now common in S&P 500), sub-50% triggers
+		// mandatory resignation submission to the board.
+		out = append(out, Signal{
+			SignalID:       fmt.Sprintf("nomination_rejection_%s_%s", canon, strings.ToLower(ticker)),
+			Type:           SignalNominationRejection,
+			Ticker:         ticker,
+			Entity:         v.Name,
+			Severity:       SeverityCritical,
+			Confidence:     0.95,
+			Score:          v.ApprovalPct,
+			DetectedAt:     today,
+			ValidThrough:   nextYear,
+			Interpretation: fmt.Sprintf("Director received only %.1f%% approval — below %.0f%% majority threshold. Under majority voting standards the director must submit a resignation; board refusal to accept is a governance crisis indicator.", v.ApprovalPct*100, r.NominationRejectionThreshold*100),
+		})
+
 	case v.ApprovalPct < r.FrictionThreshold:
 		sev := SeverityMedium
 		conf := 0.78

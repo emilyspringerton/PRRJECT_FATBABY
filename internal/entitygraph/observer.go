@@ -57,7 +57,13 @@ func BuildObservation(
 	nodeCount int,
 	proposalsProcessed int,
 ) Observation {
-	byType := map[string]int{}
+	// Zero-fill all known signal types so the observation always shows complete coverage,
+	// making it easy to distinguish "this signal was evaluated and didn't fire" from
+	// "this signal type doesn't exist yet".
+	byType := make(map[string]int, len(AllSignalTypes))
+	for _, t := range AllSignalTypes {
+		byType[string(t)] = 0
+	}
 	var highSev []SignalSummary
 	for _, s := range signals {
 		byType[string(s.Type)]++

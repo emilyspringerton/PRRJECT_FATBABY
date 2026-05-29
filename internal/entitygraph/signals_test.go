@@ -139,6 +139,30 @@ func TestScoreProposals_CompConcern(t *testing.T) {
 	}
 }
 
+func TestScoreDirectorVotes_NominationRejection(t *testing.T) {
+	r := DefaultRules()
+	votes := []VoteResult{
+		{Name: "Failed Director", ForVotes: 450_000_000, AgainstVotes: 600_000_000, AbstainVotes: 10_000_000, ApprovalPct: 0.425},
+	}
+	sigs := ScoreDirectorVotes(votes, "TEST", r)
+	found := false
+	for _, s := range sigs {
+		if s.Type == SignalNominationRejection {
+			found = true
+			if s.Severity != SeverityCritical {
+				t.Errorf("nomination_rejection severity = %s, want critical", s.Severity)
+			}
+		}
+		// Rejection and friction must not both fire for the same director.
+		if s.Type == SignalDirectorFriction {
+			t.Error("unexpected director_friction alongside nomination_rejection (should be mutually exclusive)")
+		}
+	}
+	if !found {
+		t.Error("expected nomination_rejection signal for 42.5% approval, got none")
+	}
+}
+
 func TestScoreProposals_AbstentionSpike(t *testing.T) {
 	r := DefaultRules()
 	proposals := []ProposalResult{

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 (recursive self-improvement cycle 2)
+
+- **New signal: `nomination_rejection`** (`internal/entitygraph/signals.go`, `rules.go`, `config/entity-graph-rules.json`): Critical-severity signal for directors who fail to receive majority support (approval < `nomination_rejection_threshold`, default 50%). Under majority voting standards common in S&P 500 companies, sub-50% approval obligates the director to submit a resignation; board refusal is itself a governance crisis indicator. The signal is mutually exclusive with `director_friction` (the switch case is ordered: rejection → friction → high-trust). Added `NominationRejectionThreshold` to `Rules` with hot-reload support. Added test verifying mutual exclusivity with friction.
+- **Wire `ScoreDirectorDecay`** (`cmd/entity-graph/main.go`): The decay signal function existed since Phase 1 but was never called. Added `scoreDecayFromGraph` helper that iterates the in-memory graph after each batch, groups each node's filings by ticker, sorts by date, and calls `ScoreDirectorDecay` for any director with 2+ appearances at the same company. Adds `"sort"` import.
+- **`signals_by_type` zero-fill** (`internal/entitygraph/signals.go`, `observer.go`): Added `AllSignalTypes` slice listing all 10 known signal types. `BuildObservation` pre-fills `byType` map with zero counts for each, so the observation always shows the complete signal coverage picture regardless of which signals fired. Downstream Claude prompts can now distinguish "evaluated but didn't fire" from "not yet implemented".
+- **Updated seed observation** (`var/emily-observations/latest.json`): Reflects the expected output of a fully-fixed run on the SCHW 2026 8-K: 5 directors, 3 proposals, 7 signals (director_friction×1, high_trust×4, family_control×1, governance_entrenchment×1). All 10 signal types now shown with zero-fills. Gaps describe the actual remaining work: decay needs multi-filing history, auditor_change needs schema extension, Phase 3 needs watchlist expansion.
+
 ## 2026-05-29 (recursive self-improvement cycle 1)
 
 - **Parser robustness** (`internal/entitygraph/parser.go`): Strengthened three regexes for live EDGAR text variance: (1) `reSupermajority` now matches "80% of outstanding shares" without requiring "the" (`(?:all\s+)?(?:the\s+)?` optional); (2) `reOutstandingShares` now also handles "N common shares outstanding" and "N shares of stock outstanding"; (3) `proposalSplitter` now matches proposal numbers 10–19 and uses a word-boundary anchor so "Proposal 4:" splits correctly. These fix the seed observation gap about missing entrenchment signals.

@@ -16,5 +16,6 @@
     "fidelity",
     "johnson"
   ],
-  "abstention_spike_threshold": 0.10
+  "abstention_spike_threshold": 0.10,
+  "nomination_rejection_threshold": 0.50
 }
