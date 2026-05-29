@@ -78,6 +78,34 @@ func TestParseItem507_SCHW(t *testing.T) {
 
 // TestParseItem507_SupermajorityWithoutThe verifies the parser handles "80% of outstanding shares"
 // (no "the") — a common EDGAR filing variant that previously would fail to detect the threshold.
+func TestParseItem507_AuditorExtraction(t *testing.T) {
+	text := loadFixture(t, "../../fixtures/entitygraph/schw_8k_5_07_2026.txt")
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if result.Auditor == "" {
+		t.Fatal("expected Auditor to be populated from Proposal 2 ratification, got empty")
+	}
+	if result.Auditor != "Deloitte Touche LLP" {
+		t.Errorf("Auditor = %q, want %q", result.Auditor, "Deloitte Touche LLP")
+	}
+}
+
+func TestParseItem507_AuditorExtraction_NoRatification(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+As of March 1, 2026 there were 500,000,000 shares of common stock outstanding.
+John A. Smith 300,000,000 10,000,000 5,000,000 25,000,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if result.Auditor != "" {
+		t.Errorf("expected empty Auditor when no ratification proposal present, got %q", result.Auditor)
+	}
+}
+
 func TestParseItem507_SupermajorityWithoutThe(t *testing.T) {
 	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
 As of March 1, 2026 there were 500,000,000 common shares outstanding.

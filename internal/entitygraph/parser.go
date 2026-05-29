@@ -11,6 +11,10 @@ import (
 type Item507Result struct {
 	DirectorVotes []VoteResult
 	Proposals     []ProposalResult
+	// Auditor is the name of the public accounting firm identified in the
+	// auditor ratification proposal (e.g. "Deloitte Touche LLP"), or empty
+	// if no ratification proposal was found.
+	Auditor string
 }
 
 // VoteResult holds the vote counts for a single director nominee.
@@ -70,6 +74,14 @@ var (
 
 	// reDeclineKeyword detects "did not pass" or "failed" near a supermajority statement.
 	reDidNotPass = regexp.MustCompile(`(?i)did\s+not\s+pass|failed\s+to\s+pass|not\s+approved`)
+
+	// reAuditorName extracts the public accounting firm name from a ratification proposal.
+	// Matches "appointment of <Firm LLP> as" — "ratification of" refers to the proposal
+	// title, not the firm name, so only "appointment of" anchors the firm name capture.
+	reAuditorName = regexp.MustCompile(`(?i)appointment\s+of\s+([\w\s&,\.]+?(?:LLP|LLC|PC|PLLC|L\.L\.P\.|P\.C\.))\s+as\s+`)
+
+	// reRatificationProposal detects that a proposal chunk is an auditor ratification.
+	reRatificationProposal = regexp.MustCompile(`(?i)(?:ratif(?:y|ication|ying)|independent\s+registered\s+public\s+accounting)`)
 )
 
 // ParseItem507 extracts vote data from the cleaned text of an 8-K filing.
@@ -87,7 +99,32 @@ func ParseItem507(text string) (Item507Result, error) {
 	result := Item507Result{}
 	result.DirectorVotes = extractDirectorVotes(body)
 	result.Proposals = extractProposals(body, outstanding)
+	result.Auditor = extractAuditor(body)
 	return result, nil
+}
+
+// extractAuditor finds the public accounting firm name from an auditor ratification
+// proposal in the Item 5.07 body. Returns an empty string if not found.
+func extractAuditor(body string) string {
+	// Only search within ratification proposal chunks.
+	proposalSplitter := regexp.MustCompile(`(?i)Proposal\s+(?:[2-9]|1\d)\b`)
+	splits := proposalSplitter.FindAllStringIndex(body, -1)
+	for i, loc := range splits {
+		start := loc[0]
+		end := len(body)
+		if i+1 < len(splits) {
+			end = splits[i+1][0]
+		}
+		chunk := body[start:end]
+		if !reRatificationProposal.MatchString(chunk) {
+			continue
+		}
+		m := reAuditorName.FindStringSubmatch(chunk)
+		if m != nil {
+			return strings.TrimSpace(m[1])
+		}
+	}
+	return ""
 }
 
 // extractOutstanding parses the total outstanding shares from the preamble.

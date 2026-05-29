@@ -293,3 +293,24 @@ func isCompVote(desc string) bool {
 	dl := strings.ToLower(desc)
 	return strings.Contains(dl, "compensation") || strings.Contains(dl, "executive") || strings.Contains(dl, "say-on-pay")
 }
+
+// ScoreAuditorChange emits an auditor_change signal when a company switches its
+// public accounting firm between filings. Auditor changes are a known risk signal:
+// they can indicate audit quality disputes, regulatory pressure, or pre-transaction
+// restructuring.
+func ScoreAuditorChange(ticker, prevAuditor, newAuditor string) Signal {
+	today := time.Now().UTC().Format("2006-01-02")
+	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	return Signal{
+		SignalID:       fmt.Sprintf("auditor_change_%s", strings.ToLower(ticker)),
+		Type:           SignalAuditorChange,
+		Ticker:         ticker,
+		Severity:       SeverityMedium,
+		Confidence:     0.95,
+		Score:          1.0,
+		DetectedAt:     today,
+		ValidThrough:   nextYear,
+		Interpretation: fmt.Sprintf("Auditor changed from %q to %q. Auditor changes may indicate audit quality disputes, fee negotiations, regulatory pressure, or pre-transaction restructuring.", prevAuditor, newAuditor),
+		Metadata:       map[string]string{"prev_auditor": prevAuditor, "new_auditor": newAuditor},
+	}
+}

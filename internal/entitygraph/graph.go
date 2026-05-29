@@ -60,18 +60,78 @@ type Edge struct {
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
+// AuditorRecord tracks the most recently observed public accounting firm for a ticker.
+// Stored as NDJSON in var/entity-graph/auditors.ndjson; the last record per ticker wins.
+type AuditorRecord struct {
+	Ticker     string `json:"ticker"`
+	Auditor    string `json:"auditor"`
+	FilingDate string `json:"filing_date"`
+}
+
 // Graph holds all nodes and edges in memory and can flush to NDJSON files.
 type Graph struct {
-	Nodes map[string]*PersonNode
-	Edges map[string]*Edge
+	Nodes    map[string]*PersonNode
+	Edges    map[string]*Edge
+	Auditors map[string]*AuditorRecord // keyed by ticker
 }
 
 // NewGraph creates an empty graph.
 func NewGraph() *Graph {
 	return &Graph{
-		Nodes: make(map[string]*PersonNode),
-		Edges: make(map[string]*Edge),
+		Nodes:    make(map[string]*PersonNode),
+		Edges:    make(map[string]*Edge),
+		Auditors: make(map[string]*AuditorRecord),
 	}
+}
+
+// TrackAuditor records the auditor for a ticker. If the auditor differs from the
+// previously recorded one, it returns (true, prevAuditorName). If this is the first
+// record or no change, returns (false, "").
+func (g *Graph) TrackAuditor(ticker, auditor, filingDate string) (changed bool, prev string) {
+	if auditor == "" {
+		return false, ""
+	}
+	existing, ok := g.Auditors[ticker]
+	if ok && existing.Auditor != auditor {
+		prev = existing.Auditor
+		changed = true
+	}
+	g.Auditors[ticker] = &AuditorRecord{Ticker: ticker, Auditor: auditor, FilingDate: filingDate}
+	return changed, prev
+}
+
+// LoadAuditorsFromDir reads auditor.ndjson and populates Auditors (last record per ticker wins).
+func (g *Graph) LoadAuditorsFromDir(dir string) error {
+	path := filepath.Join(dir, "auditors.ndjson")
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		var rec AuditorRecord
+		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+			continue
+		}
+		g.Auditors[rec.Ticker] = &rec
+	}
+	return sc.Err()
+}
+
+// FlushAuditors appends new/updated auditor records to auditors.ndjson.
+func (g *Graph) FlushAuditors(dir string) error {
+	return appendNDJSON(filepath.Join(dir, "auditors.ndjson"), func(enc *json.Encoder) error {
+		for _, rec := range g.Auditors {
+			if err := enc.Encode(rec); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // UpsertPerson adds or updates a person node given a new filing appearance.

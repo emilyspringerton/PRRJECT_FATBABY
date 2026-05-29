@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 (recursive self-improvement cycle 3)
+
+- **`auditor_change` signal — full pipeline** (`internal/entitygraph/parser.go`, `graph.go`, `signals.go`, `cmd/entity-graph/main.go`):
+  - Parser: added `reAuditorName` regex (`appointment of <Firm LLP> as`) and `reRatificationProposal` detector. `extractAuditor()` scans proposal chunks for ratification language, returns firm name. `Item507Result.Auditor` carries it out of the parser. The SCHW 2026 fixture correctly yields `"Deloitte Touche LLP"`.
+  - Graph: `AuditorRecord` struct; `Graph.Auditors map[string]*AuditorRecord`; `TrackAuditor()` returns `(changed bool, prevFirm string)`; `LoadAuditorsFromDir()` / `FlushAuditors()` backed by `var/entity-graph/auditors.ndjson`. First record per ticker is stored without emitting a signal; change is detected on subsequent filings.
+  - Signal: `ScoreAuditorChange(ticker, prev, new)` emits medium-severity `auditor_change` with `prev_auditor`/`new_auditor` metadata.
+  - `main.go`: auditors loaded and flushed alongside nodes/edges; `TrackAuditor` called after every 8-K parse; signal appended if changed.
+  - 6 new tests: auditor extraction from SCHW fixture, no-ratification case, `TrackAuditor` first/change/no-change, `ScoreAuditorChange` field validation.
+- **`broker_nonvote_anomaly_threshold` recalibrated** (`config/entity-graph-rules.json`): Lowered 0.15 → 0.12. SCHW's BNV fraction (~14.2%) was below the old threshold despite being structurally elevated for a retail brokerage. The new threshold makes the signal fire for SCHW-class BNV levels without being so sensitive that every small-cap triggers it.
+- **Phase 3 watchlist expansion** (`config/watchlist.json`): Added GS (886982), MS (895421), C (831001), IBKR (1383312) as enabled; COIN (1679273), SOFI (1818502), HOOD (1783398) added as `enabled: false` pending CIK verification against live EDGAR submissions endpoint. Watchlist grows from 17 → 25 entries.
+- **Seed observation updated**: Reflects 9 signals from SCHW (broker_nonvote_anomaly now firing); auditor_change noted as "first run, no prior record"; cycle 4 request targets composite signal `post_entrenchment_activist_risk` and CIK verification for disabled fintech entries.
+
 ## 2026-05-29 (recursive self-improvement cycle 2)
 
 - **New signal: `nomination_rejection`** (`internal/entitygraph/signals.go`, `rules.go`, `config/entity-graph-rules.json`): Critical-severity signal for directors who fail to receive majority support (approval < `nomination_rejection_threshold`, default 50%). Under majority voting standards common in S&P 500 companies, sub-50% approval obligates the director to submit a resignation; board refusal is itself a governance crisis indicator. The signal is mutually exclusive with `director_friction` (the switch case is ordered: rejection → friction → high-trust). Added `NominationRejectionThreshold` to `Rules` with hot-reload support. Added test verifying mutual exclusivity with friction.

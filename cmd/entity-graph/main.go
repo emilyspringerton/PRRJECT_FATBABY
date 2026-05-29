@@ -102,6 +102,9 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	if err := graph.LoadNodesFromDir(cfg.graphDir); err != nil {
 		logger.Printf("load existing nodes err=%v", err)
 	}
+	if err := graph.LoadAuditorsFromDir(cfg.graphDir); err != nil {
+		logger.Printf("load existing auditors err=%v", err)
+	}
 
 	var (
 		allSignals         []entitygraph.Signal
@@ -168,6 +171,19 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		allSignals = append(allSignals, dirSigs...)
 		allSignals = append(allSignals, propSigs...)
 		totalProposals += len(result.Proposals)
+
+		// Auditor tracking: detect firm changes across filings.
+		if result.Auditor != "" {
+			changed, prev := graph.TrackAuditor(doc.Ticker, result.Auditor, filingDate)
+			if changed {
+				sig := entitygraph.ScoreAuditorChange(doc.Ticker, prev, result.Auditor)
+				allSignals = append(allSignals, sig)
+				logger.Printf("auditor_change ticker=%s prev=%q new=%q", doc.Ticker, prev, result.Auditor)
+			} else {
+				logger.Printf("auditor ticker=%s firm=%q (unchanged)", doc.Ticker, result.Auditor)
+			}
+		}
+
 		logger.Printf("signals ticker=%s dir_signals=%d prop_signals=%d proposals=%d", doc.Ticker, len(dirSigs), len(propSigs), len(result.Proposals))
 	}
 
@@ -184,6 +200,9 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		}
 		if err := graph.FlushEdges(cfg.graphDir); err != nil {
 			logger.Printf("flush edges err=%v", err)
+		}
+		if err := graph.FlushAuditors(cfg.graphDir); err != nil {
+			logger.Printf("flush auditors err=%v", err)
 		}
 		if len(allSignals) > 0 {
 			if err := entitygraph.WriteSignals(cfg.graphDir, allSignals); err != nil {

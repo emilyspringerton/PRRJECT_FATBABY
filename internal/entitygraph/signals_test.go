@@ -139,6 +139,57 @@ func TestScoreProposals_CompConcern(t *testing.T) {
 	}
 }
 
+func TestScoreAuditorChange(t *testing.T) {
+	sig := ScoreAuditorChange("SCHW", "Deloitte Touche LLP", "KPMG LLP")
+	if sig.Type != SignalAuditorChange {
+		t.Errorf("signal type = %s, want auditor_change", sig.Type)
+	}
+	if sig.Severity != SeverityMedium {
+		t.Errorf("severity = %s, want medium", sig.Severity)
+	}
+	if sig.Metadata["prev_auditor"] != "Deloitte Touche LLP" {
+		t.Errorf("prev_auditor metadata = %q, want %q", sig.Metadata["prev_auditor"], "Deloitte Touche LLP")
+	}
+	if sig.Metadata["new_auditor"] != "KPMG LLP" {
+		t.Errorf("new_auditor metadata = %q, want %q", sig.Metadata["new_auditor"], "KPMG LLP")
+	}
+}
+
+func TestGraphTrackAuditor_FirstRecord(t *testing.T) {
+	g := NewGraph()
+	changed, prev := g.TrackAuditor("SCHW", "Deloitte Touche LLP", "2026-05-21")
+	if changed {
+		t.Error("first auditor record should not trigger change, got changed=true")
+	}
+	if prev != "" {
+		t.Errorf("prev should be empty for first record, got %q", prev)
+	}
+	if g.Auditors["SCHW"] == nil || g.Auditors["SCHW"].Auditor != "Deloitte Touche LLP" {
+		t.Error("auditor not stored correctly")
+	}
+}
+
+func TestGraphTrackAuditor_Change(t *testing.T) {
+	g := NewGraph()
+	g.TrackAuditor("SCHW", "Deloitte Touche LLP", "2025-05-15")
+	changed, prev := g.TrackAuditor("SCHW", "KPMG LLP", "2026-05-21")
+	if !changed {
+		t.Error("expected changed=true when auditor switches firms")
+	}
+	if prev != "Deloitte Touche LLP" {
+		t.Errorf("prev = %q, want %q", prev, "Deloitte Touche LLP")
+	}
+}
+
+func TestGraphTrackAuditor_NoChange(t *testing.T) {
+	g := NewGraph()
+	g.TrackAuditor("SCHW", "Deloitte Touche LLP", "2025-05-15")
+	changed, _ := g.TrackAuditor("SCHW", "Deloitte Touche LLP", "2026-05-21")
+	if changed {
+		t.Error("expected changed=false when same auditor repeated")
+	}
+}
+
 func TestScoreDirectorVotes_NominationRejection(t *testing.T) {
 	r := DefaultRules()
 	votes := []VoteResult{

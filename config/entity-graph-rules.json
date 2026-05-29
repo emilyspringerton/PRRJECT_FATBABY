@@ -6,7 +6,7 @@
   "decay_min_years": 2,
   "decay_min_drop_pp": 2.0,
   "entrenchment_min_for": 0.80,
-  "broker_nonvote_anomaly_threshold": 0.15,
+  "broker_nonvote_anomaly_threshold": 0.12,
   "comp_exec_alert_threshold": 0.30,
   "family_name_keywords": [
     "schwab",

@@ -220,6 +220,97 @@
       "enabled": true,
       "poll_priority": 2,
       "notes": "user-added watchlist coverage"
+    },
+    {
+      "ticker": "GS",
+      "company_name": "The Goldman Sachs Group, Inc.",
+      "cik": "886982",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance"
+    },
+    {
+      "ticker": "MS",
+      "company_name": "Morgan Stanley",
+      "cik": "895421",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance"
+    },
+    {
+      "ticker": "C",
+      "company_name": "Citigroup Inc.",
+      "cik": "831001",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "Phase 3 entity-graph expansion: major bank board governance"
+    },
+    {
+      "ticker": "IBKR",
+      "company_name": "Interactive Brokers Group, Inc.",
+      "cik": "1383312",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "Phase 3 entity-graph expansion: brokerage peer for SCHW director-link analysis"
+    },
+    {
+      "ticker": "COIN",
+      "company_name": "Coinbase Global, Inc.",
+      "cik": "1679273",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "SOFI",
+      "company_name": "SoFi Technologies, Inc.",
+      "cik": "1818502",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "HOOD",
+      "company_name": "Robinhood Markets, Inc.",
+      "cik": "1783398",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
     }
   ]
 }
