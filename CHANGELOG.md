@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 — Emily signal intelligence
+
+- **`cmd/emily-agent/signal_intelligence.go`** (new): Three new tools giving Emily the ability to read and explain entity-graph governance signals.
+  - `fatbaby_signal_summary` — high-level dashboard: total signals, counts by type and severity, top tickers by signal count, most recent high/critical alerts with full interpretations. No params; the right first call for "what's going on?"
+  - `fatbaby_query_signals` — filtered search with `ticker`, `signal_type`, `min_severity`, `days`, `limit` params. Results sorted by severity then date. Returns matching signals with full interpretation text.
+  - `fatbaby_entity_graph` — director and company graph lookup. `ticker` param returns all directors at a company with approval trends and co-board partners. `director` param does a partial-name search and returns approval trend (declining/improving/stable with Δ pp) plus co-board relationships from edge data. No params = graph-wide stats (node count, edge count, top cross-company directors, known auditors).
+  - All three tools read `var/entity-graph/{signals,nodes,edges,auditors}.ndjson` directly; deduplication matches `LoadNodesFromDir` / `LoadSignals` logic from the entitygraph package.
+- **Emily system prompt extended** (`cmd/emily-agent/main.go`): Added analyst role alongside ops role. Signal type glossary with plain-English interpretation of all 12 signal types. Signal analyst operating rules: always fetch live data before answering, synthesise into opinionated assessment (severity, cause, recommended action), explain activist_risk as a composite, treat director_link as forward-looking propagation warning.
+
 ## 2026-05-29 (recursive self-improvement cycle 4)
 
 - **`activist_risk` composite signal** (`internal/entitygraph/signals.go`, `graph.go`, `rules.go`, `config/entity-graph-rules.json`, `cmd/entity-graph/main.go`):
