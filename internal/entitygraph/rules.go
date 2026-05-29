@@ -56,6 +56,11 @@ type Rules struct {
 	// a nomination_rejection (critical) signal. Under majority voting standards,
 	// sub-threshold directors must submit resignations. Default 0.50 (50%).
 	NominationRejectionThreshold float64 `json:"nomination_rejection_threshold"`
+
+	// ActivistRiskWindowDays: lookback window (in days) used by ScoreCompositeActivistRisk
+	// to check whether governance_entrenchment and director_friction co-occur.
+	// Default 365 (1 year) — typical activist campaign gestation period.
+	ActivistRiskWindowDays int `json:"activist_risk_window_days"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -72,6 +77,7 @@ func DefaultRules() Rules {
 		FamilyNameKeywords:            []string{"schwab", "walton", "mars", "buffett"},
 		AbstentionSpikeThreshold:      0.10,
 		NominationRejectionThreshold:  0.50,
+		ActivistRiskWindowDays:        365,
 	}
 }
 
@@ -122,6 +128,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.NominationRejectionThreshold == 0 {
 		r.NominationRejectionThreshold = defaults.NominationRejectionThreshold
+	}
+	if r.ActivistRiskWindowDays == 0 {
+		r.ActivistRiskWindowDays = defaults.ActivistRiskWindowDays
 	}
 	return r
 }

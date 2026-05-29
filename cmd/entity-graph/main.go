@@ -106,6 +106,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		logger.Printf("load existing auditors err=%v", err)
 	}
 
+	// Load historical signals for composite scoring (activist_risk, director_link).
+	historicalSignals, err := entitygraph.LoadSignals(cfg.graphDir)
+	if err != nil {
+		logger.Printf("load historical signals err=%v", err)
+	}
+
 	var (
 		allSignals         []entitygraph.Signal
 		parseErrors        []entitygraph.ParseError
@@ -192,6 +198,25 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	decaySigs := scoreDecayFromGraph(graph, rules, logger)
 	allSignals = append(allSignals, decaySigs...)
 
+	// Composite signals: combine current batch with historical for cross-filing detection.
+	combined := append(historicalSignals, allSignals...)
+
+	// activist_risk: governance_entrenchment + director_friction co-occurrence per ticker.
+	batchTickers := collectTickers(allSignals)
+	for ticker := range batchTickers {
+		if sig := entitygraph.ScoreCompositeActivistRisk(ticker, combined, rules.ActivistRiskWindowDays); sig != nil {
+			logger.Printf("activist_risk ticker=%s score=%.3f", ticker, sig.Score)
+			allSignals = append(allSignals, *sig)
+		}
+	}
+
+	// director_link: propagate friction scores to other tickers via shared directors.
+	linkSigs := entitygraph.ScoreDirectorLinks(graph, combined)
+	if len(linkSigs) > 0 {
+		logger.Printf("director_link signals=%d", len(linkSigs))
+		allSignals = append(allSignals, linkSigs...)
+	}
+
 	newCursor := recs[len(recs)-1].Sequence + 1
 
 	if processed > 0 {
@@ -221,6 +246,17 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 	saveCursor(cfg.cursorPath, newCursor, logger)
 	return newCursor
+}
+
+// collectTickers returns the set of unique tickers present in a signal slice.
+func collectTickers(signals []entitygraph.Signal) map[string]bool {
+	tickers := make(map[string]bool)
+	for _, s := range signals {
+		if s.Ticker != "" {
+			tickers[s.Ticker] = true
+		}
+	}
+	return tickers
 }
 
 // scoreDecayFromGraph computes director_decay signals from multi-filing approval

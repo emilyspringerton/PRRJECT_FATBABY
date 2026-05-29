@@ -2,6 +2,7 @@ package entitygraph
 
 import (
 	"testing"
+	"time"
 )
 
 func TestScoreDirectorVotes_Friction(t *testing.T) {
@@ -136,6 +137,83 @@ func TestScoreProposals_CompConcern(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected compensation_concern signal for high opposition vote")
+	}
+}
+
+func TestScoreCompositeActivistRisk_Fires(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	signals := []Signal{
+		{Type: SignalGovernanceEntrenchment, Ticker: "SCHW", DetectedAt: today, Score: 0.913},
+		{Type: SignalDirectorFriction, Ticker: "SCHW", DetectedAt: today, Score: 0.843, Entity: "Frank C. Herringer"},
+	}
+	sig := ScoreCompositeActivistRisk("SCHW", signals, 365)
+	if sig == nil {
+		t.Fatal("expected activist_risk signal when both entrenchment and friction present, got nil")
+	}
+	if sig.Type != SignalActivistRisk {
+		t.Errorf("type = %s, want activist_risk", sig.Type)
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high", sig.Severity)
+	}
+	// Score should be 1 - worst_friction_approval (1 - 0.843 = 0.157)
+	if sig.Score < 0.15 || sig.Score > 0.16 {
+		t.Errorf("score = %.4f, want ~0.157 (1 - Herringer approval)", sig.Score)
+	}
+}
+
+func TestScoreCompositeActivistRisk_NoFire_OnlyEntrenchment(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	signals := []Signal{
+		{Type: SignalGovernanceEntrenchment, Ticker: "SCHW", DetectedAt: today, Score: 0.913},
+	}
+	if sig := ScoreCompositeActivistRisk("SCHW", signals, 365); sig != nil {
+		t.Error("expected nil when only entrenchment (no friction), got signal")
+	}
+}
+
+func TestScoreCompositeActivistRisk_NoFire_StaleSignals(t *testing.T) {
+	old := time.Now().UTC().AddDate(-2, 0, 0).Format("2006-01-02")
+	signals := []Signal{
+		{Type: SignalGovernanceEntrenchment, Ticker: "SCHW", DetectedAt: old, Score: 0.91},
+		{Type: SignalDirectorFriction, Ticker: "SCHW", DetectedAt: old, Score: 0.84, Entity: "Someone"},
+	}
+	// 30-day window; signals are 2 years old — should not fire.
+	if sig := ScoreCompositeActivistRisk("SCHW", signals, 30); sig != nil {
+		t.Error("expected nil for signals outside the lookback window, got signal")
+	}
+}
+
+func TestScoreDirectorLinks_NoLinksWithSingleTicker(t *testing.T) {
+	g := NewGraph()
+	// Herringer appears only at SCHW — no other tickers to link.
+	g.UpsertPerson("Frank C. Herringer", NodeDirector, FilingAppearance{Ticker: "SCHW", FilingDate: "2026-05-21", ApprovalPct: 0.843})
+	frictionSigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "SCHW", Entity: "Frank C. Herringer", Score: 0.843},
+	}
+	links := ScoreDirectorLinks(g, frictionSigs)
+	if len(links) != 0 {
+		t.Errorf("expected 0 director_link signals with single-ticker director, got %d", len(links))
+	}
+}
+
+func TestScoreDirectorLinks_FiresForSharedDirector(t *testing.T) {
+	g := NewGraph()
+	// Herringer sits on two boards.
+	g.UpsertPerson("Frank C. Herringer", NodeDirector, FilingAppearance{Ticker: "SCHW", FilingDate: "2026-05-21", ApprovalPct: 0.843})
+	g.UpsertPerson("Frank C. Herringer", NodeDirector, FilingAppearance{Ticker: "IBKR", FilingDate: "2026-04-10", ApprovalPct: 0.900})
+	frictionSigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "SCHW", Entity: "Frank C. Herringer", Score: 0.843},
+	}
+	links := ScoreDirectorLinks(g, frictionSigs)
+	if len(links) != 1 {
+		t.Fatalf("expected 1 director_link signal for IBKR, got %d", len(links))
+	}
+	if links[0].Ticker != "IBKR" {
+		t.Errorf("link ticker = %s, want IBKR", links[0].Ticker)
+	}
+	if links[0].Type != SignalDirectorLink {
+		t.Errorf("link type = %s, want director_link", links[0].Type)
 	}
 }
 

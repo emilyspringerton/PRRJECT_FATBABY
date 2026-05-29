@@ -259,6 +259,31 @@ func (g *Graph) LoadNodesFromDir(dir string) error {
 	return sc.Err()
 }
 
+// LoadSignals reads all Signal records from <dir>/signals.ndjson.
+// Used to supply historical context for composite signal scoring.
+func LoadSignals(dir string) ([]Signal, error) {
+	path := filepath.Join(dir, "signals.ndjson")
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	var signals []Signal
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 4<<20), 4<<20)
+	for sc.Scan() {
+		var s Signal
+		if err := json.Unmarshal(sc.Bytes(), &s); err != nil {
+			continue
+		}
+		signals = append(signals, s)
+	}
+	return signals, sc.Err()
+}
+
 // WriteSignals appends a slice of signals to <dir>/signals.ndjson.
 func WriteSignals(dir string, signals []Signal) error {
 	return appendNDJSON(filepath.Join(dir, "signals.ndjson"), func(enc *json.Encoder) error {

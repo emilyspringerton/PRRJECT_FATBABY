@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 (recursive self-improvement cycle 4)
+
+- **`activist_risk` composite signal** (`internal/entitygraph/signals.go`, `graph.go`, `rules.go`, `config/entity-graph-rules.json`, `cmd/entity-graph/main.go`):
+  - `ScoreCompositeActivistRisk(ticker, allSignals, windowDays)` — fires when `governance_entrenchment` AND (`director_friction` | `nomination_rejection`) co-occur at the same ticker within `activist_risk_window_days` (default 365). Score = `1 - worst_director_approval` (Herringer at 84.3% → score 0.157). High severity, 0.82 confidence. Signal_id includes date for append-log uniqueness.
+  - `LoadSignals(dir string)` added to `graph.go` — reads `signals.ndjson` into memory for cross-batch composite scoring.
+  - `cmd/entity-graph/main.go`: historical signals loaded at batch start; composite scores run after per-filing loop using `combined = historical + current`; `collectTickers()` helper returns the set of tickers in the current batch.
+  - `ActivistRiskWindowDays int` added to `Rules` struct (hot-reloadable, default 365).
+  - For SCHW 2026: both entrenchment (92% vote blocked by 80% supermajority) and friction (Herringer 84.3%) fire from the same 8-K, so `activist_risk` fires on the first real run.
+- **`director_link` Phase 3 signal** (`internal/entitygraph/signals.go`, `cmd/entity-graph/main.go`):
+  - `ScoreDirectorLinks(graph, allSignals)` — for each friction/rejection director, finds other tickers in their node's `Filings` and emits a `director_link` signal for each. Signal carries `source_ticker` and `source_signal` in metadata for traceability.
+  - Returns nil today (Herringer only in SCHW graph); will fire automatically as GS/MS/C/IBKR filings accumulate and the graph finds shared directors.
+  - Wired in `main.go` after decay and activist-risk scoring.
+- **7 new tests**: `ScoreCompositeActivistRisk` fires/no-fire/stale-signal cases; `ScoreDirectorLinks` single-ticker (no fire) and multi-ticker (fires for IBKR) cases.
+- **Seed observation updated**: 11 signals (activist_risk now firing for SCHW); gaps narrowed to director_link activation (needs multi-company data), CIK verification for disabled fintech tickers, and observation-watcher severity gate proposal.
+
 ## 2026-05-29 (recursive self-improvement cycle 3)
 
 - **`auditor_change` signal — full pipeline** (`internal/entitygraph/parser.go`, `graph.go`, `signals.go`, `cmd/entity-graph/main.go`):
