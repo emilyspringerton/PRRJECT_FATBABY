@@ -40,7 +40,11 @@ type PersonNode struct {
 	FirstAppearance string             `json:"first_appearance"`
 	LastAppearance  string             `json:"last_appearance"`
 	FilingCount     int                `json:"filing_count"`
-	Filings         []FilingAppearance `json:"filings"`
+	// Centrality is the number of distinct companies (tickers) this director
+	// appears at. A director with Centrality >= 3 is a "bridge node" — their
+	// friction signals propagate risk across multiple companies.
+	Centrality int                `json:"centrality"`
+	Filings    []FilingAppearance `json:"filings"`
 }
 
 // EdgeType classifies a relationship between two entities.
@@ -162,6 +166,12 @@ func (g *Graph) UpsertPerson(name string, nodeType NodeType, app FilingAppearanc
 	if app.FilingDate > node.LastAppearance {
 		node.LastAppearance = app.FilingDate
 	}
+	// Recompute centrality: distinct tickers across all filings.
+	seen := map[string]bool{}
+	for _, f := range node.Filings {
+		seen[f.Ticker] = true
+	}
+	node.Centrality = len(seen)
 	return node
 }
 
@@ -282,6 +292,51 @@ func LoadSignals(dir string) ([]Signal, error) {
 		signals = append(signals, s)
 	}
 	return signals, sc.Err()
+}
+
+// CompactNodes rewrites <dir>/nodes.ndjson in place, keeping only the most
+// recent record per canonical_id. The append-only store accumulates duplicate
+// node records across runs; compaction keeps the file from growing unboundedly.
+// Call this periodically (e.g. after every 100 batches, or on startup).
+func CompactNodes(dir string) error {
+	path := filepath.Join(dir, "nodes.ndjson")
+	nodes, err := func() (map[string]*PersonNode, error) {
+		f, err := os.Open(path)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		m := map[string]*PersonNode{}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 4<<20), 4<<20)
+		for sc.Scan() {
+			var n PersonNode
+			if json.Unmarshal(sc.Bytes(), &n) == nil {
+				m[n.CanonicalID] = &n
+			}
+		}
+		return m, sc.Err()
+	}()
+	if err != nil || len(nodes) == 0 {
+		return err
+	}
+	tmp := path + ".compact"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("create compact file: %w", err)
+	}
+	enc := json.NewEncoder(f)
+	for _, n := range nodes {
+		if err := enc.Encode(n); err != nil {
+			f.Close()
+			return err
+		}
+	}
+	f.Close()
+	return os.Rename(tmp, path)
 }
 
 // WriteSignals appends a slice of signals to <dir>/signals.ndjson.

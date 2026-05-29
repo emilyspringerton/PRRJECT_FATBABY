@@ -1,93 +1,150 @@
 # prrject-fatbaby
 
-`prrject-fatbaby` is a Go-based toolkit for financial signal intelligence and event-driven data processing.
+A Go-based financial signal intelligence pipeline. It watches SEC EDGAR filings and PR Newswire press releases, extracts structured governance signals from the content, and exposes them through a streaming TCP feed, an SSE dashboard, and an LLM-powered operations agent (Emily) that can both monitor the system and answer questions about what the signals mean.
 
-It combines:
+The centrepiece is a **recursive self-improving entity graph** that turns 8-K annual meeting filings into director-level governance intelligence — friction scores, activist risk composites, entrenchment patterns, and cross-company board relationships — and feeds anomalies back to Claude Code for automatic rule refinement.
 
-- a durable, file-backed append-only event store,
-- conservative discovery workers for SEC filings and PR Newswire press releases,
-- a processing pipeline that turns source documents into structured financial signals, and
-- a lightweight dashboard + SSE server for real-time streaming.
+---
 
-## Core capabilities
+## Architecture
 
-- **Event store** (`eventstore/`):
-  - Append-only persistence with monotonically increasing global sequence numbers.
-  - UTC-date-partitioned journal files.
-  - Sequence state file for fast recovery after restart.
-  - Read-from-sequence APIs for downstream consumers.
-- **SEC discovery** (`secwatch/`, `cmd/secwatch`):
-  - Polls SEC EDGAR submissions for issuers/forms defined in `config/watchlist.json`.
-  - Emits `filing_discovered` events into the event store.
-  - Supports dry-run, bounded concurrency, rate limiting, retries, and optional polling loops.
-- **Press release discovery** (`prwatch/`, `cmd/prwatch`):
-  - Polls PR Newswire, discovers release URLs, and emits discovery events.
-  - Supports dry-run and continuous polling.
-- **Signal intelligence worker** (`internal/processor`, `pkg/intelligence`, `cmd/processor`):
-  - Watches filing discovery events.
-  - Fetches source filing documents (HTML/XBRL-linked pages), cleans text, and runs provider analysis.
-  - Emits structured signal outputs for downstream trading/monitoring workflows.
-- **Realtime streaming + dashboard** (`internal/server`, `cmd/dashboard`):
-  - Exposes an HTTP dashboard and SSE stream for newly appended events/signals.
+```
+SEC EDGAR          PR Newswire
+    │                   │
+    ▼                   ▼
+ secwatch            prwatch ──► prwatch-body
+    │
+    ▼
+ var/secwatch/  (event store)
+    │
+    ├──► processor      (filing text → signals)
+    │
+    ├──► entity-graph   (8-K Item 5.07 → director graph + governance signals)
+    │         │
+    │         ▼
+    │    var/entity-graph/
+    │    (nodes, edges, signals, auditors — NDJSON append-only)
+    │         │
+    │         ▼
+    │    emily-observations/latest.json
+    │         │
+    │         ▼
+    │    observation-watcher ──► claude --dangerously-skip-permissions
+    │    (polls; gates trivial batches)   (refines rules or parser)
+    │                                          │
+    │                                          ▼
+    │                             config/entity-graph-rules.json
+    │                             (hot-reloaded; no restart needed)
+    │
+    ├──► dashboard      (SSE stream  :8080)
+    ├──► newssite       (filing HTML :8082)
+    ├──► feedserver     (TCP framed  :8083)
+    ├──► signalapi      (HTTP query  :8084)
+    └──► emily-agent    (LLM ops + signal analyst :8080)
+```
 
-## Repository components
+All event stores are **file-backed append-only NDJSON**, UTC-date-partitioned, with monotonic sequence numbers. Processes resume from their cursor after restart.
 
-| Component | Description |
-| --- | --- |
-| `eventstore` | Core storage engine, including persistence/recovery and sequence-based reads. |
-| `secwatch` | SEC submission discovery and normalization logic. |
-| `prwatch` | PR discovery and source crawling support. |
-| `internal/processor` | Event-to-signal processing worker pipeline. |
-| `pkg/intelligence` | Signal schema + provider interface for analysis backends. |
-| `secfixtures` | Fixture management helpers for SEC corpus snapshots and regression support. |
-| `internal/server` | Dashboard + SSE serving layer. |
-| `fixtures` | Local issuer fixture corpus (metadata + filing artifacts). |
+---
 
-## Signal schema
+## Entity-graph intelligence engine
 
-Processor-generated signals follow this structure (`pkg/intelligence`):
+The entity-graph pipeline (`cmd/entity-graph`) processes SEC 8-K filings containing Item 5.07 vote results from annual meetings and builds a persistent knowledge graph of directors, their approval histories, and their relationships across companies.
 
-- `signal_type`: e.g. `M&A`, `Earnings`, `Legal`, `Leadership`, `Other`
-- `importance`: integer score from `1` to `10`
-- `sentiment`: decimal score from `-1.0` to `1.0`
-- `summary`: concise one-sentence event summary
-- `impact_analysis`: short paragraph describing likely financial impact
-- `raw_metadata`: provider/debug metadata map
+### What it extracts from each 8-K
 
-## Getting started
+- **Director nominees**: name (dotted initials, compound hyphenated surnames), for/against/abstain/broker-non-vote counts, approval %
+- **Non-director proposals**: supermajority thresholds, pass/fail outcomes, vote fractions
+- **Auditor**: public accounting firm from the ratification proposal
+
+### Signal types
+
+| Signal | Severity | What it means |
+|--------|----------|---------------|
+| `director_friction` | medium–high | Approval below 85% — activist targeting or board misalignment |
+| `nomination_rejection` | critical | Approval below 50% — director must submit resignation under majority-voting standards |
+| `director_decay` | low–medium | Approval declining year-over-year — replacement likely within 12–18 months |
+| `high_trust_director` | low | Approval above 95% — stable seat |
+| `governance_entrenchment` | high | Proposal passed by large majority but blocked by supermajority-of-outstanding threshold — structural M&A defense |
+| `activist_risk` | high | **Composite**: entrenchment + friction co-occur within 12 months. Base rate: activist 13D within 6 months in ~60% of cases |
+| `director_link` | low | Friction director sits on multiple boards — risk propagates across portfolio |
+| `family_control` | medium | Director name matches founder/family keyword — concentrated founder control |
+| `broker_nonvote_anomaly` | low | Broker non-votes above 12% — elevated retail/street-name voting |
+| `compensation_concern` | medium | Say-on-pay opposition above 30% — ESG funds agitating on executive pay |
+| `abstention_spike` | low | Proposal abstention above 10% — shareholder confusion or protest vote |
+| `auditor_change` | medium | Company switched public accounting firm — may precede regulatory action or transaction |
+
+Signal thresholds are **hot-reloadable** from `config/entity-graph-rules.json` — the recursive self-improvement loop edits this file and the running process picks up changes on the next batch without a restart.
+
+### Recursive self-improvement loop
+
+```
+entity-graph process
+  → publishes var/emily-observations/latest.json
+  → observation-watcher detects content-hash change
+  → (gate: skip if only high_trust signals fired, no gaps or errors)
+  → builds prompt: observation JSON + current rules.json
+  → invokes: claude --dangerously-skip-permissions "<prompt>"
+  → Claude edits config/entity-graph-rules.json (thresholds)
+       or internal/entitygraph/parser.go (parse failures)
+  → runs go test ./...
+  → commits passing changes
+  → entity-graph hot-reloads rules on next batch
+  → publishes updated observation → loop continues
+```
+
+```bash
+# Terminal 1
+go run ./cmd/entity-graph \
+  -store ./var/secwatch \
+  -graph-dir ./var/entity-graph \
+  -obs-dir ./var/emily-observations
+
+# Terminal 2
+go run ./cmd/observation-watcher -gate nontrivial
+```
+
+---
+
+## Emily agent
+
+Emily (`cmd/emily-agent`) is a Claude-powered operations agent with two roles:
+
+**Ops agent** — start/stop pipeline processes, tail logs, check health, count documents, write observations for Claude Code.
+
+**Signal analyst** — answers questions about governance signals using live data from the entity-graph store:
+
+- *"What's the risk picture for SCHW?"*
+- *"Is there activist risk in our portfolio?"*
+- *"Who are the directors at GS and what are their approval trends?"*
+- *"Which directors sit on multiple boards?"*
+
+| Tool | Purpose |
+|------|---------|
+| `fatbaby_signal_summary` | Dashboard: all signals by type/severity, top tickers, recent high/critical alerts |
+| `fatbaby_query_signals` | Filtered search: ticker, signal type, min severity, date window |
+| `fatbaby_entity_graph` | Director/company lookup: approval trends, co-board partners, auditor history |
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+go run ./cmd/emily-agent
+# → http://localhost:8080
+```
+
+---
+
+## Quick start
 
 ### Requirements
 
-- Go `1.22+`
-
-### Install dependencies
+- Go 1.22+
+- `ANTHROPIC_API_KEY`
 
 ```bash
 go mod download
 ```
 
-### Configure watchlist
-
-Maintain issuers/forms in:
-
-- `config/watchlist.json`
-
-Each entry is intended to track a ticker, CIK, and allowed form set (for example `8-K`, `10-Q`, `10-K`).
-
-## Running the system
-
-### 1) SEC discovery
-
-Run a one-shot dry-run poll (no persistence):
-
-```bash
-go run ./cmd/secwatch \
-  -watchlist ./config/watchlist.json \
-  -store ./var/secwatch \
-  -dry-run
-```
-
-Run with persistence enabled:
+### 1. Seed SEC filings
 
 ```bash
 go run ./cmd/secwatch \
@@ -95,95 +152,90 @@ go run ./cmd/secwatch \
   -store ./var/secwatch
 ```
 
-Run continuously every 5 minutes:
+### 2. Run entity-graph pipeline
 
 ```bash
-go run ./cmd/secwatch \
-  -watchlist ./config/watchlist.json \
+go run ./cmd/entity-graph \
   -store ./var/secwatch \
-  -poll-interval 5m
+  -graph-dir ./var/entity-graph \
+  -obs-dir ./var/emily-observations
 ```
 
-### 2) PR discovery
-
-Run PR Newswire discovery loop:
+### 3. Start Emily
 
 ```bash
-go run ./cmd/prwatch \
-  -store ./var/prwatch
+go run ./cmd/emily-agent   # → http://localhost:8080
 ```
 
-Optional dry-run mode:
+### 4. (Optional) Recursive self-improvement
 
 ```bash
-go run ./cmd/prwatch \
-  -store ./var/prwatch \
-  -dry-run
+go run ./cmd/observation-watcher -gate nontrivial
 ```
 
-### 3) Signal processor
+---
 
-Start processing discovered filings into structured signals:
+## All processes
 
-```bash
-go run ./cmd/processor \
-  -store ./var/secwatch \
-  -workers 4
-```
+| Process | Purpose |
+|---------|---------|
+| `cmd/secwatch` | Polls SEC EDGAR → `filing_discovered` events |
+| `cmd/prwatch` | Polls PR Newswire → discovery events |
+| `cmd/prwatch-body` | Fetches press release bodies |
+| `cmd/processor` | Filings → structured signals |
+| `cmd/entity-graph` | 8-K Item 5.07 → director graph + governance signals |
+| `cmd/observation-watcher` | Triggers Claude when entity-graph publishes an observation |
+| `cmd/emily-agent` | LLM ops agent + signal analyst (:8080) |
+| `cmd/dashboard` | SSE event dashboard (:8080) |
+| `cmd/newssite` | Filing reader (:8082) |
+| `cmd/feedserver` | TCP framed feed (:8083) |
+| `cmd/signalapi` | HTTP signal query API (:8084) |
+| `cmd/broker` | Tenant-aware proxy with hot-reload registry |
 
-### 4) Dashboard + SSE server
+Data: `./var/<process>/`. Logs: `./var/logs/<process>.log`.
 
-Start dashboard server:
+---
 
-```bash
-go run ./cmd/dashboard \
-  -data-dir ./var/secwatch \
-  -port 8080
-```
+## Configuration
 
-Then open `http://localhost:8080`.
+### `config/watchlist.json`
 
-## Event store quick start
+25 companies pre-configured: SCHW, GS, MS, JPM, BAC, WFC, BLK, STT, C, IBKR, BRK.A/B, AAPL, MSFT, NVDA, BEN, PLTR, MSTR, LLY, and others. 8-K filings with Item 5.07 feed the entity-graph pipeline.
 
-```go
-package main
+### `config/entity-graph-rules.json`
 
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"time"
+Hot-reloadable thresholds. Key fields:
 
-	"github.com/example/prrject-fatbaby/eventstore"
-)
-
-func main() {
-	store, err := eventstore.NewFileStore("./data")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer store.Close()
-
-	payload, _ := json.Marshal(map[string]any{"order_id": "A123", "amount": 4200})
-	records, err := store.Append(context.Background(), eventstore.Event{
-		ID:         "evt-1",
-		Type:       "order.created",
-		OccurredAt: time.Now().UTC(),
-		Data:       payload,
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("appended sequence: %d\n", records[0].Sequence)
+```json
+{
+  "friction_threshold": 0.85,
+  "nomination_rejection_threshold": 0.50,
+  "entrenchment_min_for": 0.80,
+  "broker_nonvote_anomaly_threshold": 0.12,
+  "activist_risk_window_days": 365,
+  "family_name_keywords": ["schwab", "walton", "mars", "buffett", "fidelity", "johnson"]
 }
 ```
 
-## Architecture notes
+---
 
-- [Distributed event intelligence architecture](docs/architecture-distributed-event-intelligence.md)
-- [News site end-to-end runbook](docs/news-site-e2e-runbook.md)
+## Runtime data layout
+
+```
+var/
+├── secwatch/           filing_discovered + source_document_persisted events
+├── entity-graph/
+│   ├── nodes.ndjson    PersonNode records (compacted on startup)
+│   ├── edges.ndjson    board co-member edges
+│   ├── signals.ndjson  all governance signals
+│   └── auditors.ndjson most recent auditor per ticker
+├── emily-observations/
+│   ├── latest.json     current observation (triggers observation-watcher)
+│   └── <timestamp>.json archived observations
+└── logs/
+```
+
+---
 
 ## Testing
 
@@ -191,6 +243,21 @@ func main() {
 go test ./...
 ```
 
-## License
+---
 
-See [LICENSE](LICENSE).
+## Northstar roadmap
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1 — Core extraction | ✅ | 8-K parser, entity graph, 12 signal types, 30+ tests |
+| 2 — Recursive loop | ✅ | Observation-watcher, Claude refinement, hot-reload rules, severity gate |
+| 3 — Multi-company | 🔄 | 25-company watchlist; director centrality; `director_link` fires on shared directors |
+| 4 — Enrichment | 🔲 | FEC donor data, FARA lobbying, SEC comment letters |
+
+---
+
+## Further reading
+
+- [Northstar: 8-K Intelligence Engine](docs/northstar/northstar.md)
+- [Distributed event intelligence architecture](docs/architecture-distributed-event-intelligence.md)
+- [News site end-to-end runbook](docs/news-site-e2e-runbook.md)

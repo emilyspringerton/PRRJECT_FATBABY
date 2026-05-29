@@ -57,6 +57,7 @@ func main() {
 		rulesPath = flag.String("rules", envOr("ENTITY_GRAPH_RULES", ""), "path to entity-graph-rules.json; included in refinement prompts when non-empty")
 		oneShot   = flag.Bool("one-shot", false, "process at most one observation, then exit")
 		dryRun    = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
+		gateMode  = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
 	)
 	flag.Parse()
 
@@ -72,7 +73,7 @@ func main() {
 	log.Printf("watching %s (interval=%s cmd=%q dry_run=%v)", latest, *interval, *cmdName, *dryRun)
 
 	for {
-		processed, err := pollOnce(latest, cursor, *cmdName, *extraArg, *dryRun, *rulesPath)
+		processed, err := pollOnce(latest, cursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode)
 		if err != nil {
 			log.Printf("poll error: %v", err)
 		}
@@ -103,10 +104,28 @@ func observationHash(o observation) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// isTrivialObservation returns true when the observation carries no actionable
+// content: status is "ok", no parse errors, no gaps, and every signal that fired
+// is a high_trust_director (informational-only; no refinement needed).
+func isTrivialObservation(obs observation) bool {
+	if obs.Status == "needs_attention" {
+		return false
+	}
+	if len(obs.ParseErrors) > 0 || len(obs.Gaps) > 0 {
+		return false
+	}
+	for t, count := range obs.SignalsByType {
+		if count > 0 && t != "high_trust_director" {
+			return false
+		}
+	}
+	return true
+}
+
 // pollOnce checks latest.json and, if its content hash differs from the cursor,
 // invokes the configured command and updates the cursor. Returns true if an
 // observation was processed.
-func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath string) (bool, error) {
+func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath, gateMode string) (bool, error) {
 	b, err := os.ReadFile(latestPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -127,12 +146,22 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, ru
 		return false, nil
 	}
 
-	prompt := buildPrompt(latestPath, obs, rulesPath)
 	subject := obs.Summary
 	if obs.Subject != "" {
 		subject = obs.Subject
 	}
 	log.Printf("new observation timestamp=%s source=%s status=%s subject=%q hash=%s", obs.Timestamp, obs.Source, obs.Status, subject, hash[:12])
+
+	// Gate: skip low-information observations to avoid burning Claude API quota.
+	if gateMode == "nontrivial" && isTrivialObservation(obs) {
+		log.Printf("gate=nontrivial skipping trivial observation (only high_trust signals, no gaps or errors) — updating cursor without invoking claude")
+		if err := os.WriteFile(cursorPath, []byte(hash), 0o644); err != nil {
+			return false, fmt.Errorf("update cursor: %w", err)
+		}
+		return true, nil
+	}
+
+	prompt := buildPrompt(latestPath, obs, rulesPath)
 
 	if !dryRun {
 		args := splitArgs(extraArgs)

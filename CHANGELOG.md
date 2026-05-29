@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-29 — Cycle 5: director centrality, observer gate, compaction + README
+
+- **Director centrality** (`internal/entitygraph/graph.go`): Added `Centrality int` field to `PersonNode`. Recomputed in `UpsertPerson` after every filing append as the count of distinct tickers in the node's filing history. A director with `Centrality >= 3` is a bridge node — their friction signals propagate risk across multiple companies. Field is persisted in `nodes.ndjson` and surfaced in `fatbaby_entity_graph` tool output.
+- **Graph compaction** (`internal/entitygraph/graph.go`): Added `CompactNodes(dir string) error` — rewrites `nodes.ndjson` in place, keeping only the last record per `canonical_id`. The append-only store accumulates duplicates across runs; compaction runs automatically at the start of each `entity-graph` batch (`cmd/entity-graph/main.go`).
+- **Observer status fix** (`internal/entitygraph/observer.go`): `status` field now correctly set to `needs_attention` when there are **gaps** (not just parse errors). Previously gaps were silent — the observation was `ok` even when the pipeline had unresolved coverage issues.
+- **Observation-watcher severity gate** (`cmd/observation-watcher/main.go`): Added `-gate` flag (default `nontrivial`, env `OBSERVATION_GATE`). When `nontrivial`, the watcher skips Claude invocation when the observation has: `status=ok`, no parse errors, no gaps, and only `high_trust_director` signals. The cursor is still updated (deduplicated) — just no Claude API call. Prevents burning quota on quiet high-trust-only batches. `gate=none` restores always-invoke behaviour. Added two new tests covering the gate in both directions.
+- **README rewrite**: Complete overhaul. Now accurately describes the entity-graph intelligence engine, recursive self-improvement loop, Emily's dual ops+analyst role, signal type glossary, northstar roadmap, and runtime data layout.
+
 ## 2026-05-29 — Emily signal intelligence
 
 - **`cmd/emily-agent/signal_intelligence.go`** (new): Three new tools giving Emily the ability to read and explain entity-graph governance signals.

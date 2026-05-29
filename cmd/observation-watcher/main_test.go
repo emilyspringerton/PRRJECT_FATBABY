@@ -24,7 +24,7 @@ func writeObs(t *testing.T, path string, obs observation) {
 
 func TestPollOnceNoFile(t *testing.T) {
 	dir := t.TempDir()
-	processed, err := pollOnce(filepath.Join(dir, "latest.json"), filepath.Join(dir, ".last-processed"), "true", "", true, "")
+	processed, err := pollOnce(filepath.Join(dir, "latest.json"), filepath.Join(dir, ".last-processed"), "true", "", true, "", "none")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestPollOnceProcessesNewObservation(t *testing.T) {
 	}
 	writeObs(t, latest, obs)
 
-	processed, err := pollOnce(latest, cursor, "true", "", true, "")
+	processed, err := pollOnce(latest, cursor, "true", "", true, "", "none")
 	if err != nil {
 		t.Fatalf("poll: %v", err)
 	}
@@ -75,14 +75,14 @@ func TestPollOnceSkipsSameContentEvenIfTimestampChanged(t *testing.T) {
 		Findings:  "no events for 30m",
 	}
 	writeObs(t, latest, first)
-	if _, err := pollOnce(latest, cursor, "true", "", true, ""); err != nil {
+	if _, err := pollOnce(latest, cursor, "true", "", true, "", "none"); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 
 	second := first
 	second.Timestamp = "2026-05-28T12:05:00Z"
 	writeObs(t, latest, second)
-	processed, err := pollOnce(latest, cursor, "true", "", true, "")
+	processed, err := pollOnce(latest, cursor, "true", "", true, "", "none")
 	if err != nil {
 		t.Fatalf("poll2: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestPollOnceProcessesContentChange(t *testing.T) {
 		Findings:  "no events for 30m",
 	}
 	writeObs(t, latest, first)
-	if _, err := pollOnce(latest, cursor, "true", "", true, ""); err != nil {
+	if _, err := pollOnce(latest, cursor, "true", "", true, "", "none"); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 
@@ -111,7 +111,7 @@ func TestPollOnceProcessesContentChange(t *testing.T) {
 		Findings:  "ticker dropped",
 	}
 	writeObs(t, latest, second)
-	processed, err := pollOnce(latest, cursor, "true", "", true, "")
+	processed, err := pollOnce(latest, cursor, "true", "", true, "", "none")
 	if err != nil {
 		t.Fatalf("poll2: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestPollOnceProcessesSeverityChange(t *testing.T) {
 		Findings:  "no events for 30m",
 	}
 	writeObs(t, latest, first)
-	if _, err := pollOnce(latest, cursor, "true", "", true, ""); err != nil {
+	if _, err := pollOnce(latest, cursor, "true", "", true, "", "none"); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 
@@ -144,7 +144,7 @@ func TestPollOnceProcessesSeverityChange(t *testing.T) {
 	second.Severity = "error"
 	second.Timestamp = "2026-05-28T11:01:00Z"
 	writeObs(t, latest, second)
-	processed, err := pollOnce(latest, cursor, "true", "", true, "")
+	processed, err := pollOnce(latest, cursor, "true", "", true, "", "none")
 	if err != nil {
 		t.Fatalf("poll2: %v", err)
 	}
@@ -160,12 +160,65 @@ func TestPollOnceRejectsMissingTimestamp(t *testing.T) {
 	if err := os.WriteFile(latest, []byte(`{"summary":"x","findings":"y"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := pollOnce(latest, filepath.Join(dir, ".last-processed"), "true", "", true, "")
+	_, err := pollOnce(latest, filepath.Join(dir, ".last-processed"), "true", "", true, "", "none")
 	if err == nil {
 		t.Fatal("expected error for missing timestamp")
 	}
 	if !strings.Contains(err.Error(), "timestamp") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestPollOnceTrivialGateSkipsInvocation(t *testing.T) {
+	dir := t.TempDir()
+	latest := filepath.Join(dir, "latest.json")
+	cursor := filepath.Join(dir, ".last-processed")
+
+	// Observation with only high_trust signals, no gaps, status ok.
+	obs := observation{
+		Timestamp:     "2026-05-29T18:00:00Z",
+		Source:        "entity-graph",
+		Status:        "ok",
+		Subject:       "Entity graph run: 1 filings, 4 directors, 4 signals",
+		SignalsByType: map[string]int{"high_trust_director": 4},
+	}
+	writeObs(t, latest, obs)
+
+	// gate=nontrivial + dry_run=false: should NOT invoke the command (use "false"
+	// which exits 1 to confirm invocation would have failed).
+	processed, err := pollOnce(latest, cursor, "false", "", false, "", "nontrivial")
+	if err != nil {
+		// "false" command returns exit status 1 — if we get here, the gate failed.
+		t.Fatalf("gate did not suppress trivial observation (command was invoked): %v", err)
+	}
+	if !processed {
+		t.Error("expected processed=true (cursor updated) even when gate suppresses invocation")
+	}
+}
+
+func TestPollOnceTrivialGateAllowsNonTrivial(t *testing.T) {
+	dir := t.TempDir()
+	latest := filepath.Join(dir, "latest.json")
+	cursor := filepath.Join(dir, ".last-processed")
+
+	// Observation with a friction signal — not trivial.
+	obs := observation{
+		Timestamp:     "2026-05-29T18:00:00Z",
+		Source:        "entity-graph",
+		Status:        "needs_attention",
+		Subject:       "friction detected",
+		SignalsByType: map[string]int{"high_trust_director": 3, "director_friction": 1},
+		Gaps:          []string{"some gap"},
+	}
+	writeObs(t, latest, obs)
+
+	// gate=nontrivial + dry_run=true: should proceed to invocation path (dry-run won't actually run).
+	processed, err := pollOnce(latest, cursor, "true", "", true, "", "nontrivial")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !processed {
+		t.Error("expected processed=true for non-trivial observation with nontrivial gate")
 	}
 }
 

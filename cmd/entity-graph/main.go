@@ -98,6 +98,11 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		return cfg.cursor
 	}
 
+	// Compact nodes.ndjson before loading to remove accumulated duplicates.
+	if err := entitygraph.CompactNodes(cfg.graphDir); err != nil {
+		logger.Printf("compact nodes err=%v (non-fatal)", err)
+	}
+
 	graph := entitygraph.NewGraph()
 	if err := graph.LoadNodesFromDir(cfg.graphDir); err != nil {
 		logger.Printf("load existing nodes err=%v", err)

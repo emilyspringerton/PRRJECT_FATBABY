@@ -79,12 +79,12 @@ func BuildObservation(
 		}
 	}
 
+	gaps := detectGaps(signals, nodeCount, byType, proposalsProcessed)
+
 	status := "ok"
-	if len(parseErrors) > 0 {
+	if len(parseErrors) > 0 || len(gaps) > 0 {
 		status = "needs_attention"
 	}
-
-	gaps := detectGaps(signals, nodeCount, byType, proposalsProcessed)
 
 	obs := Observation{
 		Timestamp:          time.Now().UTC().Format(time.RFC3339),
