@@ -1,0 +1,529 @@
+# CLAUDE REFINEMENT PROMPT: 8-K Intelligence Engine
+## Weekly Self-Improvement via Claude CLI
+
+**File**: To be used with `claude --dangerously-skip-permissions < this-file.md`  
+**Refresh cadence**: Weekly (every Monday at 09:00 UTC)  
+**Owner**: Emily agent + observation-watcher  
+
+---
+
+## CONTEXT: CURRENT STATE
+
+### Signal Engine Performance (Last 7 Days)
+
+**Filings processed**: {FILING_COUNT}  
+**Companies monitored**: {COMPANY_COUNT}  
+**Directors identified**: {DIRECTOR_COUNT}  
+**Signals generated**: {SIGNAL_COUNT}  
+**Average signal confidence**: {AVG_CONFIDENCE}%  
+
+**Signals by severity**:
+- Critical: {CRITICAL_COUNT}
+- High: {HIGH_COUNT}
+- Medium: {MEDIUM_COUNT}
+- Low: {LOW_COUNT}
+
+### Retrospective Accuracy (Ground Truth Measurement)
+
+**Friction signals → Director replacement within 12 months**: {FRICTION_ACCURACY}%  
+Example: Frank Herringer showed 84.3% approval (friction signal) on SCHW 2026-05-21. 
+*Ground truth to be measured in May 2027.*
+
+**Entrenchment signals → Activist 13D within 6 months**: {ENTRENCHMENT_ACCURACY}%  
+Example: SCHW declassification vote failed despite 92% shareholder support (entrenchment signal) on 2026-05-21.
+*Ground truth: monitor for Schedule 13D filings through Nov 2026.*
+
+**Related-stocks signals → Director correlation >0.4**: {CORRELATION_ACCURACY}%  
+Example: Frank Herringer sits on 3 boards. Do those stocks move together?
+*Ground truth: pull 12-month price correlation data.*
+
+**M&A risk signals → Actual M&A within 12 months**: {M2A_ACCURACY}%  
+Example: Classified board + governance friction = M&A risk signal.
+*Ground truth: track SCHW for acquisition activity through May 2027.*
+
+---
+
+## PARSING & EXTRACTION GAPS DETECTED BY EMILY
+
+### Failing Filings (Unrecoverable Errors)
+
+```json
+{
+  "filings_failed_count": {FAILED_COUNT},
+  "examples": [
+    {
+      "ticker": "XYZ",
+      "form": "8-K",
+      "date": "2026-05-15",
+      "error": "Item 5.07 not found in expected location",
+      "filing_url": "https://..."
+    }
+  ]
+}
+```
+
+**Question for you**: What parsing strategies should we add to handle form variants?
+
+### Partially Parsed Filings (Incomplete Extraction)
+
+```json
+{
+  "partial_parse_count": {PARTIAL_COUNT},
+  "examples": [
+    {
+      "ticker": "SCHW",
+      "form": "8-K",
+      "missing_field": "Director names in voting table (3 of 4 extracted, 1 skipped)",
+      "reason": "Name format: 'Carolyn Schwab-Pomerantz' didn't match regex /^[A-Z][a-z]+\\s[A-Z]\\./",
+      "impact": "Missed family director signal"
+    }
+  ]
+}
+```
+
+**Question for you**: Which name formats are we missing? Can you suggest a better regex?
+
+### Canonicalization Failures
+
+```json
+{
+  "duplicate_person_count": {DUPLICATE_COUNT},
+  "examples": [
+    {
+      "canonical_id_a": "john-smith-director",
+      "canonical_id_b": "j-smith-schwab",
+      "confidence": 0.92,
+      "problem": "Edit distance 2 (fuzzy match), but not yet merged"
+    }
+  ]
+}
+```
+
+**Question for you**: Should we lower the merge threshold? Risk of false positives?
+
+---
+
+## SIGNAL ANOMALIES & CONTRADICTIONS DETECTED
+
+### Signals That Fired Unexpectedly
+
+```json
+{
+  "anomaly_count": {ANOMALY_COUNT},
+  "examples": [
+    {
+      "signal_id": "high_trust_director_xyz",
+      "director": "Unknown Director (First appearance in 2026)",
+      "approval": 0.98,
+      "problem": "Marked as 'high trust' despite no historical data. New directors should not be high-trust."
+    }
+  ]
+}
+```
+
+**Question for you**: Should "high-trust" require 3+ years tenure? Or prior board seats?
+
+### Signals That Should Have Fired But Didn't
+
+```json
+{
+  "missed_signal_count": {MISSED_COUNT},
+  "examples": [
+    {
+      "ticker": "ABC",
+      "form": "8-K",
+      "expected_signal": "Auditor change (Deloitte → PWC)",
+      "reason": "Auditor comparison not implemented yet"
+    }
+  ]
+}
+```
+
+**Question for you**: Which signals have the highest ROI (signal accuracy vs extraction cost)?
+
+### Contradictory Signals (Same Director, Conflicting Scores)
+
+```json
+{
+  "contradiction_count": {CONTRADICTION_COUNT},
+  "examples": [
+    {
+      "director": "frank-c-herringer",
+      "signal_a": {
+        "ticker": "SCHW",
+        "signal_type": "friction_director",
+        "score": 0.843
+      },
+      "signal_b": {
+        "ticker": "OtherCorp",
+        "signal_type": "high_trust_director",
+        "score": 0.95
+      },
+      "problem": "Same director is 'friction' at one company but 'high trust' at another. Should we weight by company governance maturity?"
+    }
+  ]
+}
+```
+
+**Question for you**: How do we model director reputation across portfolio?
+
+---
+
+## DATA ENRICHMENT REQUESTS
+
+### Missing External Data Sources
+
+**Regulatory affiliations** (10 directors without prior role history):
+- Need to query SEC EDGAR for director comment letters
+- Need FEC donor database lookup
+- Need FARA lobbying disclosure
+
+**Corporate affiliations** (30 directors with incomplete bio):
+- Need LinkedIn-style career history
+- Need think tank affiliations (CFR, Brookings, AEI, etc.)
+- Need education/credentials
+
+**Activist investor tracking** (No Schedule 13D correlation):
+- Need to scrape/API EDGAR for 13D filings
+- Need activist investor profiles (Starboard, Pershing Square, etc.)
+- Need correlation: high-governance-friction companies → activist targets?
+
+**M&A history** (No baseline for "M&A risk" validation):
+- Need Refinitiv/Dealogic API or Bloomberg data
+- Need to backtest: did our M&A risk signals precede actual M&A events?
+
+---
+
+## PATTERN DISCOVERIES FROM RECENT FILINGS
+
+### New Pattern #1: Director Approval Clustering
+
+```json
+{
+  "pattern": "director_approval_clustering",
+  "observation": "At SCHW, 4 directors have approval %s: 97.9%, 84.3%, 94.5%, 92.4%. The lowest (84.3%) is a clear outlier.",
+  "interpretation": "Frank Herringer (84.3%) is experiencing targeted opposition. Why?",
+  "hypothesis": [
+    "Activist investor targeting Herringer",
+    "ISS/Glass Lewis downgrade recommendation",
+    "Shareholder concerns about his other board seats",
+    "Compensation committee work on controversial pay"
+  ],
+  "data_to_collect": "Herringer's other board seats, ISS voting guidance, SEC proxy comment letters"
+}
+```
+
+**Question for you**: Can we detect "targeted director opposition" as a distinct signal?
+
+### New Pattern #2: Supermajority Entrenchment
+
+```json
+{
+  "pattern": "supermajority_entrenchment",
+  "observation": "SCHW declassification vote got 92% FOR but failed due to 80%-of-outstanding-shares supermajority requirement.",
+  "interpretation": "This is governance architecture working as intended (by management). Board is using a supermajority threshold as a takeover defense.",
+  "consequence": "Even if 95% of shareholders want declassification, it will fail until the supermajority threshold is lowered (which requires... shareholder vote at same threshold).",
+  "signal_strength": "CRITICAL — this is a self-protecting mechanism",
+  "related_risk": "Company is in 'fortress mode.' Either pre-M&A defense OR founder/insider control consolidation."
+}
+```
+
+**Question for you**: Should supermajority entrenchment be a separate signal family?
+
+### New Pattern #3: Auditor Consistency Across Brokerages
+
+```json
+{
+  "pattern": "auditor_concentration",
+  "observation": "Deloitte is the auditor for {N} out of {TOTAL} brokerage companies in our watchlist.",
+  "percentage": {AUDITOR_PCT}%,
+  "interpretation": "Deloitte has captured the brokerage audit market. Audit quality correlation?",
+  "hypothesis": "If Deloitte's quality degrades, all {N} companies are impacted. Systemic risk signal?",
+  "data_to_collect": "Audit findings, PCAOB inspection results, auditor criticism rates"
+}
+```
+
+**Question for you**: Should we build "auditor concentration risk" as a signal?
+
+---
+
+## REFINEMENT REQUESTS FOR CLAUDE
+
+### 1. Signal Rule Recalibrations
+
+**Current rule for "friction director"**:
+```yaml
+friction_director:
+  condition: "approval_pct < 0.85"
+  severity: "medium"
+```
+
+**Proposed refinements**:
+- Factor in approval trend (declining YoY = worse)
+- Factor in board size (friction on 12-person board is more significant than 5-person board)
+- Factor in other director approvals (if all directors >95%, single 84% is very conspicuous)
+
+**Question**: How would you weight these factors?
+
+---
+
+### 2. New Signal Types to Implement
+
+**Candidate #1: Auditor Change**
+- Trigger: Auditor differs between consecutive filings
+- Data: Compare current auditor vs prior filing
+- Confidence: High (easy to verify)
+- Severity: Medium (auditor changes can signal financial distress OR routine rotation)
+- Need: Implementation + backtest (have auditor changes preceded financial issues?)
+
+**Candidate #2: Pre-M&A Signal Composite**
+- Trigger: Classified board + governance friction + founder family seat + GC change
+- Logic: Weight each factor, multiply together
+- Severity: High (if all 4 present)
+- Need: Implementation + backtest against known M&A events
+
+**Candidate #3: Director Replacement Prediction**
+- Trigger: Declining approval trend (e.g., 90% → 85% → 80%)
+- Logic: Fit linear regression, extrapolate replacement year
+- Confidence: Increases with trend length
+- Severity: Low (informational, not actionable yet)
+- Need: Historical data across multiple companies + directors
+
+**Question**: Which of these three should we implement first? Which has the highest ROI?
+
+---
+
+### 3. Data Source Additions
+
+**SEC EDGAR Comment Letters** (for director regulatory affiliations):
+- Scrape https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000086364&type=&dateb=&owner=exclude&count=100
+- Parse comment letters for signatory names
+- Attribute: "Director commented on SEC rules in {YEAR}"
+- Example: Marianne Brown might appear as "Marianne Brown, Director, Company X" in a comment letter.
+
+**FEC Donor Database** (for political affiliations):
+- API: https://api.fec.gov/
+- Query by name (fuzzy match)
+- Returns: donation history, party preference, aggregate donor profile
+- Attribution: "Director donated $X to {PARTY} in {YEAR}"
+
+**FARA Lobbying Disclosures** (for influence network):
+- Source: OpenSecrets.org or scraped from justice.gov
+- Query: Is director registered as lobbyist or client?
+- Example: "Director represents Company X in financial services lobbying"
+
+**Activist Investor Database** (for 13D targeting):
+- Data source: Refinitiv, FactSet, or manual EDGAR scrape
+- Query: Active 13D filers (last 12 months)
+- Known activists: Starboard, Pershing Square, Elliott, ValueAct, Third Point
+- Signal: If company in our watchlist is 13D target, heighten M&A risk & governance crisis signals
+
+**Question**: Which of these four sources should we add first? Which has API access?
+
+---
+
+### 4. Extraction Pattern Improvements
+
+**Problem**: Name parsing is failing for:
+- Hyphenated surnames (Carolyn Schwab-Pomerantz)
+- Suffixes (Jr., Sr., III)
+- Non-Latin characters
+
+**Current regex**:
+```regex
+/^([A-Z][a-z]+)\s+([A-Z])\.\s+([A-Z][a-z]+)$/
+```
+
+**Proposed regex** (for your feedback):
+```regex
+/^([A-Z][a-z\-']+(?:\s+[A-Z][a-z\-']+)*)\s+([A-Z])\.\s+([A-Z][a-z\-']+(?:\s+[A-Z][a-z\-']+)*)(?:\s+(Jr\.|Sr\.|III|II|IV))?$/
+```
+
+**Question**: Is this regex too loose (false positives) or too tight (false negatives)? Better approach?
+
+---
+
+### 5. Accuracy Baseline & Measurement
+
+**Friction signal accuracy**:
+- We've flagged 12 directors as "friction" (approval <85%) in our data so far
+- In 12 months, how many were replaced?
+- Measurement: Scan next year's 8-K filings for these directors
+- Target: >75% of friction-flagged directors are replaced within 12 months
+
+**M&A risk signal accuracy**:
+- We've flagged 3 companies as high M&A risk
+- In 12 months, how many were acquired?
+- Measurement: Query Refinitiv for M&A activity
+- Target: >50% of flagged companies experience M&A attempts
+
+**Question**: What's a realistic accuracy threshold for production use? 70%? 80%?
+
+---
+
+## YOUR TASK: SUGGEST IMPROVEMENTS
+
+Given all the above, please provide:
+
+### A. Immediate Wins (Week 1)
+**What 2-3 changes should we implement immediately (this week)?**
+- Highest ROI (easy to implement, high signal quality)
+- Quick wins that build confidence in the system
+
+### B. Signal Recalibrations (Week 2-3)
+**How should we adjust the existing 6 signal types?**
+- Which signal rules are too loose/tight?
+- Which signals are firing unexpectedly?
+- What confidence thresholds should we change?
+
+### C. New Signals to Build (Week 4)
+**Which new signal types have the best ROI?**
+- Rank the 3+ candidates by:
+  - Implementation difficulty (LOC estimate)
+  - Accuracy (how confident can we be?)
+  - Actionability (can a trader or analyst act on this?)
+
+### D. Data Source Priorities (Week 5+)
+**Which external data sources should we prioritize?**
+- Regulatory affiliations (SEC comments, FEC donors)
+- Lobbying network (FARA)
+- Activist investor tracking (13D scraping)
+- Auditor peer analysis (PCAOB data)
+
+### E. Pattern Recognition
+**What new patterns do you see in the data?**
+- Are there clustering effects we're missing?
+- Are there temporal trends (seasonality, cycles)?
+- Are there sector-specific behaviors?
+
+### F. Go Code Patterns
+**For the new signals/extractors, provide skeleton code:**
+- Function signature
+- Input/output types
+- Pseudocode for the algorithm
+- How to test it
+
+---
+
+## RESPONSE FORMAT
+
+Please structure your response as:
+
+```markdown
+## A. Immediate Wins
+
+1. **[Signal name]** (implementation effort: ~{HOURS})
+   - Why: [justification]
+   - Approach: [how to implement]
+   - Expected accuracy: {PCT}%
+
+2. **[Signal name]** (implementation effort: ~{HOURS})
+   - ...
+
+## B. Signal Recalibrations
+
+### Signal: friction_director
+- **Current rule**: approval_pct < 0.85
+- **Issue**: [problem]
+- **Proposed rule**: [new rule with rationale]
+- **Confidence gain**: {PCT} percentage points
+
+### Signal: [other]
+- ...
+
+## C. New Signals to Build
+
+### Candidate 1: [Signal name]
+- **Effort**: {HOURS}
+- **Accuracy ceiling**: {PCT}%
+- **Actionability**: [high/medium/low]
+- **Implementation sketch**: [pseudocode or Go skeleton]
+- **Test strategy**: [how to validate]
+
+## D. Data Source Priorities
+
+### Priority 1: [Source name]
+- **API/scrape approach**: [method]
+- **Coverage**: {RECORDS}+ directors
+- **Effort**: {HOURS}
+- **Validation**: [how to know it worked]
+
+## E. Pattern Recognition
+
+- **Pattern 1**: [description]
+  - **Implication**: [what does it mean?]
+  - **Action**: [how to signal it]
+
+## F. Code Patterns
+
+\`\`\`go
+// Skeleton for new signal scorer
+func ScoreFrictionDirector(approvalPct float64, approvalTrend []float64, boardSize int) float64 {
+    // Pseudocode
+    base := 1.0 - approvalPct
+    trend := slope(approvalTrend) * -1 // declining trend worsens score
+    size_factor := 1.0 + (1.0 / float64(boardSize)) // smaller board = more significant
+    
+    return base * (1 + trend) * size_factor
+}
+\`\`\`
+
+---
+
+## OUTPUT
+
+Return this as a JSON file (not prose) that observation-watcher can parse and hot-reload:
+
+\`\`\`json
+{
+  "version": "1.0",
+  "timestamp": "{ISO8601}",
+  "immediate_wins": [
+    {
+      "signal_type": "...",
+      "effort_hours": 4,
+      "accuracy_pct": 78,
+      "implementation_sketch": "..."
+    }
+  ],
+  "signal_recalibrations": [
+    {
+      "signal_type": "friction_director",
+      "new_rule": "approval_pct < 0.85 AND trend_declining",
+      "confidence_gain_pct": 5
+    }
+  ],
+  "new_signals_ranked": [
+    {
+      "rank": 1,
+      "signal_type": "...",
+      "effort_hours": 8,
+      "accuracy_pct": 72,
+      "go_skeleton": "..."
+    }
+  ],
+  "data_source_priorities": [
+    {
+      "rank": 1,
+      "source_name": "...",
+      "approach": "api|scrape",
+      "effort_hours": 12,
+      "coverage_directors": 500
+    }
+  ],
+  "pattern_discoveries": [
+    {
+      "pattern_name": "...",
+      "evidence": "...",
+      "implication": "..."
+    }
+  ]
+}
+```
+```
+
+---
+
+## END OF PROMPT
+
+**Next steps**: Parse this JSON, hot-reload rules, commit to git, and report results to var/emily-observations.
