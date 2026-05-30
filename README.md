@@ -45,6 +45,10 @@ SEC EDGAR          PR Newswire
 
 All event stores are **file-backed append-only NDJSON**, UTC-date-partitioned, with monotonic sequence numbers. Processes resume from their cursor after restart.
 
+## AI system governance
+
+The agent operating model is documented in [`docs/ai-system-governance.md`](docs/ai-system-governance.md). It defines the three-agent boundary between Emiree, Emily Prime, and FatBaby-Emily; the allowed observation/directive/query channels; audit-trail requirements; and the improvement loops that keep the financial signal pipeline legible while it runs continuously.
+
 ---
 
 ## Entity-graph intelligence engine
