@@ -27,6 +27,8 @@ impact analysis), and streams them via SSE dashboard and a TCP feed server.
 | broker | `go run ./cmd/broker` | Tenant-aware proxy with hot-reload registry |
 | signalapi | `go run ./cmd/signalapi` | HTTP API for querying signals |
 | observation-watcher | `go run ./cmd/observation-watcher` | Invokes Claude Code when Emily publishes a new observation |
+| eps-processor | `go run ./cmd/eps-processor` | Extracts EPS from press releases, writes oracle cases + articles |
+| eps-reconciler | `go run ./cmd/eps-reconciler` | Reconciles oracle cases against filed 8-K EPS (confirms/contradicts) |
 
 Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log`.
 

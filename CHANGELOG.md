@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-30 — EPS Phase 1: oracle store, article generation, eps-processor, eps-reconciler
+
+- **`internal/eps/oracle.go`** (new): Oracle store persistence for the EPS self-improvement loop.
+  - `LoadOracleCases(dir)` — reads `var/eps/oracle.ndjson`; returns nil when file absent.
+  - `AppendOracleCase(dir, c)` — appends one case (creates file if needed).
+  - `WriteOracleCases(dir, cases)` — atomic rewrite via temp-file rename; used when updating verdicts.
+  - `OracleSummary` — aggregates confirmed/contradicts/pending counts + precision score for the feedback loop.
+  - `BuildOracleSummary(cases)` — derives precision = confirmed/(confirmed+contradicts).
+- **`internal/eps/article.go`** (new): Article generation per northstar editorial spec.
+  - `Article` type: Headline, Dek, Body, SourceIdentity, Ticker, Period, EPSValue, IsGAAP, PublishAt.
+  - `Generate(e *EarningsData) (Article, bool)` — returns `false` when confidence < 0.70 or FlagTraceFailure set (gating before publish).
+  - Headline rules: GAAP positive → `"{Issuer} reports {period} EPS of ${N.NN}"`; GAAP loss → `"... loss of ${N.NN} per share"`; adjusted-only → `"... adjusted EPS of ${N.NN}"`.
+  - Dek includes YoY change % and revenue when available. Body includes all extracted fields.
+  - `formatPeriodLabel` — handles Q1–Q4, FY, year-only, unknown.
+- **`internal/eps/oracle_test.go`** (new): 5 tests — round-trip append/load, missing file returns nil, atomic rewrite, summary precision, all-pending → precision=0.
+- **`internal/eps/article_test.go`** (new): 7 tests — AAPL headline contains 2.40/Q1 2026, MSFT uses GAAP not adjusted, loss headline format, low-confidence blocked, trace-failure blocked, period label formatting, body contains Revenue.
+- **`cmd/eps-processor/main.go`** (new): Pipeline process — polls `var/prwatch-body` for `pr_body_fetched` events.
+  - Loads `pr_discovered` events from `var/prwatch` into a ticker map (discovery ID → primary ticker symbol).
+  - For each body event: runs `eps.Extract` + `eps.Validate`; skips if no EPS found.
+  - Publishes: writes `Article` to `var/eps/articles.ndjson` + pending `OracleCase` to `var/eps/oracle.ndjson`.
+  - Cursor at `var/eps-processor/.cursor`; flags: `-discovery-store`, `-body-store`, `-eps-dir`, `-poll-interval`, `-one-shot`.
+- **`cmd/eps-reconciler/main.go`** (new): Async oracle reconciler — scans `var/secwatch` for 8-K `source_document_persisted` events that look like Item 2.02 earnings releases.
+  - Filters 8-Ks with EPS language (`item 2.02`, `earnings per share`, `diluted earnings`, `per share`).
+  - Runs `eps.Extract` on the 8-K body; matches to pending oracle cases by `ticker:quarter:year`.
+  - Within 5% relative error → `VerdictConfirmed`; otherwise → `VerdictContradicts`. Logs delta.
+  - Rewrites `var/eps/oracle.ndjson` atomically after each pass; logs precision summary.
+  - Flags: `-store`, `-eps-dir`, `-poll-interval` (default 6h), `-one-shot`.
+- **31 eps tests, all passing. 17 packages passing.**
+
 ## 2026-05-29 — Cycle 7: retrospective accuracy tracking + Schedule 13D/13G watcher (Phase 4)
 
 - **`internal/entitygraph/accuracy.go`** (new): Retrospective accuracy infrastructure.
