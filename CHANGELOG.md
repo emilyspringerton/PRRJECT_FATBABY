@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-30 — Newssite P0+P1: broadsheet redesign, signal-based front page, 7 new routes
+
+- **`internal/newssite/render.go`** — complete rewrite: `html/template`-based rendering with typed view
+  models; `ArticleView` with `Link` field supporting both signal-derived and document articles;
+  `buildFrontPage` merges ranked governance signals with source documents; signals take the lead
+  and secondary slots when present, docs fill the rest.
+- **`internal/newssite/templates.go`** — new broadsheet stylesheet (Georgia serif body / system-ui
+  furniture, severity palette, hairline rules, two-column grid); templates for front page, detail,
+  breaking, section, company desk, archive, about/masthead.
+- **`internal/newssite/graphread/graphread.go`** — new package: loads `var/entity-graph/signals.ndjson`
+  + `nodes.ndjson` into memory; `LiveSignals(ticker, today)` filters expired signals; background
+  refresh via `StartRefresh`.
+- **`internal/newssite/edition/edition.go`** — new package: `Rank(signals, today)` scores and sorts
+  by `severity_weight × confidence × recency_decay`; `GenerateHeadline` implements all 13 signal-type
+  templates from the northstar; `SectionFor` routes signal types to desk slugs.
+- **`internal/newssite/edition/edition_test.go`** — 20 golden tests covering headline generation for
+  all signal types, ranking order, expiry filtering, and deduplication.
+- **`internal/newssite/handler.go`** — 7 new routes: `/wire`, `/breaking`, `/section/{slug}`,
+  `/company/{ticker}`, `/archive`, `/about`, `/healthz`; optional `SetGraphStore` wires in signals.
+- **`cmd/newssite/main.go`** — added `-graph-dir` flag (default `var/entity-graph`); starts
+  background graphread refresh every 30s.
+
 ## 2026-05-30 — Emily capability expansion: governance + EPS ops tools, full pipeline coverage
 
 - **`cmd/emily-agent/main.go`** — 7 new tools + expanded process coverage:
