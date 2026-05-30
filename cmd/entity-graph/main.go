@@ -38,6 +38,7 @@ func main() {
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "how often to poll the event store")
 	batchSize := flag.Int("batch-size", 256, "max events to read per poll")
 	cursorPath := flag.String("cursor", filepath.Join("var", "entity-graph", ".cursor"), "file storing last-processed sequence number")
+	oneShot := flag.Bool("one-shot", false, "process one batch and exit (useful for cron or Emily's one-shot runner)")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "entity-graph ", log.LstdFlags|log.LUTC)
@@ -55,7 +56,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	logger.Printf("starting poll_interval=%s store=%s graph_dir=%s", *pollInterval, *storeRoot, *graphDir)
+	logger.Printf("starting poll_interval=%s store=%s graph_dir=%s one_shot=%v", *pollInterval, *storeRoot, *graphDir, *oneShot)
 
 	cursor := loadCursor(*cursorPath, logger)
 
@@ -69,6 +70,11 @@ func main() {
 			batchSize:  *batchSize,
 			cursor:     cursor,
 		})
+
+		if *oneShot {
+			logger.Printf("one-shot complete")
+			return
+		}
 
 		select {
 		case <-ctx.Done():

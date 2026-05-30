@@ -20,7 +20,34 @@ import (
 	"time"
 )
 
-// ── local types (mirror entitygraph structs; no import needed) ──────────────
+// ── local types (mirror entitygraph and accuracy structs; no import needed) ──
+
+type rawAccuracyRecord struct {
+	SignalType   string  `json:"signal_type"`
+	Outcome      string  `json:"outcome"` // confirmed | refuted | pending
+	Ticker       string  `json:"ticker"`
+}
+
+func loadAccuracyNDJSON(path string) []rawAccuracyRecord {
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var out []rawAccuracyRecord
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 4<<20), 4<<20)
+	for sc.Scan() {
+		var r rawAccuracyRecord
+		if json.Unmarshal(sc.Bytes(), &r) == nil {
+			out = append(out, r)
+		}
+	}
+	return out
+}
 
 type rawSignal struct {
 	SignalID       string            `json:"signal_id"`
@@ -177,7 +204,7 @@ func registerSignalIntelligenceTools(d *ToolDispatcher, fatbabyRoot string) {
 	// ── fatbaby_signal_summary ──────────────────────────────────────────────
 	d.Register(ToolDef{
 		Name:        "fatbaby_signal_summary",
-		Description: "Return a high-level dashboard of all entity-graph governance signals: counts by type and severity, tickers with the most activity, and the most recent high/critical alerts with their full interpretations. Call this first when a user asks about overall risk or what signals exist.",
+		Description: "Return a high-level dashboard of all entity-graph governance signals: counts by type and severity, tickers with the most activity, governance health scores per ticker, activist_risk prediction accuracy, and the most recent high/critical alerts. Call this first when a user asks about overall risk or what signals exist.",
 		Parameters:  ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}},
 	}, func(args map[string]any) (string, error) {
 		signals, err := loadSignalNDJSON(filepath.Join(graphDir, "signals.ndjson"))
@@ -185,32 +212,90 @@ func registerSignalIntelligenceTools(d *ToolDispatcher, fatbabyRoot string) {
 			return "", err
 		}
 		if len(signals) == 0 {
-			return "No signals yet — the entity-graph process has not run, or no 8-K filings with Item 5.07 have been processed.", nil
+			return "No signals yet — run fatbaby_run_entity_graph_once to process 8-K filings from the secwatch store.", nil
 		}
 
 		byType := map[string]int{}
 		bySeverity := map[string]int{}
 		byTicker := map[string]int{}
+		// Governance health index: most recent score per ticker.
+		healthByTicker := map[string]rawSignal{}
 		for _, s := range signals {
 			byType[s.Type]++
 			bySeverity[s.Severity]++
 			if s.Ticker != "" {
 				byTicker[s.Ticker]++
+			}
+			if s.Type == "governance_health_index" {
+				if prev, ok := healthByTicker[s.Ticker]; !ok || s.DetectedAt > prev.DetectedAt {
+					healthByTicker[s.Ticker] = s
+				}
+			}
 		}
-	}
 
 		// Sort tickers by signal count.
-		type kv struct{ k string; v int }
+		type kv struct {
+			k string
+			v int
+		}
 		var tickerList []kv
 		for k, v := range byTicker {
 			tickerList = append(tickerList, kv{k, v})
 		}
 		sort.Slice(tickerList, func(i, j int) bool { return tickerList[i].v > tickerList[j].v })
 
+		// Governance health table: ticker → score + severity.
+		type healthEntry struct {
+			Ticker   string  `json:"ticker"`
+			Score    float64 `json:"score"`
+			Severity string  `json:"severity"`
+		}
+		var healthTable []healthEntry
+		for ticker, s := range healthByTicker {
+			healthTable = append(healthTable, healthEntry{Ticker: ticker, Score: s.Score, Severity: s.Severity})
+		}
+		sort.Slice(healthTable, func(i, j int) bool { return healthTable[i].Score < healthTable[j].Score }) // worst first
+
+		// Activist_risk accuracy from accuracy.ndjson.
+		type accSummary struct {
+			SignalType  string  `json:"signal_type"`
+			Confirmed   int     `json:"confirmed"`
+			Refuted     int     `json:"refuted"`
+			Pending     int     `json:"pending"`
+			Precision   float64 `json:"precision"`
+		}
+		var accSummaries []accSummary
+		accRecs := loadAccuracyNDJSON(filepath.Join(graphDir, "accuracy.ndjson"))
+		if len(accRecs) > 0 {
+			byType2 := map[string]*accSummary{}
+			for _, r := range accRecs {
+				s, ok := byType2[r.SignalType]
+				if !ok {
+					s = &accSummary{SignalType: r.SignalType}
+					byType2[r.SignalType] = s
+				}
+				switch r.Outcome {
+				case "confirmed":
+					s.Confirmed++
+				case "refuted":
+					s.Refuted++
+				case "pending":
+					s.Pending++
+				}
+			}
+			for _, s := range byType2 {
+				resolved := s.Confirmed + s.Refuted
+				if resolved > 0 {
+					s.Precision = float64(s.Confirmed) / float64(resolved)
+				}
+				accSummaries = append(accSummaries, *s)
+			}
+		}
+
 		// Find most recent high/critical signals.
 		var alert []rawSignal
 		for _, s := range signals {
-			if rankSeverity(s.Severity) >= rankSeverity("high") {
+			if rankSeverity(s.Severity) >= rankSeverity("high") && s.Type != "governance_health_index" {
 				alert = append(alert, s)
 			}
 		}
@@ -220,10 +305,12 @@ func registerSignalIntelligenceTools(d *ToolDispatcher, fatbabyRoot string) {
 		}
 
 		result := map[string]any{
-			"total_signals":     len(signals),
-			"by_type":           byType,
-			"by_severity":       bySeverity,
-			"top_tickers":       tickerList,
+			"total_signals":        len(signals),
+			"by_type":              byType,
+			"by_severity":          bySeverity,
+			"top_tickers":          tickerList,
+			"governance_health":    healthTable,
+			"accuracy_scores":      accSummaries,
 			"recent_high_critical": alert,
 		}
 		b, _ := json.MarshalIndent(result, "", "  ")

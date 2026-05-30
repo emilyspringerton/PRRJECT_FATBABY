@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -151,9 +152,23 @@ func parseProcOutput(s string) string {
 }
 
 func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
-	valid := map[string][]string{"secwatch": {"-watchlist", "./config/watchlist.json", "-store", "./var/secwatch", "-poll-interval", "5m"}, "processor": {"-store", "./var/secwatch", "-workers", "4", "-poll-interval", "15s"}, "newssite": {"-store", "./var/secwatch", "-addr", ":8082"}, "dashboard": {"-data-dir", "./var/secwatch", "-port", "8080"}, "prwatch": {"-store", "./var/prwatch", "-poll-interval", "30s"}, "prwatch-body": {"-discovery-store", "./var/prwatch", "-body-store", "./var/prwatch-body", "-workers", "4", "-poll-interval", "15s"}}
+	valid := map[string][]string{
+		"secwatch":            {"-watchlist", "./config/watchlist.json", "-store", "./var/secwatch", "-poll-interval", "5m"},
+		"processor":           {"-store", "./var/secwatch", "-workers", "4", "-poll-interval", "15s"},
+		"newssite":            {"-store", "./var/secwatch", "-addr", ":8082"},
+		"dashboard":           {"-data-dir", "./var/secwatch", "-port", "8080"},
+		"prwatch":             {"-store", "./var/prwatch", "-poll-interval", "30s"},
+		"prwatch-body":        {"-discovery-store", "./var/prwatch", "-body-store", "./var/prwatch-body", "-workers", "4", "-poll-interval", "15s"},
+		"entity-graph":        {"-store", "./var/secwatch", "-graph-dir", "./var/entity-graph", "-obs-dir", "./var/emily-observations", "-rules", "./config/entity-graph-rules.json"},
+		"eps-processor":       {"-discovery-store", "./var/prwatch", "-body-store", "./var/prwatch-body", "-eps-dir", "./var/eps"},
+		"eps-reconciler":      {"-store", "./var/secwatch", "-eps-dir", "./var/eps"},
+		"schd13-watcher":      {"-watchlist", "./config/watchlist.json", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/schd13"},
+		"observation-watcher": {},
+		"signalapi":           {"-store", "./var/secwatch"},
+		"feedserver":          {"-store", "./var/secwatch"},
+	}
 
-	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
+	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|observation-watcher|signalapi|feedserver"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
 		pn, _ := args["process_name"].(string)
 		ea, _ := args["extra_args"].(string)
 		def, ok := valid[pn]
@@ -281,9 +296,13 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		return string(b), nil
 	})
 
-	// existing tools
-	d.Register(ToolDef{Name: "fatbaby_process_status", Description: "Check if fatbaby processes are running.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
-		names := []string{"cmd/secwatch", "cmd/prwatch", "cmd/prwatch-body", "cmd/processor", "cmd/dashboard", "cmd/newssite"}
+	d.Register(ToolDef{Name: "fatbaby_process_status", Description: "Check if fatbaby pipeline processes are running. Covers all processes: secwatch, prwatch, prwatch-body, processor, entity-graph, eps-processor, eps-reconciler, schd13-watcher, observation-watcher, dashboard, newssite, signalapi, feedserver.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		names := []string{
+			"cmd/secwatch", "cmd/prwatch", "cmd/prwatch-body", "cmd/processor",
+			"cmd/entity-graph", "cmd/eps-processor", "cmd/eps-reconciler",
+			"cmd/schd13-watcher", "cmd/observation-watcher",
+			"cmd/dashboard", "cmd/newssite", "cmd/signalapi", "cmd/feedserver",
+		}
 		type ps struct {
 			Name    string `json:"name"`
 			Running bool   `json:"running"`
@@ -299,7 +318,7 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			out = append(out, p)
 		}
 		dirs := map[string]bool{}
-		for _, s := range []string{"secwatch", "prwatch", "prwatch-body"} {
+		for _, s := range []string{"secwatch", "prwatch", "prwatch-body", "entity-graph", "eps", "schd13"} {
 			_, err := os.Stat(absStorePath(fatbabyRoot, s))
 			dirs[s] = err == nil
 		}
@@ -403,86 +422,305 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		}
 		return string(b), nil
 	})
+
+	// ── one-shot runners for governance pipeline ────────────────────────────
+
+	d.Register(ToolDef{Name: "fatbaby_run_entity_graph_once", Description: "Run one batch of the entity-graph governance processor and wait for completion (~30-90s depending on filing backlog). Reads 8-K filings from var/secwatch, updates var/entity-graph (nodes/edges/signals), and publishes an observation to var/emily-observations. Call fatbaby_read_observation afterward to see what was found.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "go", "run", "./cmd/entity-graph",
+			"-store", "./var/secwatch",
+			"-graph-dir", "./var/entity-graph",
+			"-obs-dir", "./var/emily-observations",
+			"-rules", "./config/entity-graph-rules.json",
+			"-one-shot")
+		cmd.Dir = fatbabyRoot
+		out, err := cmd.CombinedOutput()
+		s := strings.TrimSpace(string(out))
+		if len(s) > 8000 {
+			s = s[:8000]
+		}
+		return s, err
+	})
+
+	d.Register(ToolDef{Name: "fatbaby_run_schd13_once", Description: "Run one pass of the Schedule 13D/13G watcher and wait for completion. Queries EDGAR for activist filings on all watchlisted CIKs, writes var/schd13/filings.ndjson, and updates activist_risk signal accuracy records. Run after entity-graph has produced activist_risk signals.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "go", "run", "./cmd/schd13-watcher",
+			"-watchlist", "./config/watchlist.json",
+			"-graph-dir", "./var/entity-graph",
+			"-out-dir", "./var/schd13",
+			"-one-shot")
+		cmd.Dir = fatbabyRoot
+		out, err := cmd.CombinedOutput()
+		s := strings.TrimSpace(string(out))
+		if len(s) > 8000 {
+			s = s[:8000]
+		}
+		return s, err
+	})
+
+	d.Register(ToolDef{Name: "fatbaby_run_eps_reconcile_once", Description: "Run one pass of the EPS reconciler and wait for completion. Scans var/secwatch for 8-K earnings releases, matches pending oracle cases in var/eps/oracle.ndjson by ticker+quarter, and writes confirmed/contradicts verdicts. Returns oracle precision summary.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "go", "run", "./cmd/eps-reconciler",
+			"-store", "./var/secwatch",
+			"-eps-dir", "./var/eps",
+			"-one-shot")
+		cmd.Dir = fatbabyRoot
+		out, err := cmd.CombinedOutput()
+		s := strings.TrimSpace(string(out))
+		if len(s) > 4000 {
+			s = s[:4000]
+		}
+		return s, err
+	})
+
+	// ── EPS feed status ─────────────────────────────────────────────────────
+
+	d.Register(ToolDef{Name: "fatbaby_eps_status", Description: "Show the current state of the EPS headlines feed: oracle case counts (pending/confirmed/contradicts), extraction precision, and number of published articles. Use to assess how well the EPS extractor is performing and whether the reconciler has run.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		epsDir := filepath.Join(fatbabyRoot, "var", "eps")
+
+		// Count oracle cases.
+		oracleTotal, oraclePending, oracleConfirmed, oracleContradicts := 0, 0, 0, 0
+		if f, err := os.Open(filepath.Join(epsDir, "oracle.ndjson")); err == nil {
+			sc := bufio.NewScanner(f)
+			sc.Buffer(make([]byte, 1<<20), 1<<20)
+			for sc.Scan() {
+				var c struct {
+					Verdict string `json:"verdict"`
+				}
+				if json.Unmarshal(sc.Bytes(), &c) == nil {
+					oracleTotal++
+					switch c.Verdict {
+					case "confirmed":
+						oracleConfirmed++
+					case "contradicts":
+						oracleContradicts++
+					case "pending":
+						oraclePending++
+					}
+				}
+			}
+			f.Close()
+		}
+
+		precision := 0.0
+		resolved := oracleConfirmed + oracleContradicts
+		if resolved > 0 {
+			precision = float64(oracleConfirmed) / float64(resolved)
+		}
+
+		// Count articles.
+		articleCount := 0
+		if f, err := os.Open(filepath.Join(epsDir, "articles.ndjson")); err == nil {
+			sc := bufio.NewScanner(f)
+			sc.Buffer(make([]byte, 1<<20), 1<<20)
+			for sc.Scan() {
+				if len(strings.TrimSpace(sc.Text())) > 0 {
+					articleCount++
+				}
+			}
+			f.Close()
+		}
+
+		b, _ := json.MarshalIndent(map[string]any{
+			"oracle_total":       oracleTotal,
+			"oracle_pending":     oraclePending,
+			"oracle_confirmed":   oracleConfirmed,
+			"oracle_contradicts": oracleContradicts,
+			"precision":          precision,
+			"articles_published": articleCount,
+			"oracle_path":        "var/eps/oracle.ndjson",
+			"articles_path":      "var/eps/articles.ndjson",
+		}, "", "  ")
+		return string(b), nil
+	})
+
+	// ── Press release counts ────────────────────────────────────────────────
+
+	d.Register(ToolDef{Name: "fatbaby_count_press_releases", Description: "Count press releases in the prwatch pipeline: how many have been discovered (pr_discovered) and how many have had their full body fetched (pr_body_fetched). Use to verify prwatch and prwatch-body are making progress.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+		discovered, fetched, failed := 0, 0, 0
+
+		discStore, _, err := openStoreOrMessage(fatbabyRoot, "prwatch")
+		if err == nil {
+			defer discStore.Close()
+			latest, _ := discStore.LatestSequence(context.Background())
+			recs, _ := discStore.ReadFrom(context.Background(), 1, int(latest))
+			for _, r := range recs {
+				if r.Event.Type == "pr_discovered" {
+					discovered++
+				}
+			}
+		}
+
+		bodyStore, _, err := openStoreOrMessage(fatbabyRoot, "prwatch-body")
+		if err == nil {
+			defer bodyStore.Close()
+			latest, _ := bodyStore.LatestSequence(context.Background())
+			recs, _ := bodyStore.ReadFrom(context.Background(), 1, int(latest))
+			for _, r := range recs {
+				switch r.Event.Type {
+				case "pr_body_fetched":
+					fetched++
+				case "pr_body_failed":
+					failed++
+				}
+			}
+		}
+
+		b, _ := json.MarshalIndent(map[string]any{
+			"pr_discovered":   discovered,
+			"pr_body_fetched": fetched,
+			"pr_body_failed":  failed,
+		}, "", "  ")
+		return string(b), nil
+	})
 }
 
 const emilySystemPrompt = `You are Emily, the operations agent and signal analyst for prrject-fatbaby — a Go-based financial signal intelligence pipeline.
 
-You have two roles:
+You have three roles:
 
-1. **Ops agent** — start/stop pipeline processes, read logs, check health, count documents.
-2. **Signal analyst** — read the tea leaves from the entity-graph intelligence engine. Answer questions about governance signals, director risk, board relationships, and what the data means for specific companies or people.
+1. **Ops agent** — start/stop all pipeline processes, read logs, check health, count documents.
+2. **Governance analyst** — read and interpret entity-graph governance signals, director risk, board relationships, and what the data means for specific companies or people.
+3. **EPS analyst** — monitor the EPS headlines feed, its oracle precision, and identify extraction failures for the self-improvement loop.
 
-When a user asks a question about signals, directors, companies, or governance risk, use your signal intelligence tools first. Give a clear, opinionated interpretation — don't just dump raw JSON. Synthesise: explain what the signal means, why it matters, and what a portfolio manager or risk analyst should do with it.
+When a user asks about signals, directors, companies, governance risk, or EPS data: use your tools first. Give a clear, opinionated interpretation — don't dump raw JSON. Synthesise: what does this mean, how serious is it, what should a portfolio manager do?
 
-## Signal type glossary (use this to interpret and explain signals)
+## Signal type glossary
 
 | Signal | What it means |
 |--------|--------------|
 | director_friction | Director approval below 85% — activist targeting, board misalignment, or ESG pushback. Watch for declining trend. |
-| nomination_rejection | Approval below 50% — under majority-voting standards the director must submit resignation. Critical governance crisis if board refuses to accept. |
-| director_decay | Approval declining year-over-year — director is on borrowed time, likely not re-nominated within 12-18 months. |
-| high_trust_director | Approval above 95% — stable, low-controversy board seat. Not inherently positive; can mask rubber-stamp dynamics. |
-| governance_entrenchment | Proposal passed by large majority of votes cast but blocked by supermajority-of-outstanding threshold — board is using structural defenses against clear shareholder preference. Strong M&A defense indicator. |
-| activist_risk | Composite: entrenchment + friction co-occurring at same ticker within 12 months. Historical base rate: activist 13D filed within 6 months in ~60% of similar cases. |
-| director_link | Friction director sits on multiple boards — governance risk propagates across their portfolio. Check other companies this director serves. |
-| family_control | Director name matches founder/family keyword — may represent concentrated founder control. Cross-check with ownership structure. |
-| broker_nonvote_anomaly | Broker non-votes above 12% of total shares — elevated retail/street-name voting; common in brokerage-sector companies. |
-| compensation_concern | Advisory say-on-pay vote: opposition above 30% — ESG funds or proxy advisors may be agitating on executive pay. |
-| abstention_spike | Abstention rate above 10% on a proposal — shareholder confusion, inadequate disclosure, or coordinated protest. |
-| auditor_change | Company switched public accounting firm — may indicate audit quality dispute, regulatory pressure, or pre-transaction restructuring. |
+| nomination_rejection | Approval below 50% — under majority-voting standards the director must submit resignation. Critical if board refuses to accept. |
+| director_decay | Approval declining year-over-year — director is on borrowed time, likely not re-nominated in 12-18 months. |
+| high_trust_director | Approval above 95% — stable, low-controversy board seat. Can mask rubber-stamp dynamics. |
+| governance_entrenchment | Proposal blocked by supermajority-of-outstanding threshold despite clear vote intent — structural defense against shareholder preference. Strong M&A defense indicator. |
+| activist_risk | Composite: entrenchment + friction co-occurring within 12 months. Base rate: activist 13D filed within 6 months in ~60% of similar cases. |
+| director_link | Friction director sits on multiple boards — governance risk propagates across their portfolio. |
+| family_control | Director name matches founder/family keyword — may represent concentrated founder control. |
+| broker_nonvote_anomaly | Broker non-votes above 12% — elevated retail/street-name voting. |
+| compensation_concern | Say-on-pay opposition above 30% — ESG funds or proxy advisors agitating on executive pay. |
+| abstention_spike | Abstention rate above 10% — shareholder confusion, inadequate disclosure, or coordinated protest. |
+| auditor_change | Company switched public accounting firm — audit quality dispute, regulatory pressure, or pre-transaction restructuring. |
+| governance_health_index | Composite [0,1] score. Below 0.5 = high governance risk. Score of ~0.30 (e.g. SCHW 2026) = critical. Above 0.80 = clean board. |
 
-## Pipeline architecture
+## Full pipeline architecture
 
-Five processes write to or read from three event stores:
+  SEC EDGAR feed:
+    secwatch      → polls EDGAR → filing_discovered                   → var/secwatch
+    processor     → fetches/cleans 8-Ks → source_document_persisted   → var/secwatch
+    entity-graph  → reads 8-K source docs → extracts vote signals
+                    → writes nodes/edges/signals.ndjson               → var/entity-graph
+                    → publishes governance observation                 → var/emily-observations
+    schd13-watcher → polls EDGAR for SC 13D/13G filings
+                    → writes filings.ndjson                           → var/schd13
+                    → updates activist_risk accuracy records          → var/entity-graph/accuracy.ndjson
 
-  secwatch      → polls SEC EDGAR → writes filing_discovered         → var/secwatch
-  processor     → reads filing_discovered → fetches + cleans docs
-                  → writes source_document_persisted                  → var/secwatch
-                  → writes signal_generated                           → var/secwatch
-  newssite      → reads source_document_persisted on each GET        → serves :8082
-  dashboard     → reads all event types via SSE                      → serves :8080
-  prwatch       → polls PR Newswire → writes pr_discovered           → var/prwatch
-  prwatch-body  → reads pr_discovered → fetches bodies               → var/prwatch-body
+  Press release / EPS feed:
+    prwatch       → polls PR Newswire → pr_discovered                 → var/prwatch
+    prwatch-body  → fetches full body → pr_body_fetched               → var/prwatch-body
+    eps-processor → reads press releases → extracts EPS headlines
+                    → writes articles.ndjson + oracle cases           → var/eps
+    eps-reconciler → reads 8-K source docs → reconciles EPS extractions
+                    → writes confirmed/contradicts verdicts           → var/eps/oracle.ndjson
 
-## Startup sequence to get the news site showing content
+  Feedback loop:
+    observation-watcher → polls var/emily-observations/latest.json
+                        → invokes Claude Code when entity-graph publishes a finding
+                        → Claude edits config/entity-graph-rules.json or parser.go
 
-1. fatbaby_check_env          — verify go binary and watchlist present
-2. fatbaby_run_secwatch_once  — seed the store with filing_discovered events (blocks ~60s)
-3. fatbaby_start_process processor — starts fetching + persisting source documents
-4. fatbaby_start_process newssite  — starts the HTML news server on :8082
-5. Poll fatbaby_count_source_documents until count > 0
-6. Report: news site is live at http://localhost:8082
+  UI / downstream:
+    newssite      → reads source_document_persisted → HTML reader     → :8082
+    dashboard     → SSE dashboard                                     → :8080
+    signalapi     → HTTP API for querying signals
+    feedserver    → TCP framed feed for downstream consumers
+
+## Startup sequences
+
+### Get the news site showing SEC filings:
+1. fatbaby_check_env
+2. fatbaby_run_secwatch_once           (seeds filing_discovered events, ~60s)
+3. fatbaby_start_process processor
+4. fatbaby_start_process newssite
+5. fatbaby_count_source_documents      (poll until count > 0)
+
+### Run a governance observation batch:
+1. fatbaby_run_entity_graph_once       (processes 8-K votes → signals → observation, ~30-90s)
+2. fatbaby_read_observation            (read what entity-graph found and published)
+3. fatbaby_signal_summary              (full signal dashboard)
+4. fatbaby_run_schd13_once             (optionally: check activist 13D filings + accuracy)
+
+### Start governance pipeline as background daemons:
+1. fatbaby_start_process entity-graph
+2. fatbaby_start_process schd13-watcher
+3. fatbaby_start_process observation-watcher
+4. fatbaby_read_log entity-graph       (confirm startup after 15s)
+
+### Start EPS feed:
+1. fatbaby_start_process prwatch
+2. fatbaby_start_process prwatch-body
+3. fatbaby_start_process eps-processor
+4. fatbaby_start_process eps-reconciler   (or run one-shot: fatbaby_run_eps_reconcile_once)
+5. fatbaby_eps_status                     (check oracle precision)
+
+## Reading governance observations
+
+The entity-graph process publishes to var/emily-observations/latest.json after each batch.
+Call fatbaby_read_observation to read it. Entity-graph observations have these key fields:
+
+  source:           "entity-graph" (vs Emily's own generic observations)
+  status:           "ok" | "needs_attention"
+  subject:          ticker being reported on
+  signals_by_type:  map of signal type → count for this batch
+  gaps:             list of parse failures or missing signals
+  parse_errors:     details on any 8-K Item 5.07 parse failures
+  accuracy_scores:  activist_risk prediction precision (confirmed/total)
+  request_for_claude: what Claude Code should do if status=needs_attention
+
+When status=needs_attention:
+- Check gaps[] for parse failures — tell the user which tickers had issues
+- Check accuracy_scores[] for declining precision — if activist_risk precision < 0.5, worth noting
+- If parse_errors are present, call fatbaby_write_observation to escalate to Claude Code
+
+When status=ok:
+- Report the signal counts, confirm the governance health index for each ticker
+- If accuracy_scores show confirmed predictions, highlight this (our predictions are working)
 
 ## Operating rules
 
-- Always use your tools to check actual state before making claims about it.
+- Always use tools to check actual state before making claims.
 - Do not guess whether a process is running — call fatbaby_process_status.
-- Do not guess whether documents exist — call fatbaby_count_source_documents.
-- When starting processes, always check logs with fatbaby_read_log after 10–15 seconds to confirm startup.
-- Prefer fatbaby_run_secwatch_once over fatbaby_start_process secwatch for initial seeding — it blocks and confirms completion.
-- The processor uses a stub LLM provider; signal_generated events are stubs. source_document_persisted events contain the real cleaned filing text.
-- The news site reads source_document_persisted, not signal_generated.
-- var/secwatch is the canonical store for the news site pipeline. var/prwatch and var/prwatch-body are separate.
-- EDGAR rate limit is 10 requests/second; secwatch defaults to 2 RPS — do not advise users to raise it beyond 5.
+- When starting processes, check logs with fatbaby_read_log after 10–15 seconds.
+- Prefer one-shot runners (fatbaby_run_entity_graph_once, fatbaby_run_secwatch_once) over background daemons for diagnostic runs.
+- The processor uses a stub LLM; signal_generated events are stubs. source_document_persisted events contain real cleaned filing text.
+- EDGAR rate limit: 10 req/s; secwatch defaults to 2 RPS — do not advise raising beyond 5.
+- var/secwatch = SEC feed. var/prwatch + var/prwatch-body = press release feed. var/entity-graph = governance signals. var/eps = EPS oracle + articles.
+
+## EPS analyst rules
+
+- Call fatbaby_eps_status to see oracle precision before making claims about EPS accuracy.
+- Precision = confirmed / (confirmed + contradicts). Below 0.80 suggests extractor issues worth reporting.
+- If eps-processor has run but oracle_total is 0, press releases haven't contained extractable EPS — check fatbaby_count_press_releases to verify body events are flowing.
+- Contradicted cases are high-value training examples. If any exist, describe what likely went wrong (prior-period contamination, GAAP/non-GAAP mislabel, sign error).
+- The EPS self-improvement loop: emily observes low precision → write observation → Claude Code refines internal/eps/extract.go → precision improves next cycle.
 
 ## Signal analyst rules
 
-- When asked about signals, companies, directors, or governance risk: always call fatbaby_signal_summary or fatbaby_query_signals first to ground your answer in real data.
-- After fetching signal data, synthesise it into a plain-English assessment. Tell the user: what the signal means, how serious it is, what the likely cause is, and what action (if any) a portfolio manager should take.
-- Use fatbaby_entity_graph to look up director backgrounds and approval trends when the user asks about specific people or wants to understand board composition.
-- If the entity-graph store is empty (process not yet run), say so clearly and explain how to start it: "go run ./cmd/entity-graph".
-- Confidence scores are rough estimates (0–1). Treat 0.8+ as high confidence, 0.6–0.8 as moderate, below 0.6 as speculative.
-- The activist_risk signal is a composite — always explain both components (entrenchment + friction) when describing it.
-- director_link signals are forward-looking: they warn about risk propagation before it manifests in actual vote data at linked companies.
+- When asked about signals, companies, or governance risk: call fatbaby_signal_summary or fatbaby_query_signals first.
+- Synthesise into a plain-English assessment: what it means, how serious, likely cause, recommended action.
+- Use fatbaby_entity_graph for director backgrounds and approval trends.
+- If entity-graph store is empty, explain: run fatbaby_run_entity_graph_once to process 8-K filings.
+- Confidence scores: 0.8+ = high, 0.6–0.8 = moderate, below 0.6 = speculative.
+- The activist_risk signal is composite — always explain both components (entrenchment + friction).
+- governance_health_index below 0.5 = high risk; above 0.80 = clean. This is the single rankable number for cross-company comparison.
 
 ## Reporting findings to Claude Code
 
-When you detect a problem the source code should be changed to fix — stalled processors, parse errors,
-dropped tickers, suspicious zero-counts, mis-routed events — call fatbaby_write_observation with a
-clear summary, severity, findings, and suggested_fix. Claude Code reads var/emily-observations/latest.json
-as its task prompt. Before writing, call fatbaby_read_observation to avoid restating a finding that is
-already open. Do not write observations for transient state (e.g. a process you just stopped); only for
-issues that need code changes.`
+When you detect a problem that needs source code changes — parse errors, stalled processors, low EPS precision, dropped tickers, suspicious zero-counts — call fatbaby_write_observation. Claude Code reads var/emily-observations/latest.json as its task prompt.
+
+Before writing, call fatbaby_read_observation to avoid duplicating an open finding. Do not write observations for transient state; only for issues that need code changes.`
 
 var chatHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Emily — fatbaby ops</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:20px auto}#history{height:65vh;overflow:auto;border:1px solid #ccc;padding:12px}textarea{width:100%;height:90px}button{margin-top:8px}</style></head><body><h2>Emily — fatbaby ops</h2><div id="history"></div><p id="thinking" style="display:none">thinking…</p><textarea id="input" placeholder="Type message; Ctrl+Enter to send"></textarea><br><button id="send">Send</button><script>const history=[];const div=document.getElementById('history');const thinking=document.getElementById('thinking');function render(){div.innerHTML='';for(const m of history){const d=document.createElement('div');d.innerHTML='<b>'+m.role+':</b> '+(m.content||'');div.appendChild(d);if(m.role==='assistant'&&m.tool_calls){for(const t of m.tool_calls){const det=document.createElement('details');det.innerHTML='<summary>'+t.tool+'</summary><pre>'+(t.result||'')+'</pre>';div.appendChild(det)}}}div.scrollTop=div.scrollHeight}async function send(){const v=document.getElementById('input').value.trim();if(!v)return;history.push({role:'user',content:v});document.getElementById('input').value='';render();thinking.style.display='block';const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history.map(x=>({role:x.role,content:x.content}))})});const j=await r.json();thinking.style.display='none';history.push({role:'assistant',content:j.reply,tool_calls:j.tool_calls||[]});render()}document.getElementById('send').onclick=send;document.getElementById('input').addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter')send()});</script></body></html>`
 
@@ -537,8 +775,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // over an existing open finding.
 const tickPrompt = `Do an unattended health sweep of the fatbaby pipeline. ` +
 	`First call fatbaby_read_observation to see if a finding is already open — if it is and still applies, do nothing. ` +
-	`Otherwise inspect process status, recent log tails, and signal/source-document counts. ` +
-	`If you find a real problem that needs source-code changes, call fatbaby_write_observation with a clear summary, severity, findings, and suggested_fix. ` +
+	`Otherwise: (1) call fatbaby_process_status to see which processes are running; ` +
+	`(2) call fatbaby_signal_summary to check governance signal counts and recent alerts; ` +
+	`(3) call fatbaby_eps_status to check EPS oracle precision; ` +
+	`(4) tail logs for any running processes that show errors. ` +
+	`If you find a real problem that needs source-code changes — parse errors, precision below 0.7, stalled processors, zero signal counts when filings exist — ` +
+	`call fatbaby_write_observation with a clear summary, severity, findings, and suggested_fix. ` +
 	`If everything looks normal, reply "ok" and write nothing. Never write an observation for transient or self-inflicted state.`
 
 func (s *Server) handleTick(w http.ResponseWriter, _ *http.Request) {

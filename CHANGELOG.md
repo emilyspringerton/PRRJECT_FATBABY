@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-30 — Emily capability expansion: governance + EPS ops tools, full pipeline coverage
+
+- **`cmd/emily-agent/main.go`** — 7 new tools + expanded process coverage:
+  - `fatbaby_start_process` now knows: `entity-graph`, `eps-processor`, `eps-reconciler`, `schd13-watcher`, `observation-watcher`, `signalapi`, `feedserver` (was: 6 processes).
+  - `fatbaby_process_status` now checks all 13 pipeline processes (was 6) + store dirs for entity-graph, eps, schd13.
+  - `fatbaby_run_entity_graph_once` — one-shot entity-graph batch (processes 8-K votes → signals → observation, ~30-90s). Requires -one-shot flag added to entity-graph.
+  - `fatbaby_run_schd13_once` — one-shot Schedule 13D/13G poller (queries EDGAR, updates accuracy records).
+  - `fatbaby_run_eps_reconcile_once` — one-shot EPS reconciler (matches pending oracle cases against filed 8-K EPS).
+  - `fatbaby_eps_status` — oracle precision dashboard: pending/confirmed/contradicts counts, precision score, article count.
+  - `fatbaby_count_press_releases` — counts pr_discovered + pr_body_fetched + pr_body_failed in prwatch stores.
+  - System prompt completely rewritten: 3 roles (ops/governance/EPS), full pipeline architecture diagram, startup sequences for all sub-pipelines, governance observation reading guide, EPS analyst rules, updated tick prompt.
+- **`cmd/emily-agent/signal_intelligence.go`** — `fatbaby_signal_summary` expanded:
+  - Governance health index: most recent `governance_health_index` score per ticker, sorted worst-first.
+  - Accuracy scores: reads `var/entity-graph/accuracy.ndjson`, derives per-signal-type precision.
+  - High/critical alerts now exclude governance_health_index (it's in its own table).
+- **`cmd/entity-graph/main.go`** — added `-one-shot` flag: run one batch and exit. Enables Emily's `fatbaby_run_entity_graph_once` tool and cron-based operation without a long-running daemon.
+- **19 registered tools total (was 12), all packages passing.**
+
 ## 2026-05-30 — EPS Phase 1: oracle store, article generation, eps-processor, eps-reconciler
 
 - **`internal/eps/oracle.go`** (new): Oracle store persistence for the EPS self-improvement loop.
