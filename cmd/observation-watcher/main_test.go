@@ -196,6 +196,32 @@ func TestPollOnceTrivialGateSkipsInvocation(t *testing.T) {
 	}
 }
 
+func TestPollOnceTrivialGateAllowsErrorSeverity(t *testing.T) {
+	// Regression: Emily's hand-written observations set severity=error but leave
+	// entity-graph fields (status, gaps, parse_errors, signals_by_type) empty.
+	// The gate was treating these as trivial because it only checked entity-graph
+	// fields. Any observation with severity != "" and != "ok" must pass through.
+	dir := t.TempDir()
+	latest := filepath.Join(dir, "latest.json")
+	cursor := filepath.Join(dir, ".last-processed")
+
+	obs := observation{
+		Timestamp: "2026-05-30T09:46:52Z",
+		Severity:  "error",
+		Summary:   "eps-processor ticker map has only 2 entries — all press releases are being dropped silently",
+		Findings:  "source: emily\nstatus: needs_attention\n...",
+	}
+	writeObs(t, latest, obs)
+
+	processed, err := pollOnce(latest, cursor, "true", "", true, "", "nontrivial")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !processed {
+		t.Error("severity=error observation must not be gated as trivial")
+	}
+}
+
 func TestPollOnceTrivialGateAllowsNonTrivial(t *testing.T) {
 	dir := t.TempDir()
 	latest := filepath.Join(dir, "latest.json")

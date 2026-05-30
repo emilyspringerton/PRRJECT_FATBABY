@@ -71,6 +71,9 @@ func main() {
 		// Refresh the discovery ticker map each batch (it grows over time as new
 		// press releases are discovered; a full scan is cheap since it's append-only).
 		tickerByDiscoveryID := loadTickerMap(ctx, discoveryStore, logger)
+		if len(tickerByDiscoveryID) < 10 {
+			logger.Printf("WARNING: ticker map has only %d entries — most press releases will be processed without a ticker symbol; EPS articles will lack ticker attribution", len(tickerByDiscoveryID))
+		}
 
 		cursor = runBatch(ctx, bodyStore, tickerByDiscoveryID, logger, batchConfig{
 			epsDir:     *epsDir,
@@ -130,6 +133,9 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerMap ma
 		}
 
 		ticker := tickerMap[body.PRDiscoveryID]
+		if ticker == "" {
+			logger.Printf("seq=%d no_ticker discovery_id=%s — proceeding without ticker attribution", rec.Sequence, body.PRDiscoveryID)
+		}
 		sourceIdentity := "pr:" + body.PRDiscoveryID
 
 		e := eps.Extract(body.Body, sourceIdentity, ticker)

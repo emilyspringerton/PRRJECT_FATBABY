@@ -107,7 +107,14 @@ func observationHash(o observation) string {
 // isTrivialObservation returns true when the observation carries no actionable
 // content: status is "ok", no parse errors, no gaps, and every signal that fired
 // is a high_trust_director (informational-only; no refinement needed).
+//
+// Generic Emily observations (no source/status fields) use severity to signal
+// urgency; any non-empty, non-"ok" severity is nontrivial regardless of the
+// entity-graph fields.
 func isTrivialObservation(obs observation) bool {
+	if obs.Severity != "" && obs.Severity != "ok" {
+		return false
+	}
 	if obs.Status == "needs_attention" {
 		return false
 	}

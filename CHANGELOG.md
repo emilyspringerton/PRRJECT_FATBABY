@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-30 — Recursive self-improvement: observation-watcher gate fix + eps-processor logging
+
+- **`cmd/observation-watcher/main.go`** — fix `isTrivialObservation`: generic Emily observations
+  with `severity=error` (or any non-empty, non-"ok" severity) were classified as trivial because
+  the function only checked entity-graph structured fields (`status`, `gaps`, `parse_errors`,
+  `signals_by_type`), all of which are empty for hand-written health observations. Added severity
+  check at the top of `isTrivialObservation` so any observation with `severity != "" && != "ok"`
+  bypasses the gate and triggers Claude. Added regression test `TestPollOnceTrivialGateAllowsErrorSeverity`.
+- **`cmd/eps-processor/main.go`** — add WARNING log when ticker map has < 10 entries after load,
+  making the "all PRs discovered without tickers" state visible rather than silent. Add per-release
+  `no_ticker` log line when a press release body is processed without a ticker in the discovery map.
+
+Root cause of gate failure: `latest.json` embeds `source`/`status`/`gaps` inside the `findings`
+free-text string rather than as structured JSON fields; only `severity` is a reliable structured
+signal in Emily's hand-written observations.
+
 ## 2026-05-30 — Newssite P0+P1: broadsheet redesign, signal-based front page, 7 new routes
 
 - **`internal/newssite/render.go`** — complete rewrite: `html/template`-based rendering with typed view
