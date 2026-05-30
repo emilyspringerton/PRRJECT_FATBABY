@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -131,18 +132,29 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		parseErrors        []entitygraph.ParseError
 		processed          int
 		totalProposals     int
+		seenSourceDocs     int
 	)
 
 	for _, r := range recs {
 		if r.Event.Type != "source_document_persisted" {
 			continue
 		}
+		seenSourceDocs++
 		var doc intelligence.SourceDocument
 		if err := json.Unmarshal(r.Event.Data, &doc); err != nil {
 			logger.Printf("unmarshal source_document seq=%d err=%v", r.Sequence, err)
 			continue
 		}
-		if doc.Form != "8-K" {
+		// Accept documents labelled as 8-K via any of three signals:
+		// 1. doc.Form set correctly by the processor (preferred, going forward)
+		// 2. doc.SourceType == "sec_8k" (set by processor when form_type is populated)
+		// 3. URL contains "8-k" (fallback for historical docs persisted before the
+		//    form_type → form fix — all those docs have form="" source_type="press_release"
+		//    even though they are genuine 8-K filings)
+		is8K := doc.Form == "8-K" ||
+			doc.SourceType == "sec_8k" ||
+			strings.Contains(strings.ToUpper(doc.DocumentURL), "8-K")
+		if !is8K {
 			continue
 		}
 
@@ -262,6 +274,10 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	}
 
 	newCursor := recs[len(recs)-1].Sequence + 1
+
+	if seenSourceDocs > 0 && processed == 0 {
+		logger.Printf("WARNING: saw %d source_document_persisted records but found 0 8-K documents to process — check form/source_type/url detection logic", seenSourceDocs)
+	}
 
 	// Retrospective accuracy: correlate activist_risk predictions with 13D filings
 	// loaded from the schd13-watcher's output directory.

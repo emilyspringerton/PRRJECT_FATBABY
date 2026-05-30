@@ -25,7 +25,7 @@ func persistSourceDocument(
 		Identity:         identity,
 		Ticker:           filing.Ticker,
 		SourceType:       sourceType,
-		Form:             filing.Form,
+		Form:             filing.EffectiveForm(),
 		DocumentURL:      filing.PrimaryDocument,
 		CleanedText:      cleanedText,
 		CleanedCharCount: len(cleanedText),

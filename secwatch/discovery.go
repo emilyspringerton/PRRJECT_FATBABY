@@ -174,11 +174,22 @@ type FilingDiscoveredEvent struct {
 	CIK                string `json:"cik"`
 	AccessionNumber    string `json:"accession_number"`
 	Form               string `json:"form"`
+	FormType           string `json:"form_type"` // newer FilingDiscovered events use form_type
 	FilingDate         string `json:"filing_date"`
 	AcceptanceDateTime string `json:"acceptance_datetime,omitempty"`
 	PrimaryDocument    string `json:"primary_document"`
 	SubmissionsURL     string `json:"submissions_source_url"`
 	DiscoveredAt       string `json:"discovered_at"`
+}
+
+// EffectiveForm returns the form identifier regardless of which JSON field carried it.
+// Newer FilingDiscovered events use "form_type"; older FilingDiscoveredEvent records
+// use "form". Callers should use this method instead of reading .Form directly.
+func (e *FilingDiscoveredEvent) EffectiveForm() string {
+	if e.Form != "" {
+		return e.Form
+	}
+	return e.FormType
 }
 
 func discoveryEventData(f Filing, now time.Time, reg *issuerregistry.IssuerRegistry) FilingDiscovered {

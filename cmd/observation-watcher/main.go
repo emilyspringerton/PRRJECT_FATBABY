@@ -199,10 +199,21 @@ func buildPrompt(latestPath string, obs observation, rulesPath string) string {
 
 func buildGenericPrompt(latestPath string, obs observation) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Read %s and act on Emily's observation. ", latestPath)
-	fmt.Fprintf(&sb, "Summary: %s. Severity: %s. ", obs.Summary, obs.Severity)
-	sb.WriteString("Run `go test ./...` before committing. ")
-	sb.WriteString("If the suggested_fix is sound, implement it; otherwise, propose an alternative and document it in CHANGELOG.md.")
+	fmt.Fprintf(&sb, "Emily has published a %s-severity observation. Read %s for full context, then act.\n\n", obs.Severity, latestPath)
+	fmt.Fprintf(&sb, "Summary: %s\n\n", obs.Summary)
+	if obs.SuggestedFix != "" {
+		fmt.Fprintf(&sb, "Suggested fix (from Emily):\n%s\n\n", obs.SuggestedFix)
+	}
+	if obs.Findings != "" {
+		fmt.Fprintf(&sb, "Findings:\n%s\n\n", obs.Findings)
+	}
+	sb.WriteString("Instructions:\n")
+	sb.WriteString("1. Read the full observation file for any context not shown above.\n")
+	sb.WriteString("2. Identify the root cause in the source code.\n")
+	sb.WriteString("3. If the suggested_fix is sound, implement it exactly. If not, implement the correct fix and note the deviation.\n")
+	sb.WriteString("4. Run `go test ./...` before committing — fix any test failures.\n")
+	sb.WriteString("5. Commit with a message describing the fix and its root cause.\n")
+	sb.WriteString("6. Document the change in CHANGELOG.md with today's date.\n")
 	return sb.String()
 }
 

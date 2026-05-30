@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-30 — Self-improvement loop iteration: processor form bug + entity-graph filter + richer prompts
+
+Three bugs blocking the entity-graph → observation-watcher → Claude loop:
+
+- **`secwatch/discovery.go`** — add `EffectiveForm()` method to `FilingDiscoveredEvent`:
+  `FilingDiscovered` events (written by secwatch) use JSON field `"form_type"`, but
+  `FilingDiscoveredEvent` (read by processor) had `Form string json:"form"` — the name
+  mismatch meant `filing.Form` was always `""`. Added `FormType string json:"form_type"` and
+  `EffectiveForm()` which returns whichever field is populated.
+
+- **`internal/processor/worker.go` + `persist_source.go`** — use `filing.EffectiveForm()` instead
+  of `filing.Form` throughout. Previously all documents were stored as `source_type="press_release"`
+  with `form=""` even for genuine 8-K filings, making them invisible to entity-graph.
+
+- **`cmd/entity-graph/main.go`** — widen the 8-K detection: accept `doc.Form == "8-K"` OR
+  `doc.SourceType == "sec_8k"` OR URL contains "8-K" (fallback for the 1104 historical documents
+  already stored with the wrong labels). Add `seenSourceDocs` counter and a WARNING log when
+  source documents are seen but 0 pass the 8-K filter. Add `strings` import. Reset cursor to 1
+  so all 1104 historical documents are reprocessed (37 are genuine 8-K filings detectable by URL).
+
+- **`cmd/observation-watcher/main.go`** — rewrite `buildGenericPrompt` to include `suggested_fix`
+  and `findings` directly in the prompt body instead of just saying "read the file". Claude now
+  gets actionable context in the prompt itself with numbered instructions.
+
+Root cause chain: secwatch writes `"form_type"` → processor reads `"form"` (empty) →
+`kind="press_release"` always → entity-graph filter `form=="8-K"` drops everything → 0 signals →
+Emily's observation was also being gate-suppressed (fixed in prior commit).
+
 ## 2026-05-30 — Recursive self-improvement: observation-watcher gate fix + eps-processor logging
 
 - **`cmd/observation-watcher/main.go`** — fix `isTrivialObservation`: generic Emily observations

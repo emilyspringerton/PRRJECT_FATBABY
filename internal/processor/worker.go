@@ -160,8 +160,9 @@ func processBatch(ctx context.Context, cfg WorkerConfig, recs []eventstore.Recor
 }
 
 func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDiscoveredEvent, seen *seenSet) error {
+	form := filing.EffectiveForm()
 	identity := secwatch.FilingIdentity(filing.CIK, filing.AccessionNumber)
-	cfg.Logger.Printf("processor handle start identity=%s form=%s doc=%s", identity, filing.Form, filing.PrimaryDocument)
+	cfg.Logger.Printf("processor handle start identity=%s form=%s doc=%s", identity, form, filing.PrimaryDocument)
 	if seen.hasSignal(identity) {
 		cfg.Logger.Printf("processor handle skip identity=%s reason=signal_exists", identity)
 		return nil
@@ -175,7 +176,7 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	}
 	cfg.Logger.Printf("processor fetch complete identity=%s cleaned_chars=%d", identity, len(clean))
 	kind := "press_release"
-	if strings.Contains(strings.ToUpper(filing.Form), "8-K") {
+	if strings.Contains(strings.ToUpper(form), "8-K") {
 		kind = "sec_8k"
 	}
 	if !seen.hasSource(identity) {
@@ -188,7 +189,7 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	} else {
 		cfg.Logger.Printf("processor source_document already persisted identity=%s", identity)
 	}
-	signal, err := cfg.Provider.AnalyzeText(ctx, fmt.Sprintf("source_type=%s\nform=%s\n\n%s", kind, filing.Form, clean))
+	signal, err := cfg.Provider.AnalyzeText(ctx, fmt.Sprintf("source_type=%s\nform=%s\n\n%s", kind, form, clean))
 	if err != nil {
 		cfg.Logger.Printf("processor analyze failed identity=%s err=%v", identity, err)
 		appendFailure(ctx, cfg.Store, filing, err)
