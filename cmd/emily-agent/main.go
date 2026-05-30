@@ -143,6 +143,21 @@ func runCommandWithTimeout(args []string, workDir string) (string, error) {
 	return text, err
 }
 
+func slugifySimple(s string, maxLen int) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		} else if b.Len() > 0 {
+			b.WriteRune('-')
+		}
+		if b.Len() >= maxLen {
+			break
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
+}
+
 func parseProcOutput(s string) string {
 	f := strings.Fields(strings.TrimSpace(s))
 	if len(f) == 0 {
@@ -421,6 +436,81 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			return "", err
 		}
 		return string(b), nil
+	})
+
+	// fatbaby_commit_to_prime publishes the current observation to Emily Prime's
+	// integration layer at EMILY_INTEGRATION_DIR (signals/observations/).
+	// This is the handoff that closes the Emily Prime ↔ FatBaby loop.
+	d.Register(ToolDef{
+		Name:        "fatbaby_commit_to_prime",
+		Description: "Publish the current FatBaby observation to Emily Prime's integration layer (signals/observations/). Emily Prime will pick it up, triage it, and may issue a directed task back. Call this after fatbaby_write_observation when the finding is strategically significant.",
+		Parameters: ToolParameters{
+			Type: "object",
+			Properties: map[string]ToolPropSchema{
+				"observation_type":      {Type: "string", Description: "anomaly|improvement|escalation|status"},
+				"requires_ceo_visibility": {Type: "string", Description: "true|false — whether this should go to the CEO"},
+			},
+		},
+	}, func(args map[string]any) (string, error) {
+		// Read the current latest.json observation.
+		latest := filepath.Join(fatbabyRoot, "var", "emily-observations", "latest.json")
+		b, err := os.ReadFile(latest)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "", errors.New("no observation to commit — call fatbaby_write_observation first")
+			}
+			return "", err
+		}
+
+		primeDir := os.Getenv("EMILY_INTEGRATION_DIR")
+		if primeDir == "" {
+			// Try sibling directory heuristic: ../EMILY/signals/observations
+			primeDir = filepath.Join(fatbabyRoot, "..", "EMILY", "signals", "observations")
+		} else {
+			primeDir = filepath.Join(primeDir, "observations")
+		}
+		if err := os.MkdirAll(primeDir, 0o755); err != nil {
+			return "", fmt.Errorf("prime integration dir: %w", err)
+		}
+
+		// Enrich the observation with integration-layer fields.
+		var obs map[string]any
+		if err := json.Unmarshal(b, &obs); err != nil {
+			return "", fmt.Errorf("parse observation: %w", err)
+		}
+		obs["source"] = "fatbaby-emily"
+		if ot := args["observation_type"]; ot != nil {
+			obs["observation_type"] = ot
+		}
+		if cv := args["requires_ceo_visibility"]; cv == "true" {
+			obs["requires_ceo_visibility"] = true
+		}
+
+		ts, _ := obs["timestamp"].(string)
+		if ts == "" {
+			ts = time.Now().UTC().Format(time.RFC3339)
+		}
+		summary, _ := obs["summary"].(string)
+		slug := slugifySimple(summary, 32)
+		fname := strings.ReplaceAll(ts, ":", "") + "-" + slug + ".json"
+		outPath := filepath.Join(primeDir, fname)
+
+		enriched, err := json.MarshalIndent(obs, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(outPath, enriched, 0o644); err != nil {
+			return "", fmt.Errorf("write to prime: %w", err)
+		}
+
+		// Git commit if inside a repo.
+		primeRoot := filepath.Dir(filepath.Dir(primeDir))
+		rel, _ := filepath.Rel(primeRoot, outPath)
+		exec.Command("git", "-C", primeRoot, "add", rel).Run()
+		exec.Command("git", "-C", primeRoot, "commit", "-m", "observation from fatbaby: "+summary,
+			"--author=FatBaby-Emily <fatbaby-emily@agent.local>").Run()
+
+		return fmt.Sprintf("committed to prime: %s", fname), nil
 	})
 
 	// ── one-shot runners for governance pipeline ────────────────────────────

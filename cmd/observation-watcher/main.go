@@ -58,6 +58,7 @@ func main() {
 		oneShot   = flag.Bool("one-shot", false, "process at most one observation, then exit")
 		dryRun    = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
 		gateMode  = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
+		primeDir  = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
 	)
 	flag.Parse()
 
@@ -69,6 +70,13 @@ func main() {
 	latest := filepath.Join(dir, "latest.json")
 	cursor := filepath.Join(dir, ".last-processed")
 
+	// Prime task poller cursor — tracks last-processed task file.
+	var primeTaskCursor string
+	if *primeDir != "" {
+		primeTaskCursor = filepath.Join(*primeDir, ".last-processed")
+		log.Printf("prime tasks: watching %s", *primeDir)
+	}
+
 	log.SetPrefix("observation-watcher ")
 	log.Printf("watching %s (interval=%s cmd=%q dry_run=%v)", latest, *interval, *cmdName, *dryRun)
 
@@ -77,6 +85,16 @@ func main() {
 		if err != nil {
 			log.Printf("poll error: %v", err)
 		}
+
+		// Poll Emily Prime's tasks directory if configured.
+		if *primeDir != "" {
+			if taskProcessed, taskErr := pollPrimeTasks(*primeDir, primeTaskCursor, *cmdName, *extraArg, *dryRun); taskErr != nil {
+				log.Printf("prime task poll error: %v", taskErr)
+			} else if taskProcessed {
+				log.Printf("prime task processed")
+			}
+		}
+
 		if *oneShot && processed {
 			return
 		}
@@ -86,6 +104,118 @@ func main() {
 		time.Sleep(*interval)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Emily Prime task polling
+// ---------------------------------------------------------------------------
+
+// primeTask is the minimal structure needed to build a Claude prompt from a
+// directed task issued by Emily Prime.
+type primeTask struct {
+	Timestamp          string   `json:"timestamp"`
+	TaskID             string   `json:"task_id"`
+	TaskType           string   `json:"task_type"`
+	Priority           string   `json:"priority"`
+	Description        string   `json:"description"`
+	AcceptanceCriteria []string `json:"acceptance_criteria"`
+	Context            string   `json:"context"`
+	Deadline           string   `json:"deadline,omitempty"`
+}
+
+// pollPrimeTasks checks the tasks directory for new task files and invokes
+// Claude for each unprocessed one. Tasks are processed in filename order
+// (which is timestamp order since filenames are timestamp-prefixed).
+func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool) (bool, error) {
+	entries, err := os.ReadDir(tasksDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read prime tasks dir: %w", err)
+	}
+
+	// Read last-processed task ID from cursor.
+	lastProcessed := ""
+	if b, err := os.ReadFile(cursorPath); err == nil {
+		lastProcessed = strings.TrimSpace(string(b))
+	}
+
+	processed := false
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if lastProcessed != "" && e.Name() <= lastProcessed {
+			continue
+		}
+
+		path := filepath.Join(tasksDir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("prime task read %s: %v", e.Name(), err)
+			continue
+		}
+		var task primeTask
+		if err := json.Unmarshal(data, &task); err != nil {
+			log.Printf("prime task parse %s: %v", e.Name(), err)
+			continue
+		}
+
+		log.Printf("new prime task task_id=%s type=%s priority=%s", task.TaskID, task.TaskType, task.Priority)
+
+		prompt := buildPrimeTaskPrompt(path, task)
+		if !dryRun {
+			args := splitArgs(extraArgs)
+			args = append(args, prompt)
+			cmd := exec.Command(cmdName, args...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				log.Printf("prime task invoke %s failed: %v", cmdName, err)
+				continue
+			}
+		}
+
+		if err := os.WriteFile(cursorPath, []byte(e.Name()), 0o644); err != nil {
+			return processed, fmt.Errorf("update prime task cursor: %w", err)
+		}
+		lastProcessed = e.Name()
+		processed = true
+	}
+	return processed, nil
+}
+
+func buildPrimeTaskPrompt(taskPath string, task primeTask) string {
+	var sb strings.Builder
+	sb.WriteString("Emily Prime has issued a directed task to FatBaby-Emily. Act on it.\n\n")
+	fmt.Fprintf(&sb, "## Task (%s)\n", taskPath)
+	fmt.Fprintf(&sb, "Task ID:   %s\n", task.TaskID)
+	fmt.Fprintf(&sb, "Type:      %s\n", task.TaskType)
+	fmt.Fprintf(&sb, "Priority:  %s\n", task.Priority)
+	fmt.Fprintf(&sb, "Issued at: %s\n", task.Timestamp)
+	if task.Deadline != "" {
+		fmt.Fprintf(&sb, "Deadline:  %s\n", task.Deadline)
+	}
+	fmt.Fprintf(&sb, "\n## Description\n%s\n", task.Description)
+	if task.Context != "" {
+		fmt.Fprintf(&sb, "\n## Strategic context (from Emily Prime)\n%s\n", task.Context)
+	}
+	if len(task.AcceptanceCriteria) > 0 {
+		sb.WriteString("\n## Acceptance criteria\n")
+		for i, c := range task.AcceptanceCriteria {
+			fmt.Fprintf(&sb, "%d. %s\n", i+1, c)
+		}
+	}
+	sb.WriteString("\n## Your task\n")
+	sb.WriteString("1. Understand what Emily Prime is asking for and why (see strategic context above).\n")
+	sb.WriteString("2. Implement the requested change in the FatBaby codebase.\n")
+	sb.WriteString("3. Run `go test ./...` before committing — fix any failures.\n")
+	sb.WriteString("4. Commit with a message that references the task ID and describes the change.\n")
+	sb.WriteString("5. Document the change in CHANGELOG.md.\n")
+	return sb.String()
+}
+
+// exec is already imported above; re-declare only if needed.
 
 // observationHash returns a stable hash of the observation's meaningful
 // content, excluding timestamp, so Claude is only re-triggered when findings
