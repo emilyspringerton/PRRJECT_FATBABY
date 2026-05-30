@@ -2,33 +2,43 @@ package newssite
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/entitygraph"
+	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
+	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
+	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
 // Handler is an http.Handler for the news site.
 type Handler struct {
 	store        eventstore.EventStore
-	graph        *graphread.Store // may be nil when graph dir not configured
+	graph        *graphread.Store    // nil if graph dir not configured
+	sigIdx       *signalindex.Index  // nil if not wired
+	docIdx       *docindex.Index     // nil if not wired
+	cat          *catalog.Catalog    // nil if not wired
 	logger       *log.Logger
 	defaultLimit int
 }
 
-// NewHandler returns a new Handler. Call SetGraphStore to enable signal-based features.
+// NewHandler returns a new Handler.
 func NewHandler(store eventstore.EventStore, logger *log.Logger) *Handler {
 	return &Handler{store: store, logger: logger, defaultLimit: 50}
 }
 
-// SetGraphStore attaches a pre-loaded entity-graph store to the handler.
-// Must be called before the server starts accepting requests.
-func (h *Handler) SetGraphStore(gs *graphread.Store) { h.graph = gs }
+func (h *Handler) SetGraphStore(gs *graphread.Store)    { h.graph = gs }
+func (h *Handler) SetSignalIndex(si *signalindex.Index) { h.sigIdx = si }
+func (h *Handler) SetDocIndex(di *docindex.Index)       { h.docIdx = di }
+func (h *Handler) SetCatalog(c *catalog.Catalog)        { h.cat = c }
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -44,26 +54,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	path := r.URL.Path
 	switch {
-	case r.URL.Path == "/":
+	case path == "/":
 		status = h.serveFrontPage(w, r)
-	case r.URL.Path == "/healthz":
+	case path == "/healthz":
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, "ok")
-	case r.URL.Path == "/wire":
+	case path == "/wire":
 		status = h.serveWire(w, r)
-	case r.URL.Path == "/breaking":
+	case path == "/breaking":
 		status = h.serveBreaking(w, r)
-	case r.URL.Path == "/archive":
+	case path == "/tickers":
+		status = h.serveTickers(w, r)
+	case path == "/search":
+		status = h.serveSearch(w, r)
+	case path == "/archive":
 		status = h.serveArchive(w, r)
-	case r.URL.Path == "/about":
+	case path == "/about":
 		status = h.serveAbout(w, r)
-	case strings.HasPrefix(r.URL.Path, "/doc/"):
+	case path == "/api/tickers":
+		status = h.serveAPITickers(w, r)
+	case strings.HasPrefix(path, "/doc/"):
 		status = h.serveDoc(w, r)
-	case strings.HasPrefix(r.URL.Path, "/section/"):
+	case strings.HasPrefix(path, "/ticker/"):
+		status = h.serveTicker(w, r)
+	case strings.HasPrefix(path, "/company/"):
+		// 301 redirect: /company/{sym} → /ticker/{sym} (north-star compatibility)
+		sym := strings.TrimPrefix(path, "/company/")
+		http.Redirect(w, r, "/ticker/"+sym, http.StatusMovedPermanently)
+		status = http.StatusMovedPermanently
+	case strings.HasPrefix(path, "/section/"):
 		status = h.serveSection(w, r)
-	case strings.HasPrefix(r.URL.Path, "/company/"):
-		status = h.serveCompany(w, r)
 	default:
 		status = http.StatusNotFound
 		http.NotFound(w, r)
@@ -78,9 +100,8 @@ func (h *Handler) serveFrontPage(w http.ResponseWriter, r *http.Request) int {
 		http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
 		return http.StatusInternalServerError
 	}
-	ranked := h.liveRanked()
 	var buf bytes.Buffer
-	RenderListPage(&buf, entries, ranked)
+	RenderListPage(&buf, entries, h.liveRanked(), h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -98,7 +119,7 @@ func (h *Handler) serveDoc(w http.ResponseWriter, r *http.Request) int {
 		return http.StatusNotFound
 	}
 	var buf bytes.Buffer
-	RenderDetailPage(&buf, entry)
+	RenderDetailPage(&buf, entry, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -117,7 +138,7 @@ func (h *Handler) serveWire(w http.ResponseWriter, r *http.Request) int {
 		}
 	}
 	var buf bytes.Buffer
-	RenderListPage(&buf, wire, nil)
+	RenderListPage(&buf, wire, nil, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -125,7 +146,6 @@ func (h *Handler) serveWire(w http.ResponseWriter, r *http.Request) int {
 
 func (h *Handler) serveBreaking(w http.ResponseWriter, r *http.Request) int {
 	ranked := h.liveRanked()
-	// Filter to critical/high only.
 	var breaking []edition.Ranked
 	for _, r := range ranked {
 		if r.Signal.Severity == "critical" || r.Signal.Severity == "high" {
@@ -133,7 +153,7 @@ func (h *Handler) serveBreaking(w http.ResponseWriter, r *http.Request) int {
 		}
 	}
 	var buf bytes.Buffer
-	RenderBreakingPage(&buf, breaking)
+	RenderBreakingPage(&buf, breaking, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -149,32 +169,158 @@ func (h *Handler) serveSection(w http.ResponseWriter, r *http.Request) int {
 		}
 	}
 	var buf bytes.Buffer
-	RenderSectionPage(&buf, slug, filtered)
+	RenderSectionPage(&buf, slug, filtered, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
 }
 
-func (h *Handler) serveCompany(w http.ResponseWriter, r *http.Request) int {
-	ticker := strings.ToUpper(strings.TrimPrefix(r.URL.Path, "/company/"))
-	ranked := h.liveRanked()
-	var sigs []edition.Ranked
-	for _, r := range ranked {
-		if strings.ToUpper(r.Signal.Ticker) == ticker {
-			sigs = append(sigs, r)
+func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
+	rawSym := strings.TrimPrefix(r.URL.Path, "/ticker/")
+	symbol := catalog.Normalize(rawSym)
+	if symbol == "" {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+
+	// Check catalog (if available) to decide known vs 404.
+	var row *catalog.TickerRow
+	if h.cat != nil {
+		row = h.cat.Lookup(symbol)
+		if row == nil {
+			nearest := h.cat.NearestMatches(symbol, 5)
+			var buf bytes.Buffer
+			RenderTicker404Page(&buf, symbol, nearest, h.symbols())
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write(buf.Bytes())
+			return http.StatusNotFound
 		}
 	}
-	entries, _ := ReadLatest(r.Context(), h.store, 200)
-	var docs []DocEntry
-	for _, e := range entries {
-		if strings.ToUpper(strings.TrimSpace(e.Ticker)) == ticker {
-			docs = append(docs, e)
+
+	// Governance signals for this ticker.
+	today := time.Now().UTC().Format("2006-01-02")
+	var ranked []edition.Ranked
+	if h.graph != nil {
+		ranked = edition.Rank(h.graph.LiveSignals(symbol, today), today)
+	}
+
+	// Directors and auditor.
+	var directors []*entitygraph.PersonNode
+	if h.graph != nil {
+		directors = h.graph.DirectorsFor(symbol)
+	}
+
+	// Docs: prefer docindex (fast), fall back to event store scan.
+	var secDocs, wireDocs []DocEntry
+	if h.docIdx != nil {
+		for _, ds := range h.docIdx.ForTicker(symbol) {
+			de := DocEntry{
+				Identity:    ds.Identity,
+				Ticker:      ds.Ticker,
+				SourceType:  ds.SourceType,
+				Form:        ds.Form,
+				PersistedAt: ds.PersistedAt,
+			}
+			if ds.SourceType == "press_release" {
+				wireDocs = append(wireDocs, de)
+			} else {
+				secDocs = append(secDocs, de)
+			}
+		}
+	} else {
+		all, _ := ReadLatest(r.Context(), h.store, 200)
+		for _, e := range all {
+			if normTicker(e.Ticker) != symbol {
+				continue
+			}
+			if e.SourceType == "press_release" {
+				wireDocs = append(wireDocs, e)
+			} else {
+				secDocs = append(secDocs, e)
+			}
 		}
 	}
+
 	var buf bytes.Buffer
-	RenderCompanyPage(&buf, ticker, sigs, docs)
+	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) serveTickers(w http.ResponseWriter, r *http.Request) int {
+	byAlpha := r.URL.Query().Get("sort") == "alpha"
+	var rows []*catalog.TickerRow
+	if h.cat != nil {
+		rows = h.cat.Directory(byAlpha)
+	}
+	var buf bytes.Buffer
+	RenderTickersPage(&buf, rows, byAlpha, h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) serveSearch(w http.ResponseWriter, r *http.Request) int {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if h.cat != nil && q != "" {
+		sym := catalog.Normalize(q)
+		if h.cat.Known(sym) {
+			// Exact match → redirect straight to ticker page (no interstitial).
+			http.Redirect(w, r, "/ticker/"+sym, http.StatusFound)
+			return http.StatusFound
+		}
+	}
+
+	var results []catalog.SearchResult
+	if h.cat != nil && q != "" {
+		results = h.cat.Search(q)
+	}
+	var buf bytes.Buffer
+	RenderSearchPage(&buf, q, results, h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) serveAPITickers(w http.ResponseWriter, r *http.Request) int {
+	q := r.URL.Query().Get("q")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 8
+	if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+		if n > 50 {
+			n = 50
+		}
+		limit = n
+	}
+
+	var results []catalog.SearchResult
+	if h.cat != nil {
+		results = h.cat.Search(q)
+	}
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	entries := make([]TickerAPIEntry, 0, len(results))
+	for _, res := range results {
+		entries = append(entries, TickerAPIEntry{
+			Symbol:         res.Symbol,
+			SignalCount:    res.SignalCount,
+			MaxSeverity:    res.MaxSeverity,
+			LatestActivity: res.LatestActivity,
+		})
+	}
+	out := TickerAPIResult{
+		Query:   catalog.Normalize(q),
+		Count:   len(entries),
+		Tickers: entries,
+	}
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		h.logger.Printf("api/tickers encode: %v", err)
+	}
 	return http.StatusOK
 }
 
@@ -185,7 +331,7 @@ func (h *Handler) serveArchive(w http.ResponseWriter, r *http.Request) int {
 		return http.StatusInternalServerError
 	}
 	var buf bytes.Buffer
-	RenderArchivePage(&buf, entries)
+	RenderArchivePage(&buf, entries, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -193,18 +339,25 @@ func (h *Handler) serveArchive(w http.ResponseWriter, r *http.Request) int {
 
 func (h *Handler) serveAbout(w http.ResponseWriter, r *http.Request) int {
 	var buf bytes.Buffer
-	RenderAboutPage(&buf)
+	RenderAboutPage(&buf, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
 }
 
-// liveRanked returns ranked live signals, or nil if graph is not configured.
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 func (h *Handler) liveRanked() []edition.Ranked {
 	if h.graph == nil {
 		return nil
 	}
 	today := time.Now().UTC().Format("2006-01-02")
-	sigs := h.graph.LiveSignals("", today)
-	return edition.Rank(sigs, today)
+	return edition.Rank(h.graph.LiveSignals("", today), today)
+}
+
+func (h *Handler) symbols() []string {
+	if h.cat == nil {
+		return nil
+	}
+	return h.cat.AllSymbols()
 }

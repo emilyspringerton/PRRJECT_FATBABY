@@ -1,0 +1,181 @@
+// Package docindex tails source_document_persisted events and maintains an
+// in-memory per-ticker document summary, following the same Build/Tail pattern
+// as internal/signalindex.
+package docindex
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/pkg/intelligence"
+)
+
+// DocSummary is the minimal per-document record needed by the catalog and ticker pages.
+type DocSummary struct {
+	Identity    string
+	Ticker      string
+	SourceType  string
+	Form        string
+	PersistedAt time.Time
+}
+
+// Index holds all doc summaries keyed by ticker and by identity.
+// Safe for concurrent reads and serial writes from the tail goroutine.
+type Index struct {
+	mu         sync.RWMutex
+	byTicker   map[string][]*DocSummary // sorted oldest-first; reverse on read
+	byIdentity map[string]*DocSummary
+	latestSeq  uint64
+}
+
+// NewIndex returns an empty doc index.
+func NewIndex() *Index {
+	return &Index{
+		byTicker:   make(map[string][]*DocSummary),
+		byIdentity: make(map[string]*DocSummary),
+	}
+}
+
+// Ingest adds one eventstore.Record to the index. Non-doc events are skipped.
+func (idx *Index) Ingest(rec eventstore.Record) error {
+	if rec.Event.Type != "source_document_persisted" {
+		return nil
+	}
+	var doc intelligence.SourceDocument
+	if err := json.Unmarshal(rec.Event.Data, &doc); err != nil {
+		return nil
+	}
+	ticker := strings.ToUpper(strings.TrimSpace(doc.Ticker))
+	if ticker == "" || doc.Identity == "" {
+		return nil
+	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if _, exists := idx.byIdentity[doc.Identity]; exists {
+		return nil
+	}
+	ds := &DocSummary{
+		Identity:    doc.Identity,
+		Ticker:      ticker,
+		SourceType:  doc.SourceType,
+		Form:        doc.Form,
+		PersistedAt: doc.PersistedAt,
+	}
+	idx.byIdentity[doc.Identity] = ds
+	idx.byTicker[ticker] = append(idx.byTicker[ticker], ds)
+	if rec.Sequence > idx.latestSeq {
+		idx.latestSeq = rec.Sequence
+	}
+	return nil
+}
+
+// ForTicker returns all docs for a ticker, newest first. Allocation on each call is intentional
+// (cheap copy; list is short; avoids exposing the internal slice).
+func (idx *Index) ForTicker(ticker string) []*DocSummary {
+	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	idx.mu.RLock()
+	src := idx.byTicker[ticker]
+	cp := make([]*DocSummary, len(src))
+	copy(cp, src)
+	idx.mu.RUnlock()
+	// Reverse to get newest-first (appended oldest-first during scan).
+	for i, j := 0, len(cp)-1; i < j; i, j = i+1, j-1 {
+		cp[i], cp[j] = cp[j], cp[i]
+	}
+	return cp
+}
+
+// AllSummaries returns a snapshot of every doc, newest first.
+func (idx *Index) AllSummaries() []*DocSummary {
+	idx.mu.RLock()
+	out := make([]*DocSummary, 0, len(idx.byIdentity))
+	for _, ds := range idx.byIdentity {
+		out = append(out, ds)
+	}
+	idx.mu.RUnlock()
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].PersistedAt.After(out[j].PersistedAt)
+	})
+	return out
+}
+
+// KnownTickers returns a sorted list of all indexed ticker symbols.
+func (idx *Index) KnownTickers() []string {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	tickers := make([]string, 0, len(idx.byTicker))
+	for t := range idx.byTicker {
+		tickers = append(tickers, t)
+	}
+	sort.Strings(tickers)
+	return tickers
+}
+
+// LatestSeq returns the highest sequence number ingested so far.
+func (idx *Index) LatestSeq() uint64 {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	return idx.latestSeq
+}
+
+// Build scans the entire store from sequence 1 and populates idx.
+func Build(ctx context.Context, store eventstore.EventStore, idx *Index, logger *log.Logger) error {
+	fromSeq := uint64(1)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		recs, err := store.ReadFrom(ctx, fromSeq, 512)
+		if err != nil {
+			return err
+		}
+		if len(recs) == 0 {
+			return nil
+		}
+		for _, rec := range recs {
+			if err := idx.Ingest(rec); err != nil && logger != nil {
+				logger.Printf("docindex ingest: %v", err)
+			}
+			fromSeq = rec.Sequence + 1
+		}
+	}
+}
+
+// Tail starts a background goroutine that polls the store for new records.
+// It closes the returned channel once the first poll completes (signals readiness).
+func Tail(ctx context.Context, store eventstore.EventStore, idx *Index, interval time.Duration, logger *log.Logger) <-chan struct{} {
+	ready := make(chan struct{})
+	go func() {
+		defer close(ready)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		readySent := false
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				start := idx.LatestSeq() + 1
+				recs, err := store.ReadFrom(ctx, start, 256)
+				if err != nil && !errors.Is(err, context.Canceled) && logger != nil {
+					logger.Printf("docindex tail: %v", err)
+				}
+				for _, rec := range recs {
+					_ = idx.Ingest(rec)
+				}
+				if !readySent {
+					readySent = true
+					ready <- struct{}{}
+				}
+			}
+		}
+	}()
+	return ready
+}
