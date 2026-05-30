@@ -24,6 +24,71 @@ type WorkerConfig struct {
 	MaxDocBytes  int64
 }
 
+// seenSet tracks processed filing identities in memory so the hot path
+// avoids full-store scans on every handleOne call (which would be O(n²)).
+type seenSet struct {
+	mu      sync.Mutex
+	signals map[string]struct{}
+	sources map[string]struct{}
+}
+
+func newSeenSet() *seenSet {
+	return &seenSet{
+		signals: make(map[string]struct{}),
+		sources: make(map[string]struct{}),
+	}
+}
+
+func (s *seenSet) hasSignal(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.signals[id]
+	return ok
+}
+
+func (s *seenSet) markSignal(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.signals[id] = struct{}{}
+}
+
+func (s *seenSet) hasSource(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.sources[id]
+	return ok
+}
+
+func (s *seenSet) markSource(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sources[id] = struct{}{}
+}
+
+// loadSeenIdentities does a single O(n) scan of the store at startup to build
+// the in-memory seen set, replacing per-filing O(n) calls inside handleOne.
+func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger *log.Logger) *seenSet {
+	seen := newSeenSet()
+	from := uint64(1)
+	for {
+		recs, err := store.ReadFrom(ctx, from, 512)
+		if err != nil || len(recs) == 0 {
+			break
+		}
+		for _, r := range recs {
+			switch r.Event.Type {
+			case "signal_generated":
+				seen.signals[r.Event.PartitionKey] = struct{}{}
+			case "source_document_persisted":
+				seen.sources[r.Event.PartitionKey] = struct{}{}
+			}
+		}
+		from = recs[len(recs)-1].Sequence + 1
+	}
+	logger.Printf("processor startup: seen signals=%d sources=%d", len(seen.signals), len(seen.sources))
+	return seen
+}
+
 func Run(ctx context.Context, cfg WorkerConfig) error {
 	if cfg.Workers <= 0 {
 		cfg.Workers = 4
@@ -37,6 +102,9 @@ func Run(ctx context.Context, cfg WorkerConfig) error {
 	if cfg.Logger == nil {
 		cfg.Logger = log.New(log.Writer(), "", log.LstdFlags|log.LUTC)
 	}
+
+	seen := loadSeenIdentities(ctx, cfg.Store, cfg.Logger)
+
 	lastSeq := uint64(1)
 	cfg.Logger.Printf("processor loop starting from_sequence=%d workers=%d poll_interval=%s", lastSeq, cfg.Workers, cfg.PollInterval)
 	for {
@@ -49,7 +117,7 @@ func Run(ctx context.Context, cfg WorkerConfig) error {
 			batchEnd := recs[len(recs)-1].Sequence
 			cfg.Logger.Printf("processor batch read count=%d sequence_start=%d sequence_end=%d", len(recs), batchStart, batchEnd)
 			lastSeq = batchEnd + 1
-			processBatch(ctx, cfg, recs)
+			processBatch(ctx, cfg, recs, seen)
 		}
 		select {
 		case <-ctx.Done():
@@ -59,7 +127,7 @@ func Run(ctx context.Context, cfg WorkerConfig) error {
 	}
 }
 
-func processBatch(ctx context.Context, cfg WorkerConfig, recs []eventstore.Record) {
+func processBatch(ctx context.Context, cfg WorkerConfig, recs []eventstore.Record, seen *seenSet) {
 	jobs := make(chan secwatch.FilingDiscoveredEvent)
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.Workers; i++ {
@@ -68,7 +136,7 @@ func processBatch(ctx context.Context, cfg WorkerConfig, recs []eventstore.Recor
 			defer wg.Done()
 			for ev := range jobs {
 				cfg.Logger.Printf("processor worker=%d handling filing_discovered ticker=%s cik=%s accession=%s", workerID, ev.Ticker, ev.CIK, ev.AccessionNumber)
-				_ = handleOne(ctx, cfg, ev)
+				_ = handleOne(ctx, cfg, ev, seen)
 			}
 		}(i + 1)
 	}
@@ -91,10 +159,10 @@ func processBatch(ctx context.Context, cfg WorkerConfig, recs []eventstore.Recor
 	cfg.Logger.Printf("processor batch complete total=%d matched_filing_discovered=%d skipped=%d", len(recs), matched, len(recs)-matched)
 }
 
-func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDiscoveredEvent) error {
+func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDiscoveredEvent, seen *seenSet) error {
 	identity := secwatch.FilingIdentity(filing.CIK, filing.AccessionNumber)
 	cfg.Logger.Printf("processor handle start identity=%s form=%s doc=%s", identity, filing.Form, filing.PrimaryDocument)
-	if signalExists(ctx, cfg.Store, identity) {
+	if seen.hasSignal(identity) {
 		cfg.Logger.Printf("processor handle skip identity=%s reason=signal_exists", identity)
 		return nil
 	}
@@ -110,10 +178,11 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	if strings.Contains(strings.ToUpper(filing.Form), "8-K") {
 		kind = "sec_8k"
 	}
-	if !sourceDocumentExists(ctx, cfg.Store, identity) {
+	if !seen.hasSource(identity) {
 		if persistErr := persistSourceDocument(ctx, cfg.Store, filing, identity, kind, clean); persistErr != nil {
 			cfg.Logger.Printf("processor source_document persist failed identity=%s err=%v", identity, persistErr)
 		} else {
+			seen.markSource(identity)
 			cfg.Logger.Printf("processor source_document persisted identity=%s ticker=%s chars=%d", identity, filing.Ticker, len(clean))
 		}
 	} else {
@@ -140,24 +209,9 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 		cfg.Logger.Printf("processor append failed identity=%s err=%v", identity, err)
 		return err
 	}
+	seen.markSignal(identity)
 	cfg.Logger.Printf("processor handle complete identity=%s signal_id=%s", identity, signal.ID)
 	return nil
-}
-
-func signalExists(ctx context.Context, store eventstore.EventStore, identity string) bool {
-	from := uint64(1)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
-		if err != nil || len(recs) == 0 {
-			return false
-		}
-		for _, r := range recs {
-			if r.Event.Type == "signal_generated" && r.Event.PartitionKey == identity {
-				return true
-			}
-		}
-		from = recs[len(recs)-1].Sequence + 1
-	}
 }
 
 func appendFailure(ctx context.Context, store eventstore.EventStore, filing secwatch.FilingDiscoveredEvent, cause error) {

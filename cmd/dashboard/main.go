@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/server"
@@ -12,7 +13,7 @@ import (
 
 func main() {
 	port := flag.Int("port", 8080, "port to listen on")
-	dataDir := flag.String("data-dir", "./data", "path to eventstore root directory")
+	dataDir := flag.String("data-dir", filepath.Join("var", "secwatch"), "path to eventstore root directory")
 	flag.Parse()
 
 	store, err := eventstore.NewFileStore(*dataDir)

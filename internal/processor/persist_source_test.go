@@ -103,7 +103,7 @@ func TestHandleOne_PersistsSourceBeforeSignalGenerated(t *testing.T) {
 	cfg := WorkerConfig{Store: store, Provider: staticProvider{}, Logger: log.New(io.Discard, "", 0), UserAgent: "test-agent", MaxDocBytes: 1024 * 1024}
 	filing := secwatch.FilingDiscoveredEvent{Ticker: "ABC", CIK: "123456", AccessionNumber: "000123456-26-000001", Form: "8-K", PrimaryDocument: srv.URL}
 
-	if err := handleOne(context.Background(), cfg, filing); err != nil {
+	if err := handleOne(context.Background(), cfg, filing, newSeenSet()); err != nil {
 		t.Fatal(err)
 	}
 
