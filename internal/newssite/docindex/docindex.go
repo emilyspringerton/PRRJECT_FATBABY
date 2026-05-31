@@ -24,6 +24,7 @@ type DocSummary struct {
 	SourceType  string
 	Form        string
 	PersistedAt time.Time
+	Sequence    uint64 // event store sequence; enables O(1) targeted fetch for detail pages
 }
 
 // Index holds all doc summaries keyed by ticker and by identity.
