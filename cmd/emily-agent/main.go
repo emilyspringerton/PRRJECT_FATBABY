@@ -549,6 +549,68 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		return fmt.Sprintf("committed to prime: %s", fname), nil
 	})
 
+	// fatbaby_check_prime_tasks reads pending directed tasks from Emily Prime's
+	// signals/tasks/ directory. This is the mirror of fatbaby_commit_to_prime:
+	// Prime writes tasks here, FatBaby reads and acts on them.
+	d.Register(ToolDef{
+		Name:        "fatbaby_check_prime_tasks",
+		Description: "Check for directed tasks issued by Emily Prime. Reads EMILY/signals/tasks/ and returns any task files that haven't been processed yet. Call this when asked to check for tasks or instructions from Emily Prime.",
+		Parameters:  ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}},
+	}, func(args map[string]any) (string, error) {
+		tasksDir := os.Getenv("EMILY_PRIME_TASKS_DIR")
+		if tasksDir == "" {
+			tasksDir = filepath.Join(fatbabyRoot, "..", "EMILY", "signals", "tasks")
+		}
+		entries, err := os.ReadDir(tasksDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "Emily Prime tasks directory not found at " + tasksDir, nil
+			}
+			return "", fmt.Errorf("read tasks dir: %w", err)
+		}
+		// Read cursor to identify already-processed tasks.
+		cursorPath := filepath.Join(tasksDir, ".last-processed")
+		lastProcessed := ""
+		if b, err := os.ReadFile(cursorPath); err == nil {
+			lastProcessed = strings.TrimSpace(string(b))
+		}
+		var pending []map[string]any
+		var allTasks []map[string]any
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(tasksDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var task map[string]any
+			if err := json.Unmarshal(data, &task); err != nil {
+				continue
+			}
+			task["_filename"] = e.Name()
+			allTasks = append(allTasks, task)
+			if e.Name() > lastProcessed {
+				pending = append(pending, task)
+			}
+		}
+		if len(allTasks) == 0 {
+			return "no tasks found in " + tasksDir, nil
+		}
+		result := map[string]any{
+			"tasks_dir":      tasksDir,
+			"total_tasks":    len(allTasks),
+			"pending_tasks":  len(pending),
+			"last_processed": lastProcessed,
+			"pending":        pending,
+		}
+		if len(pending) == 0 {
+			result["message"] = "all tasks already processed by observation-watcher"
+		}
+		b, _ := json.MarshalIndent(result, "", "  ")
+		return string(b), nil
+	})
+
 	// ── one-shot runners for governance pipeline ────────────────────────────
 
 	d.Register(ToolDef{Name: "fatbaby_run_entity_graph_once", Description: "Run one batch of the entity-graph governance processor and wait for completion (~30-90s depending on filing backlog). Reads 8-K filings from var/secwatch, updates var/entity-graph (nodes/edges/signals), and publishes an observation to var/emily-observations. Call fatbaby_read_observation afterward to see what was found.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
@@ -846,7 +908,11 @@ When status=ok:
 
 When you detect a problem that needs source code changes — parse errors, stalled processors, low EPS precision, dropped tickers, suspicious zero-counts — call fatbaby_write_observation. Claude Code reads var/emily-observations/latest.json as its task prompt.
 
-Before writing, call fatbaby_read_observation to avoid duplicating an open finding. Do not write observations for transient state; only for issues that need code changes.`
+Before writing, call fatbaby_read_observation to avoid duplicating an open finding. Do not write observations for transient state; only for issues that need code changes.
+
+## Emily Prime integration
+
+Emily Prime can issue directed tasks to you via the integration layer. When asked to check for tasks or instructions from Emily Prime, call fatbaby_check_prime_tasks — it reads EMILY/signals/tasks/ and returns any pending tasks with their description, type, priority, and context. Act on pending tasks the same way you act on user requests. If a task is complex enough to require source code changes, use fatbaby_write_observation so Claude Code picks it up.`
 
 var chatHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Emily — fatbaby ops</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:20px auto}#history{height:65vh;overflow:auto;border:1px solid #ccc;padding:12px}textarea{width:100%;height:90px}button{margin-top:8px}</style></head><body><h2>Emily — fatbaby ops</h2><div id="history"></div><p id="thinking" style="display:none">thinking…</p><textarea id="input" placeholder="Type message; Ctrl+Enter to send"></textarea><br><button id="send">Send</button><script>const history=[];const div=document.getElementById('history');const thinking=document.getElementById('thinking');function render(){div.innerHTML='';for(const m of history){const d=document.createElement('div');d.innerHTML='<b>'+m.role+':</b> '+(m.content||'');div.appendChild(d);if(m.role==='assistant'&&m.tool_calls){for(const t of m.tool_calls){const det=document.createElement('details');det.innerHTML='<summary>'+t.tool+'</summary><pre>'+(t.result||'')+'</pre>';div.appendChild(det)}}}div.scrollTop=div.scrollHeight}async function send(){const v=document.getElementById('input').value.trim();if(!v)return;history.push({role:'user',content:v});document.getElementById('input').value='';render();thinking.style.display='block';const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history.map(x=>({role:x.role,content:x.content}))})});const j=await r.json();thinking.style.display='none';history.push({role:'assistant',content:j.reply,tool_calls:j.tool_calls||[]});render()}document.getElementById('send').onclick=send;document.getElementById('input').addEventListener('keydown',e=>{if(e.ctrlKey&&e.key==='Enter')send()});</script></body></html>`
 
