@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Test coverage: docindex, graphread, handler routes; editorial-rules config
+
+### Test coverage (Emily observation follow-through)
+
+Verified the date provenance bug reported in `var/emily-observations/latest.json` is
+fully resolved. Added tests that would catch a regression:
+
+- **`internal/newssite/docindex/docindex_test.go`** (new): 14 tests covering Ingest
+  (skip non-doc, dedup by identity, lowercase ticker normalization, skip empty identity),
+  ForTicker ordering (newest-first), Recent (limit, cap-at-count), KnownTickers (sorted),
+  LatestSeq tracking, Build round-trip against a real file store, previewText truncation.
+- **`internal/newssite/graphread/graphread_test.go`** (new): 12 tests covering Refresh
+  (empty dir, signals, nodes with ticker index, auditors, bidirectional edges), LiveSignals
+  (expiry filter, ticker filter, all-tickers shortcut), SignalsForPerson canonicalization,
+  Updates channel closed on each Refresh, AllTickers, RulesUpdatedAt zero when unconfigured.
+- **`internal/newssite/handler_test.go`**: 18 new cases covering every route (healthz, wire,
+  archive, about, tickers, live, breaking, section/governance, section/earnings, api/tickers,
+  search, ticker, ticker RSS), plus two date-provenance cases that verify the 2019 AAPL
+  filing shows `2019` in the detail page body and is suppressed from the front page feed.
+
+### Editorial rules config
+
+- **`config/editorial-rules.json`** (new): Documents the newssite editorial decisions
+  (historical badge threshold: 90 days, front-page suppression, date display rules).
+  Machine-readable so Emily and Claude Code can reference and adjust thresholds without
+  reading source code.
+
+### Northstar cleanup
+
+- **`docs/northstar/newssite.md`**: P4 section header updated from "🔄 In progress" to
+  "✅ Complete" — all P4 items were already implemented and checked.
+
 ## 2026-05-31 — Filing date provenance fix + newssite front-page performance
 
 ### Filing date provenance (Emily observation)

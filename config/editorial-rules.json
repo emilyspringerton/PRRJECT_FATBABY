@@ -1,0 +1,22 @@
+{
+  "_comment": "Editorial rules for the FATBABY newssite publication layer. Claude Code may modify this file as part of the recursive self-improvement loop. Changes take effect on the next newssite restart.",
+
+  "backfill": {
+    "_comment": "Controls how historical filings (from ticker onboarding backfills) are surfaced.",
+    "historical_badge_threshold_days": 90,
+    "suppress_from_front_page": true,
+    "publish_to_ticker_page_only": true
+  },
+
+  "front_page": {
+    "_comment": "Controls front-page curation. lead_signal_min_severity filters what can be the lead story.",
+    "max_articles": 20,
+    "lead_signal_min_severity": "medium"
+  },
+
+  "date_display": {
+    "_comment": "Controls date provenance display. always_show_indexed_footnote adds 'Indexed DATE' to every article byline regardless of age.",
+    "always_show_indexed_footnote": false,
+    "historical_badge_label": "ARCHIVE"
+  }
+}
