@@ -15,6 +15,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
+	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
@@ -22,6 +23,7 @@ import (
 func main() {
 	storeRoot := flag.String("store", "var/secwatch", "path to eventstore root")
 	graphDir  := flag.String("graph-dir", "var/entity-graph", "path to entity-graph directory (empty to disable)")
+	epsDir    := flag.String("eps-dir", "var/eps", "path to eps output directory (empty to disable)")
 	addr      := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
@@ -53,6 +55,20 @@ func main() {
 		h.SetGraphStore(gs)
 		done := make(chan struct{})
 		gs.StartRefresh(30*time.Second, func(f string, a ...any) { logger.Printf(f, a...) }, done)
+		defer close(done)
+	}
+
+	// ── EPS article store ─────────────────────────────────────────────────────
+	if *epsDir != "" {
+		es := epsread.NewStore(*epsDir)
+		if err := es.Refresh(); err != nil {
+			logger.Printf("newssite eps load: %v", err)
+		} else {
+			logger.Printf("newssite eps loaded count=%d from %s", es.Count(), *epsDir)
+		}
+		h.SetEpsStore(es)
+		done := make(chan struct{})
+		es.StartRefresh(60*time.Second, func(f string, a ...any) { logger.Printf(f, a...) }, done)
 		defer close(done)
 	}
 

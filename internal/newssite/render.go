@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
+	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
@@ -66,6 +67,7 @@ type FrontPageView struct {
 	WireItems       []WireItem
 	Rest            []ArticleView
 	SuccessionWatch []SuccessionWatchItem
+	Earnings        []EarningsItemView // latest EPS articles
 }
 
 type TickerTapeItem struct {
@@ -122,6 +124,26 @@ type SectionView struct {
 	Items []ArticleView
 }
 
+// ── Earnings (EPS) article view ──────────────────────────────────────────────
+
+// EarningsItemView is one EPS article card.
+type EarningsItemView struct {
+	Link       string
+	Ticker     string
+	Headline   string
+	Dek        string
+	PeriodStr  string // "Q1 2026" or "FY 2025"
+	DateStr    string // "29 May 2026"
+	EPSStr     string // "$1.23" or "($0.45)"
+	IsGAAP     bool
+}
+
+// EarningsSectionView is the view model for /section/earnings.
+type EarningsSectionView struct {
+	Base
+	Items []EarningsItemView
+}
+
 // ── Ticker page ───────────────────────────────────────────────────────────────
 
 type DirectorView struct {
@@ -140,16 +162,17 @@ type TickerFactBox struct {
 
 type TickerPageView struct {
 	Base
-	Symbol      string
-	Auditor     string
+	Symbol       string
+	Auditor      string
 	LastActivity string // formatted date
-	Forms       string // comma-joined
-	Lead        *ArticleView
-	Signals     []ArticleView
-	Directors   []DirectorView
-	Docs        []ArticleView
-	Wire        []ArticleView
-	Facts       TickerFactBox
+	Forms        string // comma-joined
+	Lead         *ArticleView
+	Signals      []ArticleView
+	Directors    []DirectorView
+	Docs         []ArticleView
+	Wire         []ArticleView
+	Earnings     []EarningsItemView // EPS articles for this ticker
+	Facts        TickerFactBox
 }
 
 // ── Ticker 404 ────────────────────────────────────────────────────────────────
@@ -258,9 +281,10 @@ type PersonPageView struct {
 
 // ── Render entry points ───────────────────────────────────────────────────────
 
-func RenderListPage(w io.Writer, entries []DocEntry, ranked []edition.Ranked, symbols []string) {
+func RenderListPage(w io.Writer, entries []DocEntry, ranked []edition.Ranked, earnings []EarningsItemView, symbols []string) {
 	view := buildFrontPage(entries, ranked)
 	view.Symbols = symbols
+	view.Earnings = earnings
 	if err := frontTmpl.Execute(w, view); err != nil {
 		fmt.Fprintf(w, "render error: %v", err)
 	}
@@ -320,7 +344,7 @@ func RenderSectionPage(w io.Writer, slug string, ranked []edition.Ranked, symbol
 
 func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 	ranked []edition.Ranked, directors []*entitygraph.PersonNode,
-	secDocs []DocEntry, wireDocs []DocEntry, symbols []string) {
+	secDocs []DocEntry, wireDocs []DocEntry, earnings []EarningsItemView, symbols []string) {
 
 	var lead *ArticleView
 	var signals []ArticleView
@@ -418,6 +442,7 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		Directors:    dirViews,
 		Docs:         secViews,
 		Wire:         wireViews,
+		Earnings:     earnings,
 		Facts:        facts,
 	}
 	if err := tickerTmpl.Execute(w, view); err != nil {
@@ -1302,6 +1327,54 @@ func formatVotes(n int64) string {
 	default:
 		return fmt.Sprintf("%d", n)
 	}
+}
+
+// ── EPS article rendering ─────────────────────────────────────────────────────
+
+func RenderEarningsPage(w io.Writer, items []EarningsItemView, symbols []string) {
+	if err := earningsTmpl.Execute(w, EarningsSectionView{Base: Base{Symbols: symbols}, Items: items}); err != nil {
+		fmt.Fprintf(w, "render error: %v", err)
+	}
+}
+
+// ToEarningsItemView converts an eps.Article to the newssite display view.
+func ToEarningsItemView(a *eps.Article) EarningsItemView {
+	v := EarningsItemView{
+		Ticker:   strings.ToUpper(strings.TrimSpace(a.Ticker)),
+		Headline: a.Headline,
+		Dek:      truncateRunes(a.Dek, 180),
+		IsGAAP:   a.IsGAAP,
+		Link:     "/doc/" + a.SourceIdentity,
+	}
+	if a.SourceIdentity == "" {
+		v.Link = "#"
+	}
+	p := a.Period
+	if p.FiscalQuarter != "" && p.FiscalYear > 0 {
+		v.PeriodStr = fmt.Sprintf("%s %d", p.FiscalQuarter, p.FiscalYear)
+	}
+	if a.PublishAt != "" {
+		if t, err := time.Parse(time.RFC3339, a.PublishAt); err == nil {
+			v.DateStr = t.UTC().Format("2 Jan 2006")
+		}
+	}
+	if a.EPSValue != 0 {
+		if a.EPSValue < 0 {
+			v.EPSStr = fmt.Sprintf("($%.2f)", -a.EPSValue)
+		} else {
+			v.EPSStr = fmt.Sprintf("$%.2f", a.EPSValue)
+		}
+	}
+	return v
+}
+
+// EarningsItemsFrom converts a slice of eps.Article pointers to display views.
+func EarningsItemsFrom(articles []*eps.Article) []EarningsItemView {
+	out := make([]EarningsItemView, 0, len(articles))
+	for _, a := range articles {
+		out = append(out, ToEarningsItemView(a))
+	}
+	return out
 }
 
 // ── JSON API ──────────────────────────────────────────────────────────────────

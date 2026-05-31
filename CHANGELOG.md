@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — EPS articles integrated into newssite; EPS + runbook docs updated
+
+### EPS article integration
+
+The `eps-processor` has been generating `var/eps/articles.ndjson` for every qualifying
+press release since it was built, but those articles were invisible to the newssite. This
+change closes the loop.
+
+- **`internal/newssite/epsread/epsread.go`** — new read model that loads `articles.ndjson`
+  from `var/eps/` into memory with 60s background refresh. `Recent(n)` and
+  `ArticlesFor(ticker)` lookups; `Count()` for startup logging.
+- **`internal/newssite/render.go`** — `EarningsItemView` view type + `ToEarningsItemView` /
+  `EarningsItemsFrom` converters (import `internal/eps`). `EarningsSectionView` for
+  `/section/earnings`. `Earnings []EarningsItemView` added to `FrontPageView` and
+  `TickerPageView`. `RenderEarningsPage` function.
+- **`internal/newssite/handler.go`** — `epsStore *epsread.Store` field + `SetEpsStore`;
+  `recentEPS(n)` helper. `serveEarnings` handler. Front page passes 4 latest EPS articles
+  to `RenderListPage`. Ticker page passes per-ticker articles to `RenderTickerPage`.
+  Route `/section/earnings` (checked before the generic `/section/` prefix matcher).
+- **`internal/newssite/templates.go`** — `.kicker-earnings` CSS. Earnings sidebar box on
+  front page (shows headline, ticker, EPS amount, period, link to original doc). Earnings
+  section on ticker page (period + GAAP label). Full `/section/earnings` page template.
+  "Earnings" added to the sections-rail nav on every page.
+- **`cmd/newssite/main.go`** — `-eps-dir` flag (default `var/eps`); epsread.Store wired
+  and refreshed at startup; `SetEpsStore` called on handler.
+
+### Docs
+
+- `docs/headlines/eps-implementation.md` — status updated from "Implementation Framework"
+  to "Operational"; roadmap replaced with implementation status table; newssite integration
+  documented.
+- `docs/headlines/eps.md` — status updated to operational.
+- `docs/news-site-e2e-runbook.md` — removed stale "files from previous Codex sessions"
+  prerequisite list; repo already builds cleanly.
+
 ## 2026-05-31 — Newssite P4 final: accessibility pass + northstar complete
 
 ### Accessibility improvements

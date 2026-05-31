@@ -12,9 +12,11 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
+	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
+	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
@@ -26,6 +28,7 @@ type Handler struct {
 	sigIdx       *signalindex.Index  // nil if not wired
 	docIdx       *docindex.Index     // nil if not wired
 	cat          *catalog.Catalog    // nil if not wired
+	epsStore     *epsread.Store      // nil if eps-dir not configured
 	logger       *log.Logger
 	defaultLimit int
 }
@@ -39,6 +42,7 @@ func (h *Handler) SetGraphStore(gs *graphread.Store)    { h.graph = gs }
 func (h *Handler) SetSignalIndex(si *signalindex.Index) { h.sigIdx = si }
 func (h *Handler) SetDocIndex(di *docindex.Index)       { h.docIdx = di }
 func (h *Handler) SetCatalog(c *catalog.Catalog)        { h.cat = c }
+func (h *Handler) SetEpsStore(es *epsread.Store)        { h.epsStore = es }
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +99,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sym := strings.TrimPrefix(path, "/company/")
 		http.Redirect(w, r, "/ticker/"+sym, http.StatusMovedPermanently)
 		status = http.StatusMovedPermanently
+	case path == "/section/earnings":
+		status = h.serveEarnings(w, r)
 	case strings.HasPrefix(path, "/section/"):
 		if strings.HasSuffix(path, "/feed.xml") {
 			slug := strings.TrimSuffix(strings.TrimPrefix(path, "/section/"), "/feed.xml")
@@ -116,8 +122,9 @@ func (h *Handler) serveFrontPage(w http.ResponseWriter, r *http.Request) int {
 		http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
 		return http.StatusInternalServerError
 	}
+	earnings := EarningsItemsFrom(h.recentEPS(4))
 	var buf bytes.Buffer
-	RenderListPage(&buf, entries, h.liveRanked(), h.symbols())
+	RenderListPage(&buf, entries, h.liveRanked(), earnings, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -154,7 +161,7 @@ func (h *Handler) serveWire(w http.ResponseWriter, r *http.Request) int {
 		}
 	}
 	var buf bytes.Buffer
-	RenderListPage(&buf, wire, nil, h.symbols())
+	RenderListPage(&buf, wire, nil, nil, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -259,7 +266,11 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 	}
 
 	var buf bytes.Buffer
-	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, h.symbols())
+	var tickerEPS []EarningsItemView
+	if h.epsStore != nil {
+		tickerEPS = EarningsItemsFrom(h.epsStore.ArticlesFor(symbol))
+	}
+	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -511,7 +522,23 @@ func (h *Handler) serveRSS(w http.ResponseWriter, r *http.Request, section strin
 	return http.StatusOK
 }
 
+func (h *Handler) serveEarnings(w http.ResponseWriter, r *http.Request) int {
+	items := EarningsItemsFrom(h.recentEPS(100))
+	var buf bytes.Buffer
+	RenderEarningsPage(&buf, items, h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+func (h *Handler) recentEPS(n int) []*eps.Article {
+	if h.epsStore == nil {
+		return nil
+	}
+	return h.epsStore.Recent(n)
+}
 
 func (h *Handler) liveRanked() []edition.Ranked {
 	if h.graph == nil {

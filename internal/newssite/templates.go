@@ -18,8 +18,9 @@ var (
 	searchTmpl  = mustLookup("search")
 	archiveTmpl = mustLookup("archive")
 	aboutTmpl   = mustLookup("about")
-	personTmpl  = mustLookup("person")
-	liveTmpl    = mustLookup("live")
+	personTmpl   = mustLookup("person")
+	liveTmpl     = mustLookup("live")
+	earningsTmpl = mustLookup("earnings")
 )
 
 func mustLookup(name string) *template.Template {
@@ -129,7 +130,8 @@ a:hover { color: #0d0d4a; }
 .kicker-high     { color: #b45309; }
 .kicker-medium   { color: #475569; }
 .kicker-low      { color: #9ca3af; }
-.kicker-archive  { color: #9ca3af; font-style: italic; }
+.kicker-archive   { color: #9ca3af; font-style: italic; }
+.kicker-earnings  { color: #065f46; font-weight: 800; }
 .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
 
 /* Headlines */
@@ -287,6 +289,7 @@ const sharedFragments = `
   <a href="/section/boardroom">Boardroom</a>
   <a href="/section/auditor">Auditor Watch</a>
   <a href="/section/pay">Pay &amp; Proxy</a>
+  <a href="/section/earnings">Earnings</a>
   <a href="/wire">The Wire</a>
   <a href="/breaking">Breaking</a>
   <a href="/live">Live</a>
@@ -311,7 +314,8 @@ const sharedFragments = `
 
 const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate +
 	sectionTemplate + tickerTemplate + ticker404Template +
-	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate + personTemplate + liveTemplate
+	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate +
+	personTemplate + liveTemplate + earningsTemplate
 
 const frontTemplate = `{{define "front"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -371,6 +375,16 @@ const frontTemplate = `{{define "front"}}<!doctype html>
         <a href="/doc/{{.Identity}}" style="font-family:system-ui;font-weight:600;font-size:0.82rem;color:#111;">{{.Ticker}}{{if .Form}} · {{.Form}}{{end}}</a>
         <div style="font-family:system-ui;font-size:0.7rem;color:#888;margin-top:0.1rem;">{{.DateStr}}</div>
       </div>{{end}}
+    </div>{{end}}
+    {{if .Earnings}}<div class="sidebar-box"><h4>Earnings</h4>
+      {{range .Earnings}}<div style="padding:0.4rem 0;border-bottom:1px dashed #eee;font-family:system-ui;font-size:0.8rem;">
+        <div><a href="{{.Link}}" style="font-weight:600;color:#111;">{{.Headline}}</a></div>
+        <div style="color:#666;font-size:0.72rem;margin-top:0.1rem;">
+          <span class="kicker-earnings" style="font-weight:800;font-size:0.65rem;letter-spacing:1px;text-transform:uppercase;margin-right:0.4rem;">{{.Ticker}}</span>
+          {{if .EPSStr}}<strong>{{.EPSStr}}</strong>{{if .IsGAAP}} GAAP{{end}} ·{{end}} {{.PeriodStr}}
+        </div>
+      </div>{{end}}
+      <div style="font-size:0.72rem;color:#888;margin-top:0.5rem;font-family:system-ui;"><a href="/section/earnings">All earnings →</a></div>
     </div>{{end}}
     {{if .SuccessionWatch}}<div class="sidebar-box"><h4>Succession Watch</h4>
       {{range .SuccessionWatch}}<div style="padding:0.4rem 0;border-bottom:1px dashed #eee;font-family:system-ui;font-size:0.8rem;">
@@ -510,7 +524,16 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
       <div class="dateline">{{.Dateline}}</div><div class="byline">{{.Byline}}</div>
     </article>{{end}}
     {{end}}
-    {{if and (not .Lead) (not .Signals) (not .Docs) (not .Wire)}}
+    {{if .Earnings}}
+    <p class="section-hdr" style="margin-top:1.5rem;">Earnings</p>
+    {{range .Earnings}}<article class="story">
+      <span class="kicker kicker-earnings">EARNINGS{{if .PeriodStr}} · {{.PeriodStr}}{{end}}</span>
+      <h3 class="hl-item"><a href="{{.Link}}">{{.Headline}}</a></h3>
+      <div class="dateline">{{.Ticker}}{{if .DateStr}} — {{.DateStr}}.{{end}}</div>
+      <div class="byline">By the EPS Desk{{if .EPSStr}} &nbsp;·&nbsp; <strong>{{.EPSStr}}</strong>{{if .IsGAAP}} GAAP{{end}}{{end}}</div>
+    </article>{{end}}
+    {{end}}
+    {{if and (not .Lead) (not .Signals) (not .Docs) (not .Wire) (not .Earnings)}}
     <p>No signals or documents for {{.Symbol}} yet.</p>
     {{end}}
   </main>
@@ -737,6 +760,29 @@ const liveTemplate = `{{define "live"}}<!doctype html>
 })();
 </script>
 </div>{{template "footer" .}}</body></html>{{end}}`
+
+const earningsTemplate = `{{define "earnings"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Earnings — FATBABY</title>
+<link rel="alternate" type="application/rss+xml" title="Earnings — FATBABY" href="/section/earnings/feed.xml">
+<style>` + siteCSS + `</style></head>
+<body><div class="wrap">
+{{template "masthead" .}}
+{{template "sectionsrail" .}}
+<main style="max-width:760px;padding:1rem 0;">
+<h1 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#065f46;margin:0 0 1.2rem;">Earnings Desk</h1>
+{{if .Items}}
+{{range .Items}}<article class="story">
+  <span class="kicker kicker-earnings">EARNINGS{{if .PeriodStr}} · {{.PeriodStr}}{{end}}</span>
+  <h2 class="hl-secondary"><a href="{{.Link}}">{{.Headline}}</a></h2>
+  <div class="dateline">{{.Ticker}}{{if .DateStr}} — {{.DateStr}}.{{end}}</div>
+  <div class="byline">By the EPS Desk{{if .EPSStr}} &nbsp;·&nbsp; <strong>{{.EPSStr}}</strong>{{if .IsGAAP}} GAAP{{end}}{{end}}</div>
+  {{if .Dek}}<p class="deck" style="font-size:0.88rem;">{{.Dek}}</p>{{end}}
+</article>{{end}}
+{{else}}
+<p style="color:#888;font-family:system-ui;">No earnings articles yet. Run eps-processor against a press release feed to generate them.</p>
+{{end}}
+</main></div>{{template "footer" .}}</body></html>{{end}}`
 
 const personTemplate = `{{define "person"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

@@ -1,9 +1,9 @@
 # NORTHSTAR: EPS Headlines Feed
 ## Automated earnings-headline generation from earnings releases
 
-**Status**: Implementation Framework
-**Version**: 1.0
-**Date**: May 29, 2026
+**Status**: Operational — extraction, validation, article generation, oracle reconciliation all running
+**Version**: 2.0 (updated from v1.0)
+**Date**: May 29, 2026 · updated May 31, 2026
 **Architecture**: FATBABY-native — `processor` → `intelligence` → `eps` extraction → article generation → `feedserver` → `newssite`
 **First use case**: GAAP diluted EPS headlines from quarterly/annual earnings releases
 
@@ -142,13 +142,37 @@ Open/auditable by construction: the headline number, the extracted data, and the
 
 ---
 
-## ROADMAP
+## IMPLEMENTATION STATUS
 
-- **Phase 0 — Extractor (1-2 wks):** `eps.Extract` + `eps.Validate` on historical press-release `SourceDocument`s. Measure extraction accuracy against a hand-labeled set before generating a single headline. This is the make-or-break phase.
-- **Phase 1 — Headlines (1 wk):** GAAP headline + dek generation; publish to `feedserver`; `newssite` labels + source link.
-- **Phase 2 — Full body + cross-check:** full-numbers story; wire the 8-K cross-source reconciliation; review queue for low-confidence/flagged extractions.
-- **Phase 3 — Consensus (gated on data licensing):** add beat/miss when a licensed estimate source is in place.
-- **Phase 4 — Guidance & segments:** richer body; guidance-change detection (often more market-moving than the print).
+| Phase | Status | What was built |
+|---|---|---|
+| Phase 0 — Extractor | ✅ Done | `internal/eps/extract.go` + `internal/eps/validate.go` — GAAP diluted EPS extraction with confidence scoring and 8 validation flags |
+| Phase 1 — Headlines | ✅ Done | `internal/eps/article.go` `Generate()` — headline + dek + body; `cmd/eps-processor` — runs continuously against prwatch-body event store; `cmd/newssite` now serves `/section/earnings` desk and surfaces EPS articles on front page and ticker pages |
+| Phase 2 — Oracle reconciliation | ✅ Done | `internal/eps/oracle.go` + `cmd/eps-reconciler` — scans secwatch event store for 8-K Item 2.02, matches against oracle cases, writes `confirmed`/`contradicts`/`pending` verdicts to `var/eps/oracle.ndjson` |
+| Phase 3 — Consensus data | ❌ Not yet | Gated on licensed estimate source |
+| Phase 4 — Guidance & segments | ❌ Not yet | Richer body; guidance-change detection |
+
+### Data produced
+
+| File | Contents |
+|---|---|
+| `var/eps/articles.ndjson` | Published EPS articles (one per qualifying press release) |
+| `var/eps/oracle.ndjson` | Oracle cases: extracted EPS + filed EPS + verdict |
+
+### Newssite integration (as of May 31, 2026)
+
+- `/section/earnings` — Earnings desk: all EPS articles sorted by publish date
+- Front page sidebar: up to 4 latest EPS articles with GAAP EPS amount
+- Ticker page: EPS articles for that ticker with period and EPS fact
+- Sections rail: "Earnings" link on every page
+- `cmd/newssite -eps-dir` flag (default `var/eps`)
+
+## OPEN QUESTIONS (remaining)
+
+- Consensus data source and licensing terms.
+- Review-queue threshold — how conservative before launch confidence is established.
+- Guidance: headline-eligible, or body-only?
+- Dedup when the same earnings release crosses multiple wires.
 
 ---
 

@@ -1,8 +1,8 @@
 # NORTHSTAR: EPS Headlines Feed — Phased / Self-Improving
 
-**Status**: Implementation Framework
-**Version**: 2.0 (supersedes v1.0; adds publish/reconcile split + self-improvement loop)
-**Date**: May 29, 2026
+**Status**: Operational — Phases 0–2 complete; self-improvement loop active via oracle reconciliation
+**Version**: 2.0
+**Date**: May 29, 2026 · updated May 31, 2026
 **Architecture**: FATBABY-native — `processor` → `intelligence` → `eps` → `article` → `feedserver` → `newssite`, with an async `reconciler` + the existing Emily/Claude refinement loop closing the cycle.
 
 ---

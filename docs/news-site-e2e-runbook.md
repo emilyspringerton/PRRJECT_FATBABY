@@ -22,11 +22,6 @@ Steps 1 and 2 must complete at least one cycle before step 3 shows anything othe
 - Go 1.22 or later installed (`go version` to confirm).
 - Internet access to `data.sec.gov` — secwatch talks directly to SEC EDGAR.
 - The repository cloned and you are at its root.
-- The three new files from the previous Codex sessions are implemented and compiling:
-  - `pkg/intelligence/source_document.go` — the `SourceDocument` type
-  - `internal/processor/persist_source.go` — `persistSourceDocument` and `sourceDocumentExists`
-  - `internal/newssite/` — `reader.go`, `render.go`, `handler.go`
-  - `cmd/newssite/main.go`
 
 Verify everything compiles before running anything:
 
@@ -34,7 +29,7 @@ Verify everything compiles before running anything:
 go build ./...
 ```
 
-Fix any compile errors before proceeding. Do not skip this step — a processor that panics at startup will silently drop events.
+Fix any compile errors before proceeding.
 
 ---
 
