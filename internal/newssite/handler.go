@@ -73,19 +73,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveArchive(w, r)
 	case path == "/about":
 		status = h.serveAbout(w, r)
+	case path == "/feed.xml":
+		status = h.serveRSS(w, r, "")
 	case path == "/api/tickers":
 		status = h.serveAPITickers(w, r)
 	case strings.HasPrefix(path, "/doc/"):
 		status = h.serveDoc(w, r)
 	case strings.HasPrefix(path, "/ticker/"):
 		status = h.serveTicker(w, r)
+	case strings.HasPrefix(path, "/person/"):
+		status = h.servePersonPage(w, r)
 	case strings.HasPrefix(path, "/company/"):
 		// 301 redirect: /company/{sym} → /ticker/{sym} (north-star compatibility)
 		sym := strings.TrimPrefix(path, "/company/")
 		http.Redirect(w, r, "/ticker/"+sym, http.StatusMovedPermanently)
 		status = http.StatusMovedPermanently
 	case strings.HasPrefix(path, "/section/"):
-		status = h.serveSection(w, r)
+		if strings.HasSuffix(path, "/feed.xml") {
+			slug := strings.TrimSuffix(strings.TrimPrefix(path, "/section/"), "/feed.xml")
+			status = h.serveRSS(w, r, slug)
+		} else {
+			status = h.serveSection(w, r)
+		}
 	default:
 		status = http.StatusNotFound
 		http.NotFound(w, r)
@@ -341,6 +350,63 @@ func (h *Handler) serveAbout(w http.ResponseWriter, r *http.Request) int {
 	var buf bytes.Buffer
 	RenderAboutPage(&buf, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) servePersonPage(w http.ResponseWriter, r *http.Request) int {
+	canonicalID := strings.TrimPrefix(r.URL.Path, "/person/")
+	if canonicalID == "" || h.graph == nil {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+
+	node, ok := h.graph.Node(canonicalID)
+	if !ok {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+
+	edges := h.graph.EdgesFor(canonicalID)
+	personSigs := h.graph.SignalsForPerson(canonicalID)
+	today := time.Now().UTC().Format("2006-01-02")
+
+	var buf bytes.Buffer
+	view := buildPersonPage(node, edges, personSigs, today, h.graph, h.symbols())
+	RenderPersonPage(&buf, view)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) serveRSS(w http.ResponseWriter, r *http.Request, section string) int {
+	ranked := h.liveRanked()
+	if section != "" {
+		var filtered []edition.Ranked
+		for _, item := range ranked {
+			if item.Section == section {
+				filtered = append(filtered, item)
+			}
+		}
+		ranked = filtered
+	}
+	// Cap feed at 50 items.
+	if len(ranked) > 50 {
+		ranked = ranked[:50]
+	}
+
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	baseURL := scheme + "://" + r.Host
+
+	var buf bytes.Buffer
+	if err := RenderRSS(&buf, ranked, section, baseURL); err != nil {
+		http.Error(w, fmt.Sprintf("rss error: %v", err), http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
 }

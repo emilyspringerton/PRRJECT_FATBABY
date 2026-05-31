@@ -18,6 +18,7 @@ var (
 	searchTmpl  = mustLookup("search")
 	archiveTmpl = mustLookup("archive")
 	aboutTmpl   = mustLookup("about")
+	personTmpl  = mustLookup("person")
 )
 
 func mustLookup(name string) *template.Template {
@@ -306,11 +307,12 @@ const sharedFragments = `
 
 const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate +
 	sectionTemplate + tickerTemplate + ticker404Template +
-	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate
+	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate + personTemplate
 
 const frontTemplate = `{{define "front"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FATBABY Financial Intelligence</title>
+<link rel="alternate" type="application/rss+xml" title="FATBABY Financial Intelligence" href="/feed.xml">
 <style>` + siteCSS + `</style></head>
 <body><div class="wrap">
 {{template "masthead" .}}
@@ -635,4 +637,110 @@ const aboutTemplate = `{{define "about"}}<!doctype html>
 </dl>
 <h2 style="font-family:system-ui;font-size:0.85rem;font-weight:700;margin:1.5rem 0 0.5rem;">Not investment advice</h2>
 <p>All signals are model-derived from public filings. They are not investment advice and should not be relied upon for trading decisions.</p>
+</main></div>{{template "footer" .}}</body></html>{{end}}`
+
+const personTemplate = `{{define "person"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Name}} — FATBABY</title>
+<style>` + siteCSS + `
+.person-header { border-bottom: 3px solid #111; padding-bottom: 0.75rem; margin-bottom: 1.4rem; }
+.person-name { font-family: 'Times New Roman', Times, serif; font-size: clamp(1.6rem,4vw,2.4rem); font-weight: 900; margin: 0 0 0.2rem; }
+.person-meta { font-family: system-ui, sans-serif; font-size: 0.75rem; color: #666; }
+.person-meta span + span::before { content: " · "; }
+.board-section { margin-bottom: 2rem; }
+.board-ticker-hdr {
+  font-family: system-ui, sans-serif; font-size: 0.68rem; font-weight: 800;
+  letter-spacing: 2.5px; text-transform: uppercase; color: #555;
+  border-bottom: 2px solid #111; padding-bottom: 0.3rem; margin-bottom: 0.7rem;
+}
+.sparkline-wrap { margin-bottom: 1.2rem; }
+.sparkline-wrap svg { display: block; }
+.sparkline-label { font-family: system-ui, sans-serif; font-size: 0.65rem; color: #888; margin-top: 0.2rem; }
+.interlock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 0.5rem 1rem; }
+.interlock-card { font-family: system-ui, sans-serif; font-size: 0.82rem; padding: 0.4rem 0; border-bottom: 1px dashed #eee; }
+.interlock-name { font-weight: 600; }
+.interlock-boards { font-size: 0.72rem; color: #666; }
+</style></head>
+<body><div class="wrap">
+{{template "masthead" .}}
+{{template "sectionsrail" .}}
+<main class="reading-col" style="max-width:860px;">
+<nav class="back-nav"><a href="/tickers">← Tickers</a></nav>
+
+<div class="person-header">
+  <h1 class="person-name">{{.Name}}</h1>
+  <div class="person-meta">
+    <span style="text-transform:capitalize;">{{.Role}}</span>
+    {{if gt .Centrality 1}}<span>Sits on {{.Centrality}} boards</span>{{end}}
+    {{if .FilingCount}}<span>{{.FilingCount}} filing appearance{{if gt .FilingCount 1}}s{{end}}</span>{{end}}
+    {{if .FirstSeen}}<span>First seen {{.FirstSeen}}</span>{{end}}
+    {{if .LastSeen}}<span>Last seen {{.LastSeen}}</span>{{end}}
+  </div>
+</div>
+
+{{if .Sparkline.HasData}}
+<div class="sparkline-wrap">
+  <svg width="{{.Sparkline.Width}}" height="{{.Sparkline.Height}}" viewBox="0 0 {{.Sparkline.Width}} {{.Sparkline.Height}}" aria-hidden="true">
+    <line x1="0" y1="{{.Sparkline.ThresholdY}}" x2="{{.Sparkline.Width}}" y2="{{.Sparkline.ThresholdY}}"
+          stroke="#dc2626" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+    <polyline points="{{.Sparkline.Points}}" fill="none" stroke="#1a1a8c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    {{range $i, $pt := .Sparkline.Points}}{{end}}
+  </svg>
+  <div class="sparkline-label">Approval % over time &nbsp;— &nbsp;<span style="color:#dc2626;">— — —</span>&nbsp; 90% friction threshold</div>
+</div>
+{{end}}
+
+{{if .Boards}}
+<h2 style="font-family:system-ui;font-size:0.78rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#555;margin:0 0 1rem;">Board appearances</h2>
+{{range .Boards}}
+<div class="board-section">
+  <div class="board-ticker-hdr"><a href="/ticker/{{.Ticker}}">{{.Ticker}}</a>
+    {{if .HasFriction}}&nbsp;<span style="color:#dc2626;font-size:0.75rem;">▼ friction</span>{{end}}
+    {{if .LatestApprStr}}&nbsp;<span style="color:#555;font-weight:400;font-size:0.75rem;">{{.LatestApprStr}} latest</span>{{end}}
+  </div>
+  <table class="dir-table" style="width:100%;">
+    <thead><tr>
+      <th>Date</th><th>Form</th><th>Approval</th>
+      <th>For</th><th>Against</th><th>Abstain</th><th>Broker NV</th>
+    </tr></thead>
+    <tbody>
+    {{range .Appearances}}<tr{{if .IsFriction}} style="color:#dc2626;"{{end}}>
+      <td>{{.DateStr}}</td>
+      <td>{{.Form}}</td>
+      <td><strong>{{.ApprovalStr}}</strong></td>
+      <td style="font-size:0.8rem;color:#555;">{{.ForVotes}}</td>
+      <td style="font-size:0.8rem;color:#555;">{{.AgainstVotes}}</td>
+      <td style="font-size:0.8rem;color:#555;">{{.AbstainVotes}}</td>
+      <td style="font-size:0.8rem;color:#555;">{{.BrokerNonVotes}}</td>
+    </tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{end}}
+
+{{if .Signals}}
+<h2 style="font-family:system-ui;font-size:0.78rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#555;margin:1.5rem 0 0.8rem;">Signals</h2>
+{{range .Signals}}
+<article class="story">
+  <span class="kicker {{.KickerClass}}">{{.Kicker}}</span>
+  <h3 class="hl-item"><a href="{{.Link}}">{{.Headline}}</a></h3>
+  <div class="dateline">{{.Dateline}}</div><div class="byline">{{.Byline}}</div>
+  {{if .Deck}}<p class="deck" style="font-size:0.88rem;">{{.Deck}}</p>{{end}}
+</article>
+{{end}}
+{{end}}
+
+{{if .Interlocks}}
+<h2 style="font-family:system-ui;font-size:0.78rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#555;margin:1.5rem 0 0.8rem;">Board co-members</h2>
+<div class="interlock-grid">
+{{range .Interlocks}}
+<div class="interlock-card">
+  <div class="interlock-name"><a href="/person/{{.CanonicalID}}">{{.Name}}</a></div>
+  <div class="interlock-boards">{{range $i,$t := .SharedBoards}}{{if $i}}, {{end}}<a href="/ticker/{{$t}}">{{$t}}</a>{{end}}</div>
+</div>
+{{end}}
+</div>
+{{end}}
+
 </main></div>{{template "footer" .}}</body></html>{{end}}`

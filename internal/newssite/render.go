@@ -2,6 +2,7 @@ package newssite
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
+	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
 )
 
 // frictionThreshold is the approval-pct below which a director is flagged.
@@ -190,6 +192,54 @@ type ArchiveView struct {
 
 type AboutView struct {
 	Base
+}
+
+// ── Person (director dossier) page ────────────────────────────────────────────
+
+// AppearanceView is one filing entry in the person page vote-history table.
+type AppearanceView struct {
+	Ticker         string
+	FilingDate     string // YYYY-MM-DD, for display
+	DateStr        string // "21 May 2026"
+	Form           string
+	ApprovalStr    string // "97.9%"
+	ApprovalPct    float64
+	ForVotes       string
+	AgainstVotes   string
+	AbstainVotes   string
+	BrokerNonVotes string
+	IsFriction     bool
+}
+
+// BoardEntryView groups all appearances of a person at one ticker.
+type BoardEntryView struct {
+	Ticker        string
+	Appearances   []AppearanceView
+	LatestApprStr string
+	HasFriction   bool
+}
+
+// InterlockView is one co-director relationship surfaced on the person page.
+type InterlockView struct {
+	Name        string
+	CanonicalID string
+	SharedBoards []string // tickers where they co-appear
+}
+
+// PersonPageView is the view model for /person/{canonical_id}.
+type PersonPageView struct {
+	Base
+	Name        string
+	CanonicalID string
+	Role        string
+	Centrality  int    // number of distinct boards
+	FirstSeen   string // formatted
+	LastSeen    string // formatted
+	FilingCount int
+	Boards      []BoardEntryView
+	Signals     []ArticleView
+	Interlocks  []InterlockView
+	Sparkline   SparklineView
 }
 
 // ── Render entry points ───────────────────────────────────────────────────────
@@ -666,6 +716,90 @@ func docToArticleView(e DocEntry, deckMax int) ArticleView {
 	}
 }
 
+// ── RSS 2.0 feed ─────────────────────────────────────────────────────────────
+
+type rssChannel struct {
+	XMLName       xml.Name  `xml:"channel"`
+	Title         string    `xml:"title"`
+	Link          string    `xml:"link"`
+	Description   string    `xml:"description"`
+	LastBuildDate string    `xml:"lastBuildDate"`
+	Items         []rssItem `xml:"item"`
+}
+
+type rssFeed struct {
+	XMLName xml.Name   `xml:"rss"`
+	Version string     `xml:"version,attr"`
+	Channel rssChannel `xml:"channel"`
+}
+
+type rssItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+	GUID        string `xml:"guid"`
+	Category    string `xml:"category,omitempty"`
+}
+
+// RenderRSS writes an RSS 2.0 feed for a slice of ranked signals to w.
+// section is the slug for per-section feeds; empty for the front-page feed.
+// baseURL is the scheme+host used to form absolute item links.
+func RenderRSS(w io.Writer, ranked []edition.Ranked, section, baseURL string) error {
+	title := "FATBABY Financial Intelligence"
+	link := baseURL + "/"
+	desc := "Governance and risk signals from SEC filings"
+	if section != "" {
+		title = sectionTitle(section) + " — FATBABY"
+		link = baseURL + "/section/" + section
+		desc = sectionBlurb(section)
+		if desc == "" {
+			desc = "FATBABY " + sectionTitle(section) + " signals"
+		}
+	}
+
+	items := make([]rssItem, 0, len(ranked))
+	for _, r := range ranked {
+		itemLink := baseURL + "/ticker/" + normTicker(r.Signal.Ticker)
+		pubDate := ""
+		dateStr := r.Signal.FilingDate
+		if dateStr == "" {
+			dateStr = r.Signal.DetectedAt
+		}
+		if dateStr != "" {
+			if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+				pubDate = t.UTC().Format(time.RFC1123Z)
+			}
+		}
+		items = append(items, rssItem{
+			Title:       r.Headline,
+			Link:        itemLink,
+			Description: truncateRunes(r.Deck, 300),
+			PubDate:     pubDate,
+			GUID:        r.Signal.SignalID,
+			Category:    r.Section,
+		})
+	}
+
+	feed := rssFeed{
+		Version: "2.0",
+		Channel: rssChannel{
+			Title:         title,
+			Link:          link,
+			Description:   desc,
+			LastBuildDate: time.Now().UTC().Format(time.RFC1123Z),
+			Items:         items,
+		},
+	}
+
+	if _, err := io.WriteString(w, xml.Header); err != nil {
+		return err
+	}
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	return enc.Encode(feed)
+}
+
 // ── Front-page historical filtering ──────────────────────────────────────────
 
 // historicalThresholdDays is the age (in days) beyond which a filing is
@@ -832,6 +966,233 @@ func latestApprovalAt(node *entitygraph.PersonNode, ticker string) float64 {
 		}
 	}
 	return pct
+}
+
+// ── Person page render ────────────────────────────────────────────────────────
+
+// SparklineView holds the pre-computed SVG polyline attributes for the approval
+// trend chart. Width=260 Height=50; Y scaled so 100%=0 and 60%=50 (typical range).
+type SparklineView struct {
+	HasData      bool
+	Points       string // SVG polyline points attribute, e.g. "0,12.5 130,25 260,37.5"
+	ThresholdY   string // Y coordinate of the 90% friction-threshold line
+	Width        int
+	Height       int
+}
+
+func buildSparkline(appearances []AppearanceView) SparklineView {
+	const svgW, svgH = 260, 50
+	const yMin, yMax = 0.60, 1.00 // display range: 60–100%
+	sv := SparklineView{Width: svgW, Height: svgH}
+
+	// Filter to appearances that have a numeric approval pct.
+	var pts []AppearanceView
+	for _, a := range appearances {
+		if a.ApprovalPct > 0 {
+			pts = append(pts, a)
+		}
+	}
+	if len(pts) == 0 {
+		return sv
+	}
+	sv.HasData = true
+
+	yOf := func(pct float64) float64 {
+		clamped := pct
+		if clamped > yMax {
+			clamped = yMax
+		}
+		if clamped < yMin {
+			clamped = yMin
+		}
+		return (1.0 - (clamped-yMin)/(yMax-yMin)) * float64(svgH)
+	}
+
+	var b strings.Builder
+	for i, pt := range pts {
+		var x float64
+		if len(pts) == 1 {
+			x = float64(svgW) / 2
+		} else {
+			x = float64(i) / float64(len(pts)-1) * float64(svgW)
+		}
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%.1f,%.1f", x, yOf(pt.ApprovalPct))
+	}
+	sv.Points = b.String()
+	sv.ThresholdY = fmt.Sprintf("%.1f", yOf(frictionThreshold))
+	return sv
+}
+
+func RenderPersonPage(w io.Writer, view PersonPageView) {
+	if err := personTmpl.Execute(w, view); err != nil {
+		fmt.Fprintf(w, "render error: %v", err)
+	}
+}
+
+// buildPersonPage assembles the PersonPageView from a PersonNode, its edges,
+// signals about the person, and the graph store for co-director name lookups.
+func buildPersonPage(
+	node *entitygraph.PersonNode,
+	edges []*entitygraph.Edge,
+	personSigs []entitygraph.Signal,
+	today string,
+	gs *graphread.Store,
+	symbols []string,
+) PersonPageView {
+	view := PersonPageView{
+		Base:        Base{Symbols: symbols},
+		Name:        node.Name,
+		CanonicalID: node.CanonicalID,
+		Role:        string(node.Type),
+		Centrality:  node.Centrality,
+		FilingCount: node.FilingCount,
+	}
+	if node.FirstAppearance != "" {
+		if t, err := time.Parse("2006-01-02", node.FirstAppearance); err == nil {
+			view.FirstSeen = t.Format("2 Jan 2006")
+		}
+	}
+	if node.LastAppearance != "" {
+		if t, err := time.Parse("2006-01-02", node.LastAppearance); err == nil {
+			view.LastSeen = t.Format("2 Jan 2006")
+		}
+	}
+
+	// Group filings by ticker, sorted oldest-to-newest within each ticker.
+	byTicker := map[string][]entitygraph.FilingAppearance{}
+	for _, f := range node.Filings {
+		t := normTicker(f.Ticker)
+		byTicker[t] = append(byTicker[t], f)
+	}
+	tickerOrder := make([]string, 0, len(byTicker))
+	for t := range byTicker {
+		tickerOrder = append(tickerOrder, t)
+	}
+	sort.Strings(tickerOrder)
+
+	var allApprearances []AppearanceView // all appearances sorted by date, for sparkline
+	for _, t := range tickerOrder {
+		filings := byTicker[t]
+		sort.Slice(filings, func(i, j int) bool { return filings[i].FilingDate < filings[j].FilingDate })
+
+		var latestAppr float64 = -1
+		var apps []AppearanceView
+		for _, f := range filings {
+			av := AppearanceView{
+				Ticker:     t,
+				FilingDate: f.FilingDate,
+				Form:       f.Form,
+			}
+			if t2, err := time.Parse("2006-01-02", f.FilingDate); err == nil {
+				av.DateStr = t2.Format("2 Jan 2006")
+			}
+			if f.ApprovalPct > 0 {
+				av.ApprovalPct = f.ApprovalPct
+				av.ApprovalStr = fmt.Sprintf("%.1f%%", f.ApprovalPct*100)
+				av.IsFriction = f.ApprovalPct < frictionThreshold
+				latestAppr = f.ApprovalPct
+			}
+			if f.ForVotes > 0 {
+				av.ForVotes = formatVotes(f.ForVotes)
+				av.AgainstVotes = formatVotes(f.AgainstVotes)
+				av.AbstainVotes = formatVotes(f.AbstainVotes)
+				av.BrokerNonVotes = formatVotes(f.BrokerNonVotes)
+			}
+			apps = append(apps, av)
+			allApprearances = append(allApprearances, av)
+		}
+
+		be := BoardEntryView{
+			Ticker:      t,
+			Appearances: apps,
+			HasFriction: latestAppr >= 0 && latestAppr < frictionThreshold,
+		}
+		if latestAppr >= 0 {
+			be.LatestApprStr = fmt.Sprintf("%.1f%%", latestAppr*100)
+		}
+		view.Boards = append(view.Boards, be)
+	}
+
+	// Sort allAppearances by date for sparkline.
+	sort.Slice(allApprearances, func(i, j int) bool {
+		return allApprearances[i].FilingDate < allApprearances[j].FilingDate
+	})
+	view.Sparkline = buildSparkline(allApprearances)
+
+	// Signals about this person, rendered as article views.
+	for _, sig := range personSigs {
+		r := edition.Ranked{
+			Signal:      sig,
+			Headline:    edition.GenerateHeadline(sig),
+			Kicker:      fmt.Sprintf("%s · %s", strings.ToUpper(string(sig.Type)), strings.ToUpper(string(sig.Severity))),
+			KickerClass: severityKickerClass(sig.Severity),
+			Dateline:    fmt.Sprintf("%s — %s.", normTicker(sig.Ticker), displayDateFull(DocEntry{FilingDate: sig.FilingDate, PersistedAt: time.Time{}})),
+			Byline:      "By the Entity-Graph Desk",
+			Deck:        sig.Interpretation,
+		}
+		view.Signals = append(view.Signals, signalToArticleView(r, 200))
+	}
+
+	// Board interlocks: find co-directors from edges.
+	seen := map[string]bool{}
+	for _, e := range edges {
+		otherID := e.Target
+		if otherID == node.CanonicalID {
+			otherID = e.Source
+		}
+		if seen[otherID] {
+			continue
+		}
+		seen[otherID] = true
+		otherNode, ok := gs.Node(otherID)
+		if !ok {
+			continue
+		}
+		iv := InterlockView{
+			Name:         otherNode.Name,
+			CanonicalID:  otherID,
+			SharedBoards: e.Companies,
+		}
+		view.Interlocks = append(view.Interlocks, iv)
+	}
+	sort.Slice(view.Interlocks, func(i, j int) bool {
+		return view.Interlocks[i].Name < view.Interlocks[j].Name
+	})
+
+	return view
+}
+
+func severityKickerClass(s entitygraph.Severity) string {
+	switch s {
+	case entitygraph.SeverityCritical:
+		return "kicker-critical"
+	case entitygraph.SeverityHigh:
+		return "kicker-high"
+	case entitygraph.SeverityMedium:
+		return "kicker-medium"
+	default:
+		return "kicker-low"
+	}
+}
+
+// formatVotes formats a raw vote count as a human-readable string (e.g. "1.4B", "221M").
+func formatVotes(n int64) string {
+	if n == 0 {
+		return ""
+	}
+	switch {
+	case n >= 1_000_000_000:
+		return fmt.Sprintf("%.1fB", float64(n)/1_000_000_000)
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fK", float64(n)/1_000)
+	default:
+		return fmt.Sprintf("%d", n)
+	}
 }
 
 // ── JSON API ──────────────────────────────────────────────────────────────────

@@ -235,6 +235,33 @@ func (g *Graph) FlushEdges(dir string) error {
 	})
 }
 
+// LoadEdgesFromDir reads all Edge records from <dir>/edges.ndjson into g.
+func (g *Graph) LoadEdgesFromDir(dir string) error {
+	path := filepath.Join(dir, "edges.ndjson")
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 4<<20), 4<<20)
+	for sc.Scan() {
+		var e Edge
+		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+			continue
+		}
+		key := e.Source + "|" + e.Target
+		if e.Source > e.Target {
+			key = e.Target + "|" + e.Source
+		}
+		g.Edges[key] = &e
+	}
+	return sc.Err()
+}
+
 // appendNDJSON opens path in append+create mode and calls fn with an encoder.
 func appendNDJSON(path string, fn func(*json.Encoder) error) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
