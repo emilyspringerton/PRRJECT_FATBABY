@@ -278,6 +278,24 @@ const sharedFragments = `
     <datalist id="ticker-list">{{range .Symbols}}<option value="{{.}}">{{end}}</datalist>
   </div>
 </header>
+<script>(function(){
+  var input = document.getElementById('q');
+  if (!input) return;
+  // When a datalist suggestion is selected, the browser fires 'change' with the
+  // chosen value already in the input. Navigate immediately rather than making
+  // the user press the Go button a second time.
+  input.addEventListener('change', function() {
+    var val = this.value.trim().toUpperCase();
+    if (!val) return;
+    var opts = document.querySelectorAll('#ticker-list option');
+    for (var i = 0; i < opts.length; i++) {
+      if (opts[i].value.toUpperCase() === val) {
+        window.location.href = '/ticker/' + encodeURIComponent(val);
+        return;
+      }
+    }
+  });
+}());</script>
 {{end}}
 
 {{define "sectionsrail"}}
