@@ -130,6 +130,7 @@ a:hover { color: #0d0d4a; }
 .kicker-medium   { color: #475569; }
 .kicker-low      { color: #9ca3af; }
 .kicker-archive  { color: #9ca3af; font-style: italic; }
+.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
 
 /* Headlines */
 h1,h2,h3 { font-family: 'Times New Roman', Times, serif; margin: 0 0 0.35rem; line-height: 1.12; }
@@ -263,13 +264,14 @@ nav.back-nav { font-family: system-ui, sans-serif; font-size: 0.85rem; margin-bo
 
 const sharedFragments = `
 {{define "masthead"}}
-<header class="masthead">
-  <a href="/" class="masthead-name" style="color:#111;text-decoration:none;">FATBABY</a>
+<header class="masthead" role="banner">
+  <p class="masthead-name"><a href="/" style="color:#111;text-decoration:none;" aria-label="FATBABY home">FATBABY</a></p>
   <div class="masthead-tagline">Financial Intelligence · Governance &amp; Signal Reporting</div>
   <div class="search-row">
-    <form class="search-form" method="get" action="/search">
-      <input type="search" name="q" placeholder="Search tickers…" list="ticker-list" autocomplete="off" class="search-input">
-      <button type="submit" class="search-btn">→</button>
+    <form class="search-form" method="get" action="/search" role="search">
+      <label for="q" class="sr-only">Search tickers</label>
+      <input id="q" type="search" name="q" placeholder="Search tickers…" list="ticker-list" autocomplete="off" class="search-input" aria-label="Search tickers">
+      <button type="submit" class="search-btn" aria-label="Submit search">→</button>
     </form>
     <datalist id="ticker-list">{{range .Symbols}}<option value="{{.}}">{{end}}</datalist>
   </div>
@@ -277,7 +279,7 @@ const sharedFragments = `
 {{end}}
 
 {{define "sectionsrail"}}
-<nav class="sections-rail">
+<nav class="sections-rail" aria-label="Site sections">
   <a href="/">Front Page</a>
   <a href="/tickers">Tickers</a>
   <a href="/section/governance">Governance</a>
@@ -287,6 +289,7 @@ const sharedFragments = `
   <a href="/section/pay">Pay &amp; Proxy</a>
   <a href="/wire">The Wire</a>
   <a href="/breaking">Breaking</a>
+  <a href="/live">Live</a>
   <a href="/archive">Archive</a>
   <a href="/about">About</a>
 </nav>
@@ -398,8 +401,8 @@ const detailTemplate = `{{define "detail"}}<!doctype html>
 {{template "masthead" .}}
 <div class="edition-bar"><span>{{.DateStr}}</span><span><a href="/">← Front page</a></span></div>
 {{template "sectionsrail" .}}
-<div class="reading-col" style="padding:1.5rem 0;">
-  <nav class="back-nav"><a href="/">← All documents</a>{{if .Ticker}} &nbsp;&middot;&nbsp; <a href="/ticker/{{.Ticker}}">{{.Ticker}} desk →</a>{{end}}</nav>
+<main class="reading-col" style="padding:1.5rem 0;">
+  <nav class="back-nav" aria-label="Document navigation"><a href="/">← All documents</a>{{if .Ticker}} &nbsp;&middot;&nbsp; <a href="/ticker/{{.Ticker}}">{{.Ticker}} desk →</a>{{end}}</nav>
   <span class="kicker {{.KickerClass}}">{{.Kicker}}</span>
   <h1 class="hl-lead" style="margin-bottom:0.5rem;">{{.Headline}}</h1>
   <div class="dateline">{{.Dateline}}</div>
@@ -413,7 +416,7 @@ const detailTemplate = `{{define "detail"}}<!doctype html>
   </dl></div>
   <hr class="rule">
   <div class="doc-body"><pre>{{.FullText}}</pre></div>
-</div>
+</main>
 </div>{{template "footer" .}}</body></html>{{end}}`
 
 const breakingTemplate = `{{define "breaking"}}<!doctype html>
@@ -424,7 +427,7 @@ const breakingTemplate = `{{define "breaking"}}<!doctype html>
 <div class="edition-bar"><span><a href="/">← Front page</a></span><span></span></div>
 {{template "sectionsrail" .}}
 <main style="max-width:760px;padding:1rem 0;">
-<h2 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#dc2626;margin:0 0 1.2rem;">Breaking &amp; High-Priority Signals</h2>
+<h1 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#dc2626;margin:0 0 1.2rem;">Breaking &amp; High-Priority Signals</h1>
 {{if .Items}}{{range .Items}}<article class="story">
   <span class="kicker {{.KickerClass}}">{{.Kicker}}</span>
   <h2 class="hl-secondary"><a href="{{.Link}}">{{.Headline}}</a></h2>
@@ -442,7 +445,7 @@ const sectionTemplate = `{{define "section"}}<!doctype html>
 <div class="edition-bar"><span><a href="/">← Front page</a></span><span></span></div>
 {{template "sectionsrail" .}}
 <main style="max-width:760px;padding:1rem 0;">
-<h2 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#888;margin:0 0 0.3rem;">{{.Title}}</h2>
+<h1 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#888;margin:0 0 0.3rem;">{{.Title}}</h1>
 {{if .Blurb}}<p style="font-family:system-ui;font-size:0.88rem;color:#555;margin:0 0 1.2rem;border-bottom:1px solid #ddd;padding-bottom:0.75rem;">{{.Blurb}}</p>{{end}}
 {{if .Items}}{{range .Items}}<article class="story">
   <span class="kicker {{.KickerClass}}">{{.Kicker}}</span>

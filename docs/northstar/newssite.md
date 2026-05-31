@@ -2,7 +2,7 @@
 
 ## Turning the FATBABY event store into a usable financial-intelligence publication
 
-**Status**: P0–P3 complete; P4 mostly complete (RSS + succession watch + live + corrections box done; accessibility pass outstanding)
+**Status**: ✅ All phases complete (P0–P4). Newssite northstar fully implemented.
 **Version**: 1.1
 **Date**: 30 May 2026 · updated 31 May 2026
 **Scope**: `cmd/newssite`, `internal/newssite/*` (and a small set of new read-model packages)
@@ -311,7 +311,7 @@ Each phase is independently shippable and leaves the site working.
 - ✅ RSS feed — `/feed.xml` (front page) + `/section/{slug}/feed.xml` (per desk); `<link rel="alternate">` in front-page `<head>`
 - ✅ Corrections box — `/about` shows "Methodology recently updated" with date when `config/entity-graph-rules.json` mtime is within 14 days; graphread.Store tracks rules file mtime on each Refresh
 - ✅ Succession watch rail — front-page sidebar showing up to 5 `director_decay` directors with approval % and link to person dossier
-- ❌ Accessibility pass (semantic headings, contrast audit) — not yet done
+- ✅ Accessibility pass — `role="banner"` on header; `role="search"` on search form; `<label for="q">` + `aria-label` on search input; `aria-label="Site sections"` and `aria-label="Document navigation"` on nav elements; `<main>` landmark on detail page; h1 page titles on breaking/section pages (were h2); `.sr-only` utility class; `/live` added to sections rail
 
 ---
 

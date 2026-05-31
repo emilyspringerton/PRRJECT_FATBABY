@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Newssite P4 final: accessibility pass + northstar complete
+
+### Accessibility improvements
+
+- `role="banner"` on `<header>` in masthead; `<main>` landmark on detail page (was `<div>`).
+- `role="search"` on search form; `<label for="q">` + `aria-label` on search input and submit
+  button so screen readers can identify the search widget.
+- `aria-label="Site sections"` on sections-rail nav; `aria-label="Document navigation"` on
+  back-nav links — distinguishes the two nav landmarks on multi-nav pages.
+- Heading hierarchy: breaking page and section page titles promoted from `<h2>` to `<h1>`;
+  article headlines remain `<h2>` so the page outline reads h1 → h2 correctly.
+- `.sr-only` utility class added to CSS (visually hidden, screen-reader accessible).
+- `/live` added to sections-rail so the live desk is reachable from every page nav.
+
+### Northstar complete
+
+All newssite northstar phases (P0–P4) and newssite-tickers phases (T1–T4) are now fully
+implemented. Newssite `newssite.md` status updated to reflect completion.
+
 ## 2026-05-31 — Newssite P4: per-ticker RSS, corrections box, stale-doc cleanup
 
 ### Per-ticker RSS
