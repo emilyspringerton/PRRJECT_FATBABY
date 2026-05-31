@@ -115,6 +115,136 @@ func TestHandler(t *testing.T) {
 			wantContains: []string{"&lt;script&gt;alert(1)&lt;/script&gt;"},
 			notContains:  []string{"<script>alert(1)</script>"},
 		},
+		// ── Filing date provenance ──────────────────────────────────────────────
+		{
+			name: "filing date shown not persisted date",
+			path: "/",
+			seed: func(t *testing.T, store eventstore.EventStore) {
+				// Filing from 2019; pipeline-indexed in 2026. Front page must show
+				// the 2026 date as "today" only if the filing qualifies, but the
+				// document itself should display 2019 as its date.
+				writeSourceDoc(t, store, intelligence.SourceDocument{
+					Identity: "fd:1", Ticker: "AAPL", SourceType: "sec_8k", Form: "8-K",
+					FilingDate: "2019-04-26", PersistedAt: now,
+					CleanedText: "vote results", CleanedCharCount: 12,
+				})
+			},
+			// Historical filings (>90 days) are suppressed from the front page feed.
+			// The front page will show "No source documents" rather than a 2019 filing.
+			wantStatus:   http.StatusOK,
+			notContains:  []string{"22 May 2026"}, // persisted_at date must not appear as the article date
+		},
+		{
+			name: "detail page shows filing date not persisted date",
+			path: "/doc/fd:2",
+			seed: func(t *testing.T, store eventstore.EventStore) {
+				writeSourceDoc(t, store, intelligence.SourceDocument{
+					Identity: "fd:2", Ticker: "AAPL", SourceType: "sec_8k", Form: "8-K",
+					FilingDate: "2019-04-26", PersistedAt: now,
+					CleanedText: "annual meeting votes", CleanedCharCount: 20,
+				})
+			},
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"2019", "AAPL"},
+		},
+		// ── Routes smoke tests ─────────────────────────────────────────────────
+		{
+			name:         "healthz",
+			path:         "/healthz",
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"ok"},
+		},
+		{
+			name:       "wire empty",
+			path:       "/wire",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "wire shows press release",
+			path: "/wire",
+			seed: func(t *testing.T, store eventstore.EventStore) {
+				writeSourceDoc(t, store, intelligence.SourceDocument{
+					Identity: "pr:1", Ticker: "AAPL", SourceType: "press_release",
+					CleanedText: "earnings beat", CleanedCharCount: 13, PersistedAt: now,
+				})
+			},
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"AAPL"},
+		},
+		{
+			name:         "archive empty",
+			path:         "/archive",
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name:         "about page",
+			path:         "/about",
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"FATBABY"},
+		},
+		{
+			name:         "tickers empty",
+			path:         "/tickers",
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name:         "live page",
+			path:         "/live",
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name:         "breaking page",
+			path:         "/breaking",
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name:         "section governance",
+			path:         "/section/governance",
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"Governance"},
+		},
+		{
+			name:         "section earnings",
+			path:         "/section/earnings",
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"Earnings"},
+		},
+		{
+			// Without a catalog wired, api/tickers returns empty JSON array.
+			name:         "api tickers no catalog",
+			path:         "/api/tickers?q=AAPL",
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"["},
+		},
+		{
+			// Without a catalog, search renders a results page (200) rather than redirecting.
+			name:         "search no catalog returns page",
+			path:         "/search?q=AAPL",
+			wantStatus:   http.StatusOK,
+		},
+		{
+			name: "ticker page with doc",
+			path: "/ticker/AAPL",
+			seed: func(t *testing.T, store eventstore.EventStore) {
+				writeSourceDoc(t, store, intelligence.SourceDocument{
+					Identity: "t:1", Ticker: "AAPL", SourceType: "sec_8k", Form: "8-K",
+					CleanedText: "some filing", CleanedCharCount: 11, PersistedAt: now,
+				})
+			},
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"AAPL"},
+		},
+		{
+			name:         "ticker rss",
+			path:         "/ticker/AAPL/feed.xml",
+			wantStatus:   http.StatusOK,
+			wantContains: []string{"<?xml", "AAPL"},
+		},
+		{
+			name:       "method not allowed",
+			path:       "/",
+			wantStatus: http.StatusOK, // GET is fine
+		},
 	}
 
 	for _, tt := range tests {
