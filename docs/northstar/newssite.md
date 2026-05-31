@@ -305,7 +305,7 @@ Each phase is independently shippable and leaves the site working.
 - ✅ `/archive` — reverse-chron event index
 - ✅ `/live` — static snapshot + EventSource SSE (`/live/events`); JS-off baseline works; JS-on prepends new cards on each graph refresh
 
-**P4 — Polish & honesty. 🔄 In progress.**
+**P4 — Polish & honesty. ✅ Complete.**
 - ✅ `/about` — masthead/colophon with signal definitions and base rates
 - ✅ ARCHIVE badge + "Indexed DATE" byline for historical filings (date provenance fix)
 - ✅ RSS feed — `/feed.xml` (front page) + `/section/{slug}/feed.xml` (per desk); `<link rel="alternate">` in front-page `<head>`
