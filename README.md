@@ -137,6 +137,45 @@ go run ./cmd/emily-agent
 
 ---
 
+## Environment variables
+
+| Variable | Process | Required | Default | Description |
+|---|---|---|---|---|
+| `ANTHROPIC_API_KEY` | emily-agent, processor | **Yes** | — | Anthropic API key for LLM calls |
+| `MODEL` | emily-agent | No | `claude-haiku-4-5-20251001` | Claude model ID |
+| `VALIDATOR_MODEL` | emily-agent | No | `claude-haiku-4-5-20251001` | Validator model ID |
+| `PORT` | emily-agent | No | `8080` | HTTP listen port |
+| `FATBABY_ROOT` | emily-agent | No | `.` | Repo root (used to resolve var/ paths) |
+| `RATE_LIMIT_RPM` | emily-agent, observation-watcher | No | `20` | Anthropic calls per minute |
+| `MAX_TOOL_ITERS` | emily-agent | No | `10` | Max LLM tool-use iterations per request |
+| `GIT_COMMIT` | emily-agent | No | `true` | Set `false` to disable git commits |
+| `CONVERSATION_DIR` | emily-agent | No | `./conversations` | Directory for saved chat history |
+| `EMILY_INTEGRATION_DIR` | emily-agent | No | `../EMILY/signals` | Path to Emily Prime signals directory |
+| `EMILY_PRIME_TASKS_DIR` | observation-watcher | No | auto-detected | Path to Emily Prime `signals/tasks/` directory |
+| `OBSERVATION_CMD` | observation-watcher | No | `claude` | Command to invoke on new observations |
+| `OBSERVATION_CMD_ARGS` | observation-watcher | No | `--dangerously-skip-permissions` | Extra args for observation command |
+| `OBSERVATION_GATE` | observation-watcher | No | `nontrivial` | `none` always invokes; `nontrivial` skips trivial batches |
+| `ENTITY_GRAPH_RULES` | observation-watcher | No | `config/entity-graph-rules.json` | Path to entity-graph rules file |
+
+A `.env.example` stub:
+
+```bash
+# Required
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Emily agent
+MODEL=claude-haiku-4-5-20251001
+PORT=8080
+FATBABY_ROOT=.
+GIT_COMMIT=true
+
+# Emily Prime integration (optional — auto-detected if ../EMILY/signals/tasks exists)
+# EMILY_INTEGRATION_DIR=../EMILY/signals
+# EMILY_PRIME_TASKS_DIR=../EMILY/signals/tasks
+```
+
+---
+
 ## Quick start
 
 ### Requirements
