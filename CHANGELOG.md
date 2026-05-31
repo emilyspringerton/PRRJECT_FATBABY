@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Filing date provenance fix + newssite front-page performance
+
+### Filing date provenance (Emily observation)
+
+Signals written before the FilingDate field was added to source_document_persisted
+payloads had no filing_date, so the newssite fell back to detected_at (2026-05-30),
+making 2019 AAPL proxy filings appear as breaking news.
+
+- **`internal/entitygraph/graph.go`**: Added `RewriteSignals` for atomic backfill rewrites.
+- **`cmd/entity-graph/main.go`**: Builds a filing-date index from all `filing_discovered`
+  events at batch start and uses it to recover the correct SEC date when a source doc
+  lacks `filing_date`. This is a stable fallback: filing_discovered events always carry
+  the correct EDGAR date.
+- **`cmd/backfill-signal-dates`**: One-shot command that patches existing signals.ndjson
+  records by looking up correct dates from filing_discovered events. Run once to repair
+  historical data; 18 AAPL 2019 signals backfilled to 2019-03-04.
+
+### Newssite front-page performance (4.5s → sub-millisecond)
+
+Every front-page request was reading and deserializing the entire 60 MB event store
+because `file_store.ReadFrom` loads a full NDJSON file before filtering by sequence,
+and `ReadLatest` called it on every HTTP request.
+
+- **`internal/newssite/docindex`**: Extended `DocSummary` to carry `FilingDate`,
+  `BodyPreview`, `DocumentURL`, and `CharCount` — all fields needed for front-page and
+  archive rendering. Added `Recent(n)` method for in-memory newest-N retrieval.
+- **`internal/newssite/handler.go`**: `serveFrontPage`, `serveWire`, `serveArchive`, and
+  `serveTicker` now prefer the in-memory docindex over raw event-store reads when the
+  index is wired. Falls back to `ReadLatest` if docindex is not configured (e.g., tests).
+  Added `summaryToEntry` converter so the ticker page also gets `FilingDate` and
+  `BodyPreview` from the index path.
+
 ## 2026-05-31 — ReadLatest reverse-scan optimization; epsread and reader tests
 
 ### ReadLatest backward-walk (reader.go)

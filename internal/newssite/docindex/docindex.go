@@ -12,19 +12,26 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 )
 
-// DocSummary is the minimal per-document record needed by the catalog and ticker pages.
+// DocSummary is the per-document record kept in the in-memory index.
+// It carries all fields needed by the front page, ticker page, wire, and archive
+// so those handlers never have to touch the raw event store on a hot path.
 type DocSummary struct {
 	Identity    string
 	Ticker      string
 	SourceType  string
 	Form        string
-	PersistedAt time.Time
-	Sequence    uint64 // event store sequence; enables O(1) targeted fetch for detail pages
+	DocumentURL string
+	BodyPreview string // first ~800 runes of cleaned text
+	CharCount   int
+	FilingDate  string    // SEC filing date (YYYY-MM-DD); empty for legacy docs
+	PersistedAt time.Time // pipeline-index timestamp
+	Sequence    uint64    // event store sequence; enables targeted fetch for detail pages
 }
 
 // Index holds all doc summaries keyed by ticker and by identity.
@@ -67,6 +74,10 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 		Ticker:      ticker,
 		SourceType:  doc.SourceType,
 		Form:        doc.Form,
+		DocumentURL: doc.DocumentURL,
+		BodyPreview: previewText(doc.CleanedText, 800),
+		CharCount:   doc.CleanedCharCount,
+		FilingDate:  doc.FilingDate,
 		PersistedAt: doc.PersistedAt,
 	}
 	idx.byIdentity[doc.Identity] = ds
@@ -105,6 +116,17 @@ func (idx *Index) AllSummaries() []*DocSummary {
 		return out[i].PersistedAt.After(out[j].PersistedAt)
 	})
 	return out
+}
+
+// Recent returns up to n docs across all tickers, newest-first by PersistedAt.
+// All fields including BodyPreview and FilingDate are populated from the index;
+// no event store I/O is performed.
+func (idx *Index) Recent(n int) []*DocSummary {
+	all := idx.AllSummaries()
+	if len(all) > n {
+		all = all[:n]
+	}
+	return all
 }
 
 // KnownTickers returns a sorted list of all indexed ticker symbols.
@@ -179,4 +201,16 @@ func Tail(ctx context.Context, store eventstore.EventStore, idx *Index, interval
 		}
 	}()
 	return ready
+}
+
+func previewText(s string, maxRunes int) string {
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	runes := []rune(s)
+	trimmed := string(runes[:maxRunes])
+	if i := strings.LastIndex(trimmed, " "); i > 0 {
+		return strings.TrimSpace(trimmed[:i])
+	}
+	return strings.TrimSpace(trimmed)
 }

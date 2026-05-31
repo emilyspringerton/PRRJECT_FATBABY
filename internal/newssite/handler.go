@@ -21,6 +21,23 @@ import (
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
+// summaryToEntry converts an in-memory DocSummary to the DocEntry shape used by renderers.
+// FullText is intentionally left empty — the detail page fetches it directly from the store.
+func summaryToEntry(ds *docindex.DocSummary) DocEntry {
+	return DocEntry{
+		Seq:         ds.Sequence,
+		Identity:    ds.Identity,
+		Ticker:      ds.Ticker,
+		SourceType:  ds.SourceType,
+		Form:        ds.Form,
+		DocumentURL: ds.DocumentURL,
+		BodyPreview: ds.BodyPreview,
+		CharCount:   ds.CharCount,
+		FilingDate:  ds.FilingDate,
+		PersistedAt: ds.PersistedAt,
+	}
+}
+
 // Handler is an http.Handler for the news site.
 type Handler struct {
 	store        eventstore.EventStore
@@ -117,10 +134,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 func (h *Handler) serveFrontPage(w http.ResponseWriter, r *http.Request) int {
-	entries, err := ReadLatest(r.Context(), h.store, h.defaultLimit)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
-		return http.StatusInternalServerError
+	var entries []DocEntry
+	if h.docIdx != nil {
+		for _, ds := range h.docIdx.Recent(h.defaultLimit) {
+			entries = append(entries, summaryToEntry(ds))
+		}
+	} else {
+		var err error
+		entries, err = ReadLatest(r.Context(), h.store, h.defaultLimit)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
+			return http.StatusInternalServerError
+		}
 	}
 	earnings := EarningsItemsFrom(h.recentEPS(4))
 	var buf bytes.Buffer
@@ -149,15 +174,23 @@ func (h *Handler) serveDoc(w http.ResponseWriter, r *http.Request) int {
 }
 
 func (h *Handler) serveWire(w http.ResponseWriter, r *http.Request) int {
-	entries, err := ReadLatest(r.Context(), h.store, 100)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
-		return http.StatusInternalServerError
-	}
 	var wire []DocEntry
-	for _, e := range entries {
-		if e.SourceType == "press_release" {
-			wire = append(wire, e)
+	if h.docIdx != nil {
+		for _, ds := range h.docIdx.Recent(100) {
+			if ds.SourceType == "press_release" {
+				wire = append(wire, summaryToEntry(ds))
+			}
+		}
+	} else {
+		entries, err := ReadLatest(r.Context(), h.store, 100)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
+			return http.StatusInternalServerError
+		}
+		for _, e := range entries {
+			if e.SourceType == "press_release" {
+				wire = append(wire, e)
+			}
 		}
 	}
 	var buf bytes.Buffer
@@ -234,17 +267,11 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 		directors = h.graph.DirectorsFor(symbol)
 	}
 
-	// Docs: prefer docindex (fast), fall back to event store scan.
+	// Docs: prefer docindex (fast in-memory), fall back to event store scan.
 	var secDocs, wireDocs []DocEntry
 	if h.docIdx != nil {
 		for _, ds := range h.docIdx.ForTicker(symbol) {
-			de := DocEntry{
-				Identity:    ds.Identity,
-				Ticker:      ds.Ticker,
-				SourceType:  ds.SourceType,
-				Form:        ds.Form,
-				PersistedAt: ds.PersistedAt,
-			}
+			de := summaryToEntry(ds)
 			if ds.SourceType == "press_release" {
 				wireDocs = append(wireDocs, de)
 			} else {
@@ -352,10 +379,18 @@ func (h *Handler) serveAPITickers(w http.ResponseWriter, r *http.Request) int {
 }
 
 func (h *Handler) serveArchive(w http.ResponseWriter, r *http.Request) int {
-	entries, err := ReadLatest(r.Context(), h.store, 500)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
-		return http.StatusInternalServerError
+	var entries []DocEntry
+	if h.docIdx != nil {
+		for _, ds := range h.docIdx.Recent(500) {
+			entries = append(entries, summaryToEntry(ds))
+		}
+	} else {
+		var err error
+		entries, err = ReadLatest(r.Context(), h.store, 500)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
+			return http.StatusInternalServerError
+		}
 	}
 	var buf bytes.Buffer
 	RenderArchivePage(&buf, entries, h.symbols())
