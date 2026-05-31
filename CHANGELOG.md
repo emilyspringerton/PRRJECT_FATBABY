@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Emily Prime integration: auto-commit to Prime, observation-watcher task polling
+
+### Emily Prime ↔ FatBaby feedback loop wired
+
+Implements the integration layer between FatBaby-Emily and Emily Prime as specified
+in `EMILY/emily-prime-spec.md`. The loop is now closed: FatBaby observations flow
+up to Emily Prime automatically; Emily Prime's directed tasks flow back down to
+the observation-watcher without manual configuration.
+
+- **`cmd/emily-agent/main.go`**: `fatbaby_write_observation` now auto-commits to
+  Emily Prime's `signals/observations/` directory (and git-commits to the EMILY
+  repo) whenever severity is `error`, `warn`, `critical`, or `high`. No separate
+  `fatbaby_commit_to_prime` call needed for the common escalation path. Tick prompt
+  updated to clarify severity semantics and mention the auto-forwarding behaviour.
+
+- **`cmd/observation-watcher/main.go`**: Added auto-detection of Emily Prime's
+  tasks directory. If `--prime-tasks` / `EMILY_PRIME_TASKS_DIR` is not set, the
+  watcher checks for `../EMILY/signals/tasks` relative to `--root`. In the standard
+  sibling layout (`~/PRRJECT_FATBABY` + `~/EMILY`) this fires automatically with
+  zero configuration.
+
 ## 2026-05-31 — Test coverage: docindex, graphread, handler routes; editorial-rules config
 
 ### Test coverage (Emily observation follow-through)

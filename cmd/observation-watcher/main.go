@@ -70,6 +70,16 @@ func main() {
 	latest := filepath.Join(dir, "latest.json")
 	cursor := filepath.Join(dir, ".last-processed")
 
+	// Auto-detect Emily Prime tasks dir if not explicitly configured.
+	// Looks for the sibling EMILY/signals/tasks directory — the standard layout
+	// when PRRJECT_FATBABY and EMILY share a parent directory.
+	if *primeDir == "" {
+		candidate := filepath.Join(*root, "..", "EMILY", "signals", "tasks")
+		if _, err := os.Stat(candidate); err == nil {
+			*primeDir = candidate
+		}
+	}
+
 	// Prime task poller cursor — tracks last-processed task file.
 	var primeTaskCursor string
 	if *primeDir != "" {

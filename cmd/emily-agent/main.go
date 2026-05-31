@@ -423,7 +423,43 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		if err := os.WriteFile(archive, b, 0o644); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("wrote observation severity=%s latest=%s archive=%s", severity, latest, archive), nil
+		result := fmt.Sprintf("wrote observation severity=%s latest=%s archive=%s", severity, latest, archive)
+
+		// Auto-commit to Emily Prime's integration layer for high/critical findings.
+		// Best-effort: failures are logged but don't block the observation write.
+		if severity == "error" || severity == "warn" || severity == "critical" || severity == "high" {
+			primeObsDir := os.Getenv("EMILY_INTEGRATION_DIR")
+			if primeObsDir == "" {
+				primeObsDir = filepath.Join(fatbabyRoot, "..", "EMILY", "signals", "observations")
+			} else {
+				primeObsDir = filepath.Join(primeObsDir, "observations")
+			}
+			if mkErr := os.MkdirAll(primeObsDir, 0o755); mkErr == nil {
+				enriched := map[string]any{
+					"timestamp":        now.Format(time.RFC3339),
+					"source":           "fatbaby-emily",
+					"observation_type": "anomaly",
+					"severity":         severity,
+					"summary":          summary,
+					"findings":         findings,
+					"suggested_fix":    suggested,
+				}
+				slug := slugifySimple(summary, 32)
+				fname := strings.ReplaceAll(now.Format(time.RFC3339), ":", "") + "-" + slug + ".json"
+				outPath := filepath.Join(primeObsDir, fname)
+				if pb, jErr := json.MarshalIndent(enriched, "", "  "); jErr == nil {
+					if wErr := os.WriteFile(outPath, pb, 0o644); wErr == nil {
+						primeRoot := filepath.Dir(filepath.Dir(primeObsDir))
+						rel, _ := filepath.Rel(primeRoot, outPath)
+						exec.Command("git", "-C", primeRoot, "add", rel).Run()
+						exec.Command("git", "-C", primeRoot, "commit", "-m", "observation from fatbaby: "+summary,
+							"--author=FatBaby-Emily <fatbaby-emily@agent.local>").Run()
+						result += " · committed to emily-prime"
+					}
+				}
+			}
+		}
+		return result, nil
 	})
 
 	d.Register(ToolDef{Name: "fatbaby_read_observation", Description: "Read back the most recent observation Emily published. Useful before writing a new one to avoid duplicating a still-open finding.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
@@ -870,7 +906,8 @@ const tickPrompt = `Do an unattended health sweep of the fatbaby pipeline. ` +
 	`(3) call fatbaby_eps_status to check EPS oracle precision; ` +
 	`(4) tail logs for any running processes that show errors. ` +
 	`If you find a real problem that needs source-code changes — parse errors, precision below 0.7, stalled processors, zero signal counts when filings exist — ` +
-	`call fatbaby_write_observation with a clear summary, severity, findings, and suggested_fix. ` +
+	`call fatbaby_write_observation with severity "error" or "warn" and a clear summary, findings, and suggested_fix. ` +
+	`High/critical findings are automatically forwarded to Emily Prime's integration layer. ` +
 	`If everything looks normal, reply "ok" and write nothing. Never write an observation for transient or self-inflicted state.`
 
 func (s *Server) handleTick(w http.ResponseWriter, _ *http.Request) {
