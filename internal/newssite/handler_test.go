@@ -142,6 +142,70 @@ func TestHandler(t *testing.T) {
 	}
 }
 
+// TestReadLatest_NewestFirst verifies the backward-walk returns newest records first.
+func TestReadLatest_NewestFirst(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	for i, ticker := range []string{"AAPL", "MSFT", "GOOG"} {
+		writeSourceDoc(t, store, intelligence.SourceDocument{
+			Identity:    ticker + ":1",
+			Ticker:      ticker,
+			SourceType:  "sec_8k",
+			PersistedAt: now.Add(time.Duration(i) * time.Hour),
+		})
+	}
+
+	ctx := context.Background()
+	entries, err := ReadLatest(ctx, store, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("got %d entries, want 3", len(entries))
+	}
+	// Most recent first: GOOG (hour 2), MSFT (hour 1), AAPL (hour 0)
+	if entries[0].Ticker != "GOOG" {
+		t.Errorf("entries[0].Ticker = %q, want GOOG (newest)", entries[0].Ticker)
+	}
+	if entries[2].Ticker != "AAPL" {
+		t.Errorf("entries[2].Ticker = %q, want AAPL (oldest)", entries[2].Ticker)
+	}
+}
+
+// TestReadLatest_LimitRespected verifies limit is honoured even when more records exist.
+func TestReadLatest_LimitRespected(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 5, 22, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 20; i++ {
+		writeSourceDoc(t, store, intelligence.SourceDocument{
+			Identity:    "x:" + time.Duration(i).String(),
+			Ticker:      "X",
+			SourceType:  "sec_8k",
+			PersistedAt: now.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	ctx := context.Background()
+	entries, err := ReadLatest(ctx, store, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 5 {
+		t.Fatalf("got %d entries, want 5", len(entries))
+	}
+}
+
 func writeSourceDoc(t *testing.T, store eventstore.EventStore, doc intelligence.SourceDocument) {
 	t.Helper()
 	payload, _ := json.Marshal(doc)

@@ -26,42 +26,63 @@ type DocEntry struct {
 	PersistedAt time.Time // pipeline-index timestamp; shown as footnote only
 }
 
-// ReadLatest scans the event store from the tail and returns up to limit
-// source_document_persisted entries, newest first.
-// TODO: optimize this by adding reverse scan support in the event store.
+// readChunkSize is the number of event store records fetched per backward step.
+// Sized to hold ~a day's worth of events without excessive memory pressure.
+const readChunkSize = 512
+
+// ReadLatest returns up to limit source_document_persisted entries, newest first.
+// It walks backward from the latest sequence in chunks so it only reads as many
+// events as needed, not the entire store. This keeps latency low even when the
+// store has grown to hundreds of thousands of events.
 func ReadLatest(ctx context.Context, store eventstore.EventStore, limit int) ([]DocEntry, error) {
 	if limit <= 0 {
 		return []DocEntry{}, nil
 	}
 
-	all := make([]DocEntry, 0, limit)
-	from := uint64(1)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
+	latest, err := store.LatestSequence(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if latest == 0 {
+		return []DocEntry{}, nil
+	}
+
+	result := make([]DocEntry, 0, limit)
+
+	// Walk backward from latest in chunks of readChunkSize.
+	// cursor is the exclusive upper bound for the next read.
+	cursor := latest + 1
+	for cursor > 1 && len(result) < limit {
+		start := uint64(1)
+		if cursor > readChunkSize {
+			start = cursor - readChunkSize
+		}
+		size := int(cursor - start)
+
+		recs, err := store.ReadFrom(ctx, start, size)
 		if err != nil {
 			return nil, err
 		}
-		if len(recs) == 0 {
-			break
-		}
-		for _, rec := range recs {
-			if rec.Event.Type != "source_document_persisted" {
+
+		// Scan this chunk newest-first (reverse order).
+		for i := len(recs) - 1; i >= 0 && len(result) < limit; i-- {
+			if recs[i].Event.Type != "source_document_persisted" {
 				continue
 			}
-			entry, ok := toEntry(rec)
+			entry, ok := toEntry(recs[i])
 			if !ok {
 				continue
 			}
-			all = append(all, entry)
+			result = append(result, entry)
 		}
-		from = recs[len(recs)-1].Sequence + 1
+
+		if start == 1 {
+			break
+		}
+		cursor = start
 	}
 
-	reverse(all)
-	if len(all) > limit {
-		all = all[:limit]
-	}
-	return all, nil
+	return result, nil
 }
 
 // ReadByIdentity returns the single DocEntry whose Identity matches the given
@@ -128,8 +149,3 @@ func previewText(s string, maxRunes int) string {
 	return strings.TrimSpace(trimmed)
 }
 
-func reverse(entries []DocEntry) {
-	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
-		entries[i], entries[j] = entries[j], entries[i]
-	}
-}

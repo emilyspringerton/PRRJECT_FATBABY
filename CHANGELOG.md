@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — ReadLatest reverse-scan optimization; epsread and reader tests
+
+### ReadLatest backward-walk (reader.go)
+
+`ReadLatest` previously scanned the entire event store forward from sequence 1 and
+reversed the result — O(N) where N is total store events. For a store with 100K events,
+fetching the latest 50 documents required reading all 100K events.
+
+Replaced with a backward-walk from `LatestSequence()` in chunks of 512. The walk stops
+as soon as `limit` results are found. For a typical running system (where recent events
+are predominantly `source_document_persisted`), this reduces reads by 99%+ and keeps
+front-page latency flat as the store grows.
+
+The `reverse` helper is removed (no longer needed). Two new tests assert the newest-first
+ordering and limit-capping behaviour against a real file store.
+
+### epsread tests
+
+Four tests covering the new package:
+- `TestRefresh_Empty` — graceful no-op on missing articles.ndjson
+- `TestRefresh_LoadsAndSortsNewestFirst` — verifies PublishAt desc ordering
+- `TestArticlesFor_FiltersByTicker` — per-ticker lookup + case-insensitive normalization
+- `TestRecent_CapAtN` — limit respected, limit=0 returns empty
+
 ## 2026-05-31 — EPS articles integrated into newssite; EPS + runbook docs updated
 
 ### EPS article integration
