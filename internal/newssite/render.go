@@ -417,6 +417,33 @@ func RenderAboutPage(w io.Writer, symbols []string) {
 // ── View builders ─────────────────────────────────────────────────────────────
 
 func buildFrontPage(entries []DocEntry, ranked []edition.Ranked) FrontPageView {
+	// Suppress historical articles from the front page. Backfilling a new ticker
+	// can add years of archived filings; those should appear on the ticker page
+	// only, not flood the front-page feed with fake "breaking" dates.
+	freshEntries := entries[:0:0]
+	for _, e := range entries {
+		fd := e.FilingDate
+		if fd == "" {
+			fd = e.PersistedAt.Format("2006-01-02")
+		}
+		if !isHistoricalDateStr(fd) {
+			freshEntries = append(freshEntries, e)
+		}
+	}
+	entries = freshEntries
+
+	freshRanked := ranked[:0:0]
+	for _, r := range ranked {
+		fd := r.Signal.FilingDate
+		if fd == "" {
+			fd = r.Signal.DetectedAt
+		}
+		if !isHistoricalDateStr(fd) {
+			freshRanked = append(freshRanked, r)
+		}
+	}
+	ranked = freshRanked
+
 	tickerCount := map[string]int{}
 	var wireEntries []DocEntry
 	for _, e := range entries {
@@ -577,10 +604,20 @@ func buildDetailPage(entry DocEntry) DetailPageView {
 }
 
 func signalToArticleView(r edition.Ranked, deckMax int) ArticleView {
+	kicker := r.Kicker
+	kickerClass := r.KickerClass
+	fd := r.Signal.FilingDate
+	if fd == "" {
+		fd = r.Signal.DetectedAt
+	}
+	if isHistoricalDateStr(fd) {
+		kicker = "ARCHIVE · " + kicker
+		kickerClass = "kicker-archive"
+	}
 	return ArticleView{
 		Link:        "/ticker/" + normTicker(r.Signal.Ticker),
-		Kicker:      r.Kicker,
-		KickerClass: r.KickerClass,
+		Kicker:      kicker,
+		KickerClass: kickerClass,
 		Headline:    r.Headline,
 		Dateline:    r.Dateline,
 		Byline:      r.Byline,
@@ -590,6 +627,14 @@ func signalToArticleView(r edition.Ranked, deckMax int) ArticleView {
 
 func docToArticleView(e DocEntry, deckMax int) ArticleView {
 	kicker, kickerClass := docKicker(e)
+	fd := e.FilingDate
+	if fd == "" && !e.PersistedAt.IsZero() {
+		fd = e.PersistedAt.Format("2006-01-02")
+	}
+	if isHistoricalDateStr(fd) {
+		kicker = "ARCHIVE · " + kicker
+		kickerClass = "kicker-archive"
+	}
 	srcLabel := sourceTypeLabel(e.SourceType)
 	formOrType := srcLabel
 	if e.Form != "" {
@@ -597,6 +642,14 @@ func docToArticleView(e DocEntry, deckMax int) ArticleView {
 	}
 	headline := fmt.Sprintf("%s — %s", normTicker(e.Ticker), formOrType)
 	dateline := fmt.Sprintf("%s — %s.", normTicker(e.Ticker), displayDateFull(e))
+	byline := docByline(e)
+	if e.FilingDate != "" && !e.PersistedAt.IsZero() {
+		indexedStr := e.PersistedAt.UTC().Format("2 Jan 2006")
+		filedStr := displayDateShort(e)
+		if indexedStr != filedStr {
+			byline += " · Indexed " + indexedStr
+		}
+	}
 	deck := ""
 	if deckMax > 0 {
 		deck = truncateRunes(e.BodyPreview, deckMax)
@@ -608,9 +661,30 @@ func docToArticleView(e DocEntry, deckMax int) ArticleView {
 		KickerClass: kickerClass,
 		Headline:    headline,
 		Dateline:    dateline,
-		Byline:      docByline(e),
+		Byline:      byline,
 		Deck:        deck,
 	}
+}
+
+// ── Front-page historical filtering ──────────────────────────────────────────
+
+// historicalThresholdDays is the age (in days) beyond which a filing is
+// considered historical and suppressed from the front-page feed. Historical
+// articles are still visible on per-ticker pages.
+const historicalThresholdDays = 90
+
+// isHistoricalDateStr reports whether a YYYY-MM-DD date string represents a
+// filing older than historicalThresholdDays. Returns false when the date is
+// empty or unparseable so that undated documents are never silently suppressed.
+func isHistoricalDateStr(dateStr string) bool {
+	if dateStr == "" {
+		return false
+	}
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return false
+	}
+	return time.Since(t) > historicalThresholdDays*24*time.Hour
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

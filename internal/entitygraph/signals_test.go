@@ -10,7 +10,7 @@ func TestScoreDirectorVotes_Friction(t *testing.T) {
 	votes := []VoteResult{
 		{Name: "Frank C. Herringer", ForVotes: 1_213_200_000, AgainstVotes: 221_400_000, AbstainVotes: 8_500_000, ApprovalPct: 0.843},
 	}
-	sigs := ScoreDirectorVotes(votes, "SCHW", r)
+	sigs := ScoreDirectorVotes(votes, "SCHW", "", r)
 	if len(sigs) == 0 {
 		t.Fatal("expected signals, got none")
 	}
@@ -33,7 +33,7 @@ func TestScoreDirectorVotes_HighTrust(t *testing.T) {
 	votes := []VoteResult{
 		{Name: "Marianne C. Brown", ForVotes: 1_397_200_000, AgainstVotes: 26_800_000, AbstainVotes: 5_000_000, ApprovalPct: 0.979},
 	}
-	sigs := ScoreDirectorVotes(votes, "SCHW", r)
+	sigs := ScoreDirectorVotes(votes, "SCHW", "", r)
 	found := false
 	for _, s := range sigs {
 		if s.Type == SignalHighTrustDirector {
@@ -50,7 +50,7 @@ func TestScoreDirectorVotes_FamilyControl(t *testing.T) {
 	votes := []VoteResult{
 		{Name: "Carolyn Schwab-Pomerantz", ApprovalPct: 0.963, ForVotes: 1_380_000_000, AgainstVotes: 38_000_000, AbstainVotes: 11_000_000},
 	}
-	sigs := ScoreDirectorVotes(votes, "SCHW", r)
+	sigs := ScoreDirectorVotes(votes, "SCHW", "", r)
 	found := false
 	for _, s := range sigs {
 		if s.Type == SignalFamilyControl {
@@ -102,7 +102,7 @@ func TestScoreProposals_Entrenchment(t *testing.T) {
 			Passed:           false,
 		},
 	}
-	sigs := ScoreProposals(proposals, "SCHW", r)
+	sigs := ScoreProposals(proposals, "SCHW", "", r)
 	found := false
 	for _, s := range sigs {
 		if s.Type == SignalGovernanceEntrenchment {
@@ -128,7 +128,7 @@ func TestScoreProposals_CompConcern(t *testing.T) {
 			Passed:       true,
 		},
 	}
-	sigs := ScoreProposals(proposals, "TEST", r)
+	sigs := ScoreProposals(proposals, "TEST", "", r)
 	found := false
 	for _, s := range sigs {
 		if s.Type == SignalCompensationConcern {
@@ -218,7 +218,7 @@ func TestScoreDirectorLinks_FiresForSharedDirector(t *testing.T) {
 }
 
 func TestScoreAuditorChange(t *testing.T) {
-	sig := ScoreAuditorChange("SCHW", "Deloitte Touche LLP", "KPMG LLP")
+	sig := ScoreAuditorChange("SCHW", "Deloitte Touche LLP", "KPMG LLP", "")
 	if sig.Type != SignalAuditorChange {
 		t.Errorf("signal type = %s, want auditor_change", sig.Type)
 	}
@@ -273,7 +273,7 @@ func TestScoreDirectorVotes_NominationRejection(t *testing.T) {
 	votes := []VoteResult{
 		{Name: "Failed Director", ForVotes: 450_000_000, AgainstVotes: 600_000_000, AbstainVotes: 10_000_000, ApprovalPct: 0.425},
 	}
-	sigs := ScoreDirectorVotes(votes, "TEST", r)
+	sigs := ScoreDirectorVotes(votes, "TEST", "", r)
 	found := false
 	for _, s := range sigs {
 		if s.Type == SignalNominationRejection {
@@ -303,7 +303,7 @@ func TestScoreProposals_AbstentionSpike(t *testing.T) {
 			Passed:       true,
 		},
 	}
-	sigs := ScoreProposals(proposals, "TEST", r)
+	sigs := ScoreProposals(proposals, "TEST", "", r)
 	found := false
 	for _, s := range sigs {
 		if s.Type == SignalAbstentionSpike {
@@ -329,7 +329,7 @@ func TestScoreProposals_NoAbstentionSpike_BelowThreshold(t *testing.T) {
 			Passed:       true,
 		},
 	}
-	sigs := ScoreProposals(proposals, "TEST", r)
+	sigs := ScoreProposals(proposals, "TEST", "", r)
 	for _, s := range sigs {
 		if s.Type == SignalAbstentionSpike {
 			t.Error("unexpected abstention_spike signal for 3% abstention rate")

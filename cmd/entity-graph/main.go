@@ -185,11 +185,16 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			continue
 		}
 
-		// Use the filing's persisted-at date as the canonical date so the same
-		// filing always gets the same date regardless of when entity-graph runs.
-		filingDate := doc.PersistedAt.Format("2006-01-02")
-		if doc.PersistedAt.IsZero() {
-			filingDate = time.Now().UTC().Format("2006-01-02")
+		// Prefer the SEC filing date from the document metadata; fall back to
+		// PersistedAt only for legacy docs that pre-date the FilingDate field.
+		// Never use time.Now() — that would stamp backfilled historical filings
+		// with today's date, making 2019 filings appear as breaking news.
+		filingDate := doc.FilingDate
+		if filingDate == "" {
+			filingDate = doc.PersistedAt.Format("2006-01-02")
+			if doc.PersistedAt.IsZero() {
+				filingDate = time.Now().UTC().Format("2006-01-02")
+			}
 		}
 		var canonIDs []string
 
@@ -211,8 +216,8 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 		graph.BuildEdgesFromFiling(canonIDs, doc.Ticker)
 
-		dirSigs := entitygraph.ScoreDirectorVotes(result.DirectorVotes, doc.Ticker, rules)
-		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, rules)
+		dirSigs := entitygraph.ScoreDirectorVotes(result.DirectorVotes, doc.Ticker, filingDate, rules)
+		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, filingDate, rules)
 
 		// Tag all per-filing signals with their source identity for traceability.
 		for i := range dirSigs {
@@ -236,7 +241,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		if result.Auditor != "" {
 			changed, prev := graph.TrackAuditor(doc.Ticker, result.Auditor, filingDate)
 			if changed {
-				sig := entitygraph.ScoreAuditorChange(doc.Ticker, prev, result.Auditor)
+				sig := entitygraph.ScoreAuditorChange(doc.Ticker, prev, result.Auditor, filingDate)
 				allSignals = append(allSignals, sig)
 				logger.Printf("auditor_change ticker=%s prev=%q new=%q", doc.Ticker, prev, result.Auditor)
 			} else {

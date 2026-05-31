@@ -70,7 +70,7 @@ func Rank(signals []entitygraph.Signal, today string) []Ranked {
 			Headline:    GenerateHeadline(s),
 			Kicker:      buildKicker(s),
 			KickerClass: kickerClass(s),
-			Byline:      "By the Entity-Graph Desk",
+			Byline:      buildByline(s),
 			Dateline:    buildDateline(s),
 			Section:     SectionFor(s.Type),
 			Deck:        s.Interpretation,
@@ -189,9 +189,27 @@ func kickerClass(s entitygraph.Signal) string {
 	}
 }
 
+// buildByline returns the byline string. For signals with a known filing date
+// that differs from the processing date, it appends an "Indexed DATE" note so
+// readers know when the pipeline discovered the filing.
+func buildByline(s entitygraph.Signal) string {
+	byline := "By the Entity-Graph Desk"
+	if s.FilingDate != "" && s.DetectedAt != "" && s.FilingDate != s.DetectedAt {
+		if t, err := time.Parse("2006-01-02", s.DetectedAt); err == nil {
+			byline += " · Indexed " + t.Format("2 Jan 2006")
+		}
+	}
+	return byline
+}
+
+// buildDateline uses FilingDate (the SEC filing date) as the primary date.
+// Falls back to DetectedAt for composite/derived signals that have no single filing date.
 func buildDateline(s entitygraph.Signal) string {
 	ticker := strings.ToUpper(s.Ticker)
-	date := s.DetectedAt
+	date := s.FilingDate
+	if date == "" {
+		date = s.DetectedAt
+	}
 	if date == "" {
 		return ticker + " —"
 	}

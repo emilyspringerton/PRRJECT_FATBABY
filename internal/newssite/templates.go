@@ -127,6 +127,7 @@ a:hover { color: #0d0d4a; }
 .kicker-high     { color: #b45309; }
 .kicker-medium   { color: #475569; }
 .kicker-low      { color: #9ca3af; }
+.kicker-archive  { color: #9ca3af; font-style: italic; }
 
 /* Headlines */
 h1,h2,h3 { font-family: 'Times New Roman', Times, serif; margin: 0 0 0.35rem; line-height: 1.12; }

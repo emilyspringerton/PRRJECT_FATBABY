@@ -55,30 +55,32 @@ var AllSignalTypes = []SignalType{
 
 // Signal represents a governance intelligence signal generated from parsed filings.
 type Signal struct {
-	SignalID      string            `json:"signal_id"`
-	Type          SignalType        `json:"type"`
-	Ticker        string            `json:"ticker"`
-	Entity        string            `json:"entity,omitempty"`
-	Severity      Severity          `json:"severity"`
-	Confidence    float64           `json:"confidence"`
-	Score         float64           `json:"score"`
-	DetectedAt    string            `json:"detected_at"`
-	ValidThrough  string            `json:"valid_through"`
-	Interpretation string           `json:"interpretation"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	SignalID       string            `json:"signal_id"`
+	Type           SignalType        `json:"type"`
+	Ticker         string            `json:"ticker"`
+	Entity         string            `json:"entity,omitempty"`
+	Severity       Severity          `json:"severity"`
+	Confidence     float64           `json:"confidence"`
+	Score          float64           `json:"score"`
+	FilingDate     string            `json:"filing_date,omitempty"` // SEC filing date; primary display date
+	DetectedAt     string            `json:"detected_at"`           // pipeline processing date; shown as footnote
+	ValidThrough   string            `json:"valid_through"`
+	Interpretation string            `json:"interpretation"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 // ScoreDirectorVotes produces signals for a set of director vote results from a single filing.
-func ScoreDirectorVotes(votes []VoteResult, ticker string, r Rules) []Signal {
+// filingDate is the SEC filing date (e.g. "2019-04-26"); pass "" for composite/derived signals.
+func ScoreDirectorVotes(votes []VoteResult, ticker, filingDate string, r Rules) []Signal {
 	var out []Signal
 	for _, v := range votes {
-		sigs := scoreOneDirector(v, ticker, r)
+		sigs := scoreOneDirector(v, ticker, filingDate, r)
 		out = append(out, sigs...)
 	}
 	return out
 }
 
-func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
+func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal {
 	canon := Canonicalize(v.Name)
 	today := time.Now().UTC().Format("2006-01-02")
 	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
@@ -97,6 +99,7 @@ func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
 			Severity:       SeverityCritical,
 			Confidence:     0.95,
 			Score:          v.ApprovalPct,
+			FilingDate:     filingDate,
 			DetectedAt:     today,
 			ValidThrough:   nextYear,
 			Interpretation: fmt.Sprintf("Director received only %.1f%% approval — below %.0f%% majority threshold. Under majority voting standards the director must submit a resignation; board refusal to accept is a governance crisis indicator.", v.ApprovalPct*100, r.NominationRejectionThreshold*100),
@@ -117,6 +120,7 @@ func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
 			Severity:       sev,
 			Confidence:     conf,
 			Score:          v.ApprovalPct,
+			FilingDate:     filingDate,
 			DetectedAt:     today,
 			ValidThrough:   nextYear,
 			Interpretation: fmt.Sprintf("Director approval at %.1f%% is below the %.0f%% friction threshold; may indicate activist targeting or board misalignment.", v.ApprovalPct*100, r.FrictionThreshold*100),
@@ -131,6 +135,7 @@ func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
 			Severity:       SeverityLow,
 			Confidence:     0.70,
 			Score:          v.ApprovalPct,
+			FilingDate:     filingDate,
 			DetectedAt:     today,
 			ValidThrough:   nextYear,
 			Interpretation: fmt.Sprintf("Director approval at %.1f%% meets high-trust threshold (>%.0f%%).", v.ApprovalPct*100, r.HighTrustMinApproval*100),
@@ -148,6 +153,7 @@ func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
 				Severity:       SeverityMedium,
 				Confidence:     0.65,
 				Score:          v.ApprovalPct,
+				FilingDate:     filingDate,
 				DetectedAt:     today,
 				ValidThrough:   nextYear,
 				Interpretation: fmt.Sprintf("Director name contains founder/family keyword '%s'; may represent founder control concentration.", kw),
@@ -170,6 +176,7 @@ func scoreOneDirector(v VoteResult, ticker string, r Rules) []Signal {
 				Severity:       SeverityLow,
 				Confidence:     0.60,
 				Score:          bnvFrac,
+				FilingDate:     filingDate,
 				DetectedAt:     today,
 				ValidThrough:   nextYear,
 				Interpretation: fmt.Sprintf("Broker non-votes represent %.1f%% of total shares — above %.0f%% anomaly threshold.", bnvFrac*100, r.BrokerNonVoteAnomalyThreshold*100),
@@ -222,7 +229,8 @@ func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules)
 }
 
 // ScoreProposals emits signals from non-director proposal results.
-func ScoreProposals(proposals []ProposalResult, ticker string, r Rules) []Signal {
+// filingDate is the SEC filing date (e.g. "2019-04-26"); pass "" for composite/derived signals.
+func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rules) []Signal {
 	var out []Signal
 	today := time.Now().UTC().Format("2006-01-02")
 	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
@@ -247,6 +255,7 @@ func ScoreProposals(proposals []ProposalResult, ticker string, r Rules) []Signal
 				Severity:       SeverityHigh,
 				Confidence:     0.91,
 				Score:          forPct,
+				FilingDate:     filingDate,
 				DetectedAt:     today,
 				ValidThrough:   nextYear,
 				Interpretation: fmt.Sprintf("Proposal '%s' received %.1f%% shareholder support but failed due to %.0f%% of outstanding shares supermajority requirement. Board is using structural defenses against clear shareholder preference.", descShort, forPct*100, p.RequiredPct*100),
@@ -265,6 +274,7 @@ func ScoreProposals(proposals []ProposalResult, ticker string, r Rules) []Signal
 					Severity:       SeverityMedium,
 					Confidence:     0.75,
 					Score:          againstPct,
+					FilingDate:     filingDate,
 					DetectedAt:     today,
 					ValidThrough:   nextYear,
 					Interpretation: fmt.Sprintf("Advisory compensation vote received %.1f%% opposition. Exceeds %.0f%% alert threshold; potential ESG or pay-for-performance concern.", againstPct*100, r.CompExecAlertThreshold*100),
@@ -286,6 +296,7 @@ func ScoreProposals(proposals []ProposalResult, ticker string, r Rules) []Signal
 				Severity:       SeverityLow,
 				Confidence:     0.60,
 				Score:          abstainPct,
+				FilingDate:     filingDate,
 				DetectedAt:     today,
 				ValidThrough:   nextYear,
 				Interpretation: fmt.Sprintf("Proposal '%s' abstention rate %.1f%% exceeds %.0f%% threshold; may indicate shareholder confusion, protest vote, or inadequate disclosure.", descShort, abstainPct*100, r.AbstentionSpikeThreshold*100),
@@ -500,7 +511,8 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 // public accounting firm between filings. Auditor changes are a known risk signal:
 // they can indicate audit quality disputes, regulatory pressure, or pre-transaction
 // restructuring.
-func ScoreAuditorChange(ticker, prevAuditor, newAuditor string) Signal {
+// filingDate is the SEC filing date of the filing where the change was detected.
+func ScoreAuditorChange(ticker, prevAuditor, newAuditor, filingDate string) Signal {
 	today := time.Now().UTC().Format("2006-01-02")
 	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
 	return Signal{
@@ -510,6 +522,7 @@ func ScoreAuditorChange(ticker, prevAuditor, newAuditor string) Signal {
 		Severity:       SeverityMedium,
 		Confidence:     0.95,
 		Score:          1.0,
+		FilingDate:     filingDate,
 		DetectedAt:     today,
 		ValidThrough:   nextYear,
 		Interpretation: fmt.Sprintf("Auditor changed from %q to %q. Auditor changes may indicate audit quality disputes, fee negotiations, regulatory pressure, or pre-transaction restructuring.", prevAuditor, newAuditor),
