@@ -29,6 +29,7 @@ func persistSourceDocument(
 		DocumentURL:      filing.PrimaryDocument,
 		CleanedText:      cleanedText,
 		CleanedCharCount: len(cleanedText),
+		FilingDate:       filing.FilingDate,
 		PersistedAt:      time.Now().UTC(),
 	}
 	payload, err := json.Marshal(doc)

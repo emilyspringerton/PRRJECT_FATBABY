@@ -99,6 +99,23 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 					results <- r
 					continue
 				}
+				// Fetch paginated older-filing pages (large filers like JPM/BAC/GS
+				// split historical filings into separate JSON files listed under
+				// filings.files in the primary submissions response).
+				pageNames, _ := SubmissionsPageNames(body)
+				for _, name := range pageNames {
+					pageBody, pageErr := cfg.Client.FetchSubmissionPage(ctx, name)
+					if pageErr != nil {
+						cfg.Logger.Printf("secwatch submissions page ticker=%s page=%s err=%v (skipping)", entry.Ticker, name, pageErr)
+						continue
+					}
+					pageFilings, pageErr := ParseFilingsPage(pageBody, entry.CIK, entry.Ticker)
+					if pageErr != nil {
+						cfg.Logger.Printf("secwatch submissions page parse ticker=%s page=%s err=%v (skipping)", entry.Ticker, name, pageErr)
+						continue
+					}
+					filings = append(filings, pageFilings...)
+				}
 				r.filings = FilterByAllowedForms(filings, entry.AllowedForms)
 				results <- r
 			}

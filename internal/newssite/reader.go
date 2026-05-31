@@ -22,7 +22,8 @@ type DocEntry struct {
 	BodyPreview string
 	FullText    string
 	CharCount   int
-	PersistedAt time.Time
+	FilingDate  string    // SEC filing date (e.g. "2019-04-26"); use for display
+	PersistedAt time.Time // pipeline-index timestamp; shown as footnote only
 }
 
 // ReadLatest scans the event store from the tail and returns up to limit
@@ -109,6 +110,7 @@ func toEntry(rec eventstore.Record) (DocEntry, bool) {
 		BodyPreview: previewText(doc.CleanedText, 800),
 		FullText:    doc.CleanedText,
 		CharCount:   doc.CleanedCharCount,
+		FilingDate:  doc.FilingDate,
 		PersistedAt: doc.PersistedAt,
 	}, true
 }

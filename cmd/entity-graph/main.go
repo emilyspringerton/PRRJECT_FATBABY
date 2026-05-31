@@ -15,6 +15,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -163,12 +164,19 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 		result, err := entitygraph.ParseItem507(doc.CleanedText)
 		if err != nil {
-			logger.Printf("parse_item507 seq=%d identity=%s err=%v", r.Sequence, doc.Identity, err)
-			parseErrors = append(parseErrors, entitygraph.ParseError{
-				Ticker:   doc.Ticker,
-				Identity: doc.Identity,
-				Error:    err.Error(),
-			})
+			if errors.Is(err, entitygraph.ErrItem507NotFound) {
+				// Most 8-K subtypes (earnings, officer appointments, M&A) don't contain
+				// Item 5.07 — this is expected, not a parse failure.
+				logger.Printf("skip_no_507 seq=%d ticker=%s identity=%s", r.Sequence, doc.Ticker, doc.Identity)
+				processed-- // don't count as processed; it contributed nothing
+			} else {
+				logger.Printf("parse_item507 seq=%d identity=%s err=%v", r.Sequence, doc.Identity, err)
+				parseErrors = append(parseErrors, entitygraph.ParseError{
+					Ticker:   doc.Ticker,
+					Identity: doc.Identity,
+					Error:    err.Error(),
+				})
+			}
 			continue
 		}
 

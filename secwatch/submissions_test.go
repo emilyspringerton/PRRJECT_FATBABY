@@ -41,6 +41,52 @@ func TestParseRecentFilings_LengthMismatch(t *testing.T) {
 	}
 }
 
+func TestSubmissionsPageNames(t *testing.T) {
+	payload := []byte(`{
+		"cik": "0000019617",
+		"filings": {
+			"recent": {"accessionNumber":[],"form":[],"filingDate":[],"primaryDocument":[]},
+			"files": [
+				{"name": "CIK0000019617-submissions-001.json"},
+				{"name": "CIK0000019617-submissions-002.json"}
+			]
+		}
+	}`)
+	names, err := SubmissionsPageNames(payload)
+	if err != nil {
+		t.Fatalf("SubmissionsPageNames: %v", err)
+	}
+	if len(names) != 2 {
+		t.Fatalf("expected 2 page names got %d", len(names))
+	}
+	if names[0] != "CIK0000019617-submissions-001.json" {
+		t.Errorf("unexpected first page name %q", names[0])
+	}
+}
+
+func TestParseFilingsPage(t *testing.T) {
+	// A submissions page has the same shape as filings.recent but without the outer wrapper.
+	payload := []byte(`{
+		"accessionNumber": ["0000019617-10-001234"],
+		"form":            ["8-K"],
+		"filingDate":      ["2010-03-15"],
+		"primaryDocument": ["d8k.htm"]
+	}`)
+	filings, err := ParseFilingsPage(payload, "0000019617", "JPM")
+	if err != nil {
+		t.Fatalf("ParseFilingsPage: %v", err)
+	}
+	if len(filings) != 1 {
+		t.Fatalf("expected 1 filing got %d", len(filings))
+	}
+	if filings[0].Ticker != "JPM" {
+		t.Errorf("Ticker got %q want JPM", filings[0].Ticker)
+	}
+	if filings[0].FilingDate != "2010-03-15" {
+		t.Errorf("FilingDate got %q want 2010-03-15", filings[0].FilingDate)
+	}
+}
+
 func TestParseRecentFilings_PrimaryDocumentIsFullURL(t *testing.T) {
 	payload := []byte(`{
         "cik": "1321655",

@@ -490,7 +490,7 @@ func buildFrontPage(entries []DocEntry, ranked []edition.Ranked) FrontPageView {
 			Identity: e.Identity,
 			Ticker:   normTicker(e.Ticker),
 			Form:     e.Form,
-			DateStr:  formatDateShort(e.PersistedAt),
+			DateStr:  displayDateShort(e),
 		})
 	}
 
@@ -557,7 +557,7 @@ func buildDetailPage(entry DocEntry) DetailPageView {
 		formOrType = entry.Form
 	}
 	headline := fmt.Sprintf("%s — %s", normTicker(entry.Ticker), formOrType)
-	dateline := fmt.Sprintf("%s — %s.", normTicker(entry.Ticker), formatDateFull(entry.PersistedAt))
+	dateline := fmt.Sprintf("%s — %s.", normTicker(entry.Ticker), displayDateFull(entry))
 	return DetailPageView{
 		Title:          headline,
 		Headline:       headline,
@@ -596,7 +596,7 @@ func docToArticleView(e DocEntry, deckMax int) ArticleView {
 		formOrType = e.Form
 	}
 	headline := fmt.Sprintf("%s — %s", normTicker(e.Ticker), formOrType)
-	dateline := fmt.Sprintf("%s — %s.", normTicker(e.Ticker), formatDateFull(e.PersistedAt))
+	dateline := fmt.Sprintf("%s — %s.", normTicker(e.Ticker), displayDateFull(e))
 	deck := ""
 	if deckMax > 0 {
 		deck = truncateRunes(e.BodyPreview, deckMax)
@@ -668,6 +668,28 @@ func formatDateFull(t time.Time) string {
 		return "Unknown"
 	}
 	return t.UTC().Format("2 January 2006")
+}
+
+// displayDateFull returns the human-readable filing date for an article dateline.
+// Uses FilingDate (the SEC filing date) when present; falls back to PersistedAt
+// (pipeline-index time) for legacy documents that pre-date the FilingDate field.
+func displayDateFull(e DocEntry) string {
+	if e.FilingDate != "" {
+		if t, err := time.Parse("2006-01-02", e.FilingDate); err == nil {
+			return t.UTC().Format("2 January 2006")
+		}
+	}
+	return formatDateFull(e.PersistedAt)
+}
+
+// displayDateShort is the short form of displayDateFull (e.g. "26 Apr 2019").
+func displayDateShort(e DocEntry) string {
+	if e.FilingDate != "" {
+		if t, err := time.Parse("2006-01-02", e.FilingDate); err == nil {
+			return t.UTC().Format("2 Jan 2006")
+		}
+	}
+	return formatDateShort(e.PersistedAt)
 }
 
 func isSafeLink(url string) bool {

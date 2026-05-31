@@ -31,6 +31,11 @@ type SourceDocument struct {
 	// loading the full text.
 	CleanedCharCount int `json:"cleaned_char_count"`
 
-	// PersistedAt is the UTC time this event was written.
+	// FilingDate is the date the document was filed with the SEC (e.g. "2019-04-26"),
+	// taken from the EDGAR submissions metadata. For press releases this is empty.
+	// Always use this for display; PersistedAt is the pipeline-index timestamp.
+	FilingDate string `json:"filing_date,omitempty"`
+
+	// PersistedAt is the UTC time this event was written to the pipeline store.
 	PersistedAt time.Time `json:"persisted_at"`
 }

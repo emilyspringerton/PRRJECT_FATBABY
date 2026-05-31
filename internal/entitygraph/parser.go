@@ -84,14 +84,20 @@ var (
 	reRatificationProposal = regexp.MustCompile(`(?i)(?:ratif(?:y|ication|ying)|independent\s+registered\s+public\s+accounting)`)
 )
 
+// ErrItem507NotFound is returned by ParseItem507 when the filing contains no
+// Item 5.07 section. This is normal for most 8-K subtypes (earnings releases,
+// officer appointments, M&A disclosures, etc.). Callers should treat it as a
+// graceful skip rather than a parse failure.
+var ErrItem507NotFound = fmt.Errorf("Item 5.07 not found in filing text")
+
 // ParseItem507 extracts vote data from the cleaned text of an 8-K filing.
-// It returns an error only when Item 5.07 is entirely absent; partial
+// It returns ErrItem507NotFound when Item 5.07 is entirely absent; partial
 // results (e.g. no director rows) are returned with a nil error so callers
 // can distinguish "no vote section" from "vote section parsed but empty".
 func ParseItem507(text string) (Item507Result, error) {
 	idx := re507Section.FindStringIndex(text)
 	if idx == nil {
-		return Item507Result{}, fmt.Errorf("Item 5.07 not found in filing text")
+		return Item507Result{}, ErrItem507NotFound
 	}
 	body := text[idx[0]:]
 

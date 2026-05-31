@@ -128,6 +128,36 @@ func (c *Client) FetchSubmissions(ctx context.Context, cik string) ([]byte, erro
 	return nil, fmt.Errorf("fetch submissions cik=%s: %w", cik, lastErr)
 }
 
+// FetchSubmissionPage fetches one paginated older-filings file by name.
+// name is taken from SubmissionsPageNames (e.g. "CIK0000019617-submissions-001.json").
+func (c *Client) FetchSubmissionPage(ctx context.Context, name string) ([]byte, error) {
+	if name == "" {
+		return nil, errors.New("page name required")
+	}
+	reqURL := c.baseURL + "/submissions/" + name
+
+	var lastErr error
+	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
+		if err := c.waitForTurn(ctx); err != nil {
+			return nil, err
+		}
+		body, status, err := c.doOnce(ctx, reqURL)
+		if err == nil {
+			c.noteSuccess(status)
+			return body, nil
+		}
+		lastErr = err
+		if !isRetryable(err) || attempt == c.cfg.MaxRetries {
+			break
+		}
+		c.noteFailure(err)
+		if err := sleepWithBackoff(ctx, c.backoffFor(attempt)); err != nil {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("fetch submission page %s: %w", name, lastErr)
+}
+
 func (c *Client) doOnce(ctx context.Context, reqURL string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -142,7 +172,7 @@ func (c *Client) doOnce(ctx context.Context, reqURL string) ([]byte, int, error)
 	}
 	defer resp.Body.Close()
 
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
 		return nil, resp.StatusCode, err
 	}
