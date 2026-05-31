@@ -29,6 +29,7 @@ import (
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
+	"github.com/example/prrject-fatbaby/secwatch"
 )
 
 func main() {
@@ -109,6 +110,11 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		return cfg.cursor
 	}
 
+	// Build a filing-date index from all filing_discovered events so we can
+	// recover the SEC filing date for source documents that pre-date the
+	// filing_date field in source_document_persisted payloads.
+	filingDates := buildFilingDateIndex(ctx, store, logger)
+
 	// Compact nodes.ndjson before loading to remove accumulated duplicates.
 	if err := entitygraph.CompactNodes(cfg.graphDir); err != nil {
 		logger.Printf("compact nodes err=%v (non-fatal)", err)
@@ -185,14 +191,23 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			continue
 		}
 
-		// Prefer the SEC filing date from the document metadata; fall back to
-		// PersistedAt only for legacy docs that pre-date the FilingDate field.
-		// Never use time.Now() — that would stamp backfilled historical filings
+		// Resolve the SEC filing date. Priority order:
+		// 1. doc.FilingDate from the source_document_persisted payload (set by
+		//    processor from the filing_discovered event going forward).
+		// 2. The filing_discovered event index built at batch start (recovers
+		//    the correct date for historical docs stored without FilingDate).
+		// 3. doc.PersistedAt as a last resort for truly undated legacy docs.
+		//
+		// Never use time.Now() — that stamps backfilled historical filings
 		// with today's date, making 2019 filings appear as breaking news.
 		filingDate := doc.FilingDate
 		if filingDate == "" {
-			filingDate = doc.PersistedAt.Format("2006-01-02")
-			if doc.PersistedAt.IsZero() {
+			if date, ok := filingDates[doc.Identity]; ok {
+				filingDate = date
+				logger.Printf("filing_date recovered from index identity=%s date=%s", doc.Identity, date)
+			} else if !doc.PersistedAt.IsZero() {
+				filingDate = doc.PersistedAt.Format("2006-01-02")
+			} else {
 				filingDate = time.Now().UTC().Format("2006-01-02")
 			}
 		}
@@ -340,6 +355,40 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 	saveCursor(cfg.cursorPath, newCursor, logger)
 	return newCursor
+}
+
+// buildFilingDateIndex scans all filing_discovered events in the store and
+// returns a map from filing identity (CIK:ACCESSION) to SEC filing date.
+// This is used to recover the correct filing date for source_document_persisted
+// records that pre-date the FilingDate field.
+func buildFilingDateIndex(ctx context.Context, store eventstore.EventStore, logger *log.Logger) map[string]string {
+	index := make(map[string]string)
+	from := uint64(1)
+	for {
+		recs, err := store.ReadFrom(ctx, from, 512)
+		if err != nil || len(recs) == 0 {
+			break
+		}
+		for _, r := range recs {
+			if r.Event.Type != "filing_discovered" {
+				continue
+			}
+			var ev secwatch.FilingDiscoveredEvent
+			if err := json.Unmarshal(r.Event.Data, &ev); err != nil {
+				continue
+			}
+			if ev.FilingDate == "" || ev.CIK == "" || ev.AccessionNumber == "" {
+				continue
+			}
+			id := secwatch.FilingIdentity(ev.CIK, ev.AccessionNumber)
+			if _, exists := index[id]; !exists {
+				index[id] = ev.FilingDate
+			}
+		}
+		from = recs[len(recs)-1].Sequence + 1
+	}
+	logger.Printf("filing_date_index loaded entries=%d", len(index))
+	return index
 }
 
 // collectTickers returns the set of unique tickers present in a signal slice.

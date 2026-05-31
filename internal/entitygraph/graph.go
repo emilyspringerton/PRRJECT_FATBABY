@@ -378,6 +378,30 @@ func WriteSignals(dir string, signals []Signal) error {
 	})
 }
 
+// RewriteSignals atomically replaces <dir>/signals.ndjson with the given slice.
+// Used by backfill tooling to patch data without duplicating records.
+func RewriteSignals(dir string, signals []Signal) error {
+	path := filepath.Join(dir, "signals.ndjson")
+	tmp := path + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return fmt.Errorf("create tmp: %w", err)
+	}
+	enc := json.NewEncoder(f)
+	for i := range signals {
+		if err := enc.Encode(&signals[i]); err != nil {
+			f.Close()
+			os.Remove(tmp)
+			return err
+		}
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // nowDate returns the current UTC date in YYYY-MM-DD format.
 func nowDate() string {
 	return time.Now().UTC().Format("2006-01-02")
