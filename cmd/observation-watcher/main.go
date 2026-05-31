@@ -240,9 +240,14 @@ func observationHash(o observation) string {
 //
 // Generic Emily observations (no source/status fields) use severity to signal
 // urgency; any non-empty, non-"ok" severity is nontrivial regardless of the
-// entity-graph fields.
+// entity-graph fields. Observations with explicit Findings or SuggestedFix text
+// are always nontrivial — Emily wrote them to prompt action.
 func isTrivialObservation(obs observation) bool {
-	if obs.Severity != "" && obs.Severity != "ok" {
+	// Explicit findings or a suggested fix means Emily identified something actionable.
+	if obs.Findings != "" || obs.SuggestedFix != "" {
+		return false
+	}
+	if obs.Severity != "" && obs.Severity != "ok" && obs.Severity != "info" {
 		return false
 	}
 	if obs.Status == "needs_attention" {
