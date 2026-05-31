@@ -2,7 +2,7 @@
 
 ## A focused build spec extending the Newssite North Star
 
-**Status**: T1–T3 complete; T4 partial
+**Status**: T1–T4 complete (all ticker page + search + RSS work done; accessibility pass outstanding)
 **Version**: 1.1
 **Date**: 30 May 2026 · updated 31 May 2026
 **Scope**: `/ticker/{symbol}`, `/tickers`, ticker search (`/search`, masthead box, `/api/tickers`)
@@ -202,7 +202,7 @@ New packages introduced by this spec:
 `/api/tickers?q=` JSON endpoint live. Masthead `<datalist>` provides native browser autocomplete without JS; the API enables JS-enhanced dropdowns.
 
 **T4 — Polish. 🔄 In progress.**
-- ❌ Per-ticker RSS (`/ticker/{symbol}/feed.xml`) — not yet built (front-page + section feeds are done)
+- ✅ Per-ticker RSS — `/ticker/{symbol}/feed.xml` live; `<link rel="alternate">` autodiscovery in ticker page `<head>`
 - ✅ Front-page RSS `/feed.xml` and `/section/{slug}/feed.xml` are live
 - ✅ Severity dots and last-activity on directory/search rows
 - ✅ Alpha/active sort toggle on `/tickers`

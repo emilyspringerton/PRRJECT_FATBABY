@@ -204,6 +204,8 @@ type ArchiveView struct {
 
 type AboutView struct {
 	Base
+	RulesUpdatedAt string // formatted date, empty if unknown
+	RulesRecent    bool   // true if rules changed within the last 14 days
 }
 
 // ── Person (director dossier) page ────────────────────────────────────────────
@@ -487,8 +489,13 @@ func RenderArchivePage(w io.Writer, entries []DocEntry, symbols []string) {
 	}
 }
 
-func RenderAboutPage(w io.Writer, symbols []string) {
-	if err := aboutTmpl.Execute(w, AboutView{Base: Base{Symbols: symbols}}); err != nil {
+func RenderAboutPage(w io.Writer, symbols []string, rulesUpdatedAt time.Time) {
+	view := AboutView{Base: Base{Symbols: symbols}}
+	if !rulesUpdatedAt.IsZero() {
+		view.RulesUpdatedAt = rulesUpdatedAt.UTC().Format("2 January 2006")
+		view.RulesRecent = time.Since(rulesUpdatedAt) < 14*24*time.Hour
+	}
+	if err := aboutTmpl.Execute(w, view); err != nil {
 		fmt.Fprintf(w, "render error: %v", err)
 	}
 }
@@ -847,6 +854,53 @@ func RenderRSS(w io.Writer, ranked []edition.Ranked, section, baseURL string) er
 		},
 	}
 
+	if _, err := io.WriteString(w, xml.Header); err != nil {
+		return err
+	}
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	return enc.Encode(feed)
+}
+
+// RenderTickerRSS writes an RSS 2.0 feed for all live signals at one ticker.
+func RenderTickerRSS(w io.Writer, sym string, ranked []edition.Ranked, baseURL string) error {
+	title := sym + " — FATBABY Financial Intelligence"
+	link := baseURL + "/ticker/" + sym
+	desc := "Governance and risk signals for " + sym + " from SEC filings"
+
+	items := make([]rssItem, 0, len(ranked))
+	for _, r := range ranked {
+		itemLink := link
+		pubDate := ""
+		dateStr := r.Signal.FilingDate
+		if dateStr == "" {
+			dateStr = r.Signal.DetectedAt
+		}
+		if dateStr != "" {
+			if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+				pubDate = t.UTC().Format(time.RFC1123Z)
+			}
+		}
+		items = append(items, rssItem{
+			Title:       r.Headline,
+			Link:        itemLink,
+			Description: truncateRunes(r.Deck, 300),
+			PubDate:     pubDate,
+			GUID:        r.Signal.SignalID,
+			Category:    r.Section,
+		})
+	}
+
+	feed := rssFeed{
+		Version: "2.0",
+		Channel: rssChannel{
+			Title:         title,
+			Link:          link,
+			Description:   desc,
+			LastBuildDate: time.Now().UTC().Format(time.RFC1123Z),
+			Items:         items,
+		},
+	}
 	if _, err := io.WriteString(w, xml.Header); err != nil {
 		return err
 	}

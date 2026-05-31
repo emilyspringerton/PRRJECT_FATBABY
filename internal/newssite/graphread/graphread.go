@@ -3,6 +3,7 @@
 package graphread
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,12 @@ type Store struct {
 	auditors    map[string]*entitygraph.AuditorRecord // ticker → auditor
 	edgesByNode map[string][]*entitygraph.Edge        // canonical_id → edges involving that person
 	dir         string
+
+	// rulesFile is the path to config/entity-graph-rules.json; when set, Refresh
+	// tracks its modification time so the corrections box can surface rule changes.
+	rulesFile       string
+	rulesUpdatedAt  time.Time
+	rulesMu         sync.RWMutex
 
 	// updatesMu guards updates; closed and replaced on each Refresh so waiters wake up.
 	updatesMu sync.Mutex
@@ -47,8 +54,35 @@ func (s *Store) Updates() <-chan struct{} {
 	return s.updates
 }
 
+// SetRulesFile tells the Store where to find the entity-graph-rules config file
+// so it can track rule changes for the corrections box.
+func (s *Store) SetRulesFile(path string) {
+	s.rulesMu.Lock()
+	s.rulesFile = path
+	s.rulesMu.Unlock()
+}
+
+// RulesUpdatedAt returns the last modification time of the rules file, or
+// the zero value if the file has not been seen or the path is not configured.
+func (s *Store) RulesUpdatedAt() time.Time {
+	s.rulesMu.RLock()
+	defer s.rulesMu.RUnlock()
+	return s.rulesUpdatedAt
+}
+
 // Refresh reloads all entity-graph data from disk. Safe to call concurrently.
 func (s *Store) Refresh() error {
+	// Track rules file modification time for the corrections box.
+	s.rulesMu.RLock()
+	rulesFile := s.rulesFile
+	s.rulesMu.RUnlock()
+	if rulesFile != "" {
+		if fi, err := os.Stat(rulesFile); err == nil {
+			s.rulesMu.Lock()
+			s.rulesUpdatedAt = fi.ModTime()
+			s.rulesMu.Unlock()
+		}
+	}
 	sigs, err := entitygraph.LoadSignals(s.dir)
 	if err != nil {
 		return err

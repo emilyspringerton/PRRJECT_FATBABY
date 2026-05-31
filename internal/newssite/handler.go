@@ -83,6 +83,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveAPITickers(w, r)
 	case strings.HasPrefix(path, "/doc/"):
 		status = h.serveDoc(w, r)
+	case strings.HasPrefix(path, "/ticker/") && strings.HasSuffix(path, "/feed.xml"):
+		sym := strings.TrimSuffix(strings.TrimPrefix(path, "/ticker/"), "/feed.xml")
+		status = h.serveTickerRSS(w, r, sym)
 	case strings.HasPrefix(path, "/ticker/"):
 		status = h.serveTicker(w, r)
 	case strings.HasPrefix(path, "/person/"):
@@ -351,8 +354,12 @@ func (h *Handler) serveArchive(w http.ResponseWriter, r *http.Request) int {
 }
 
 func (h *Handler) serveAbout(w http.ResponseWriter, r *http.Request) int {
+	var rulesAt time.Time
+	if h.graph != nil {
+		rulesAt = h.graph.RulesUpdatedAt()
+	}
 	var buf bytes.Buffer
-	RenderAboutPage(&buf, h.symbols())
+	RenderAboutPage(&buf, h.symbols(), rulesAt)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -437,6 +444,37 @@ func (h *Handler) servePersonPage(w http.ResponseWriter, r *http.Request) int {
 	view := buildPersonPage(node, edges, personSigs, today, h.graph, h.symbols())
 	RenderPersonPage(&buf, view)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) serveTickerRSS(w http.ResponseWriter, r *http.Request, sym string) int {
+	sym = strings.ToUpper(strings.TrimSpace(sym))
+	if sym == "" {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+	today := time.Now().UTC().Format("2006-01-02")
+	var ranked []edition.Ranked
+	if h.graph != nil {
+		sigs := h.graph.LiveSignals(sym, today)
+		ranked = edition.Rank(sigs, today)
+	}
+	if len(ranked) > 50 {
+		ranked = ranked[:50]
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	baseURL := scheme + "://" + r.Host
+
+	var buf bytes.Buffer
+	if err := RenderTickerRSS(&buf, sym, ranked, baseURL); err != nil {
+		http.Error(w, fmt.Sprintf("rss error: %v", err), http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
 }

@@ -2,7 +2,7 @@
 
 ## Turning the FATBABY event store into a usable financial-intelligence publication
 
-**Status**: P0–P3 complete; P4 in progress (RSS + succession watch + live done; corrections box + accessibility pass outstanding)
+**Status**: P0–P3 complete; P4 mostly complete (RSS + succession watch + live + corrections box done; accessibility pass outstanding)
 **Version**: 1.1
 **Date**: 30 May 2026 · updated 31 May 2026
 **Scope**: `cmd/newssite`, `internal/newssite/*` (and a small set of new read-model packages)
@@ -33,15 +33,15 @@ The pipeline already extracts director-level governance signals, activist-risk c
 
 | Surface | Lives in | Shape | Exposed on site today? |
 |---|---|---|---|
-| **Source documents** | `var/secwatch/` eventstore, `source_document_persisted` | ticker, source_type, form, document_url, cleaned_text, char_count, persisted_at | ✅ (the only thing) |
-| **Pipeline signals** | `var/secwatch/` eventstore, `signal_generated`; indexed by `internal/signalindex` | ticker, signal_type, importance (int), sentiment (float), summary, impact_analysis, raw_metadata{form, filing_date} | ❌ |
-| **Governance signals** | `var/entity-graph/signals.ndjson` | type (13 kinds), entity, severity, confidence, score, interpretation, valid_through, metadata | ❌ |
-| **People (directors/execs/auditors)** | `var/entity-graph/nodes.ndjson` | canonical_id, name, type, first/last appearance, filing_count, centrality, per-filing vote counts & approval % | ❌ |
-| **Board relationships** | `var/entity-graph/edges.ndjson` | source, target, board_co_member, companies[], strength | ❌ |
-| **Auditor records** | `var/entity-graph/auditors.ndjson` | ticker, auditor, filing_date (+ change detection) | ❌ |
-| **Ticker rollups** | `internal/signalindex` (`TickerSummary`) | signal_count, latest_signal, latest_type | ❌ |
-| **Live signal stream** | dashboard SSE `:8080`; `signal_generated` tail | event-by-event push | ❌ (separate app) |
-| **Query API** | `signalapi` `:9091` — `/v1/signals`, `/v1/signals/{ticker}`, `/v1/signals/{ticker}/latest` | JSON, filterable by `signal_type`, `min_importance`, `from`, `limit` | n/a (API, not page) |
+| **Source documents** | `var/secwatch/` eventstore, `source_document_persisted` | ticker, source_type, form, document_url, cleaned_text, char_count, persisted_at | ✅ `/`, `/doc/`, `/wire`, `/archive` |
+| **Pipeline signals** | `var/secwatch/` eventstore, `signal_generated`; indexed by `internal/signalindex` | ticker, signal_type, importance (int), sentiment (float), summary, impact_analysis, raw_metadata{form, filing_date} | ✅ ticker pages (merged with governance signals) |
+| **Governance signals** | `var/entity-graph/signals.ndjson` | type (13 kinds), entity, severity, confidence, score, interpretation, valid_through, metadata | ✅ `/`, `/section/`, `/ticker/`, `/breaking`, `/live`, RSS feeds |
+| **People (directors/execs/auditors)** | `var/entity-graph/nodes.ndjson` | canonical_id, name, type, first/last appearance, filing_count, centrality, per-filing vote counts & approval % | ✅ `/person/`, ticker page board sidebar |
+| **Board relationships** | `var/entity-graph/edges.ndjson` | source, target, board_co_member, companies[], strength | ✅ `/person/` interlock grid |
+| **Auditor records** | `var/entity-graph/auditors.ndjson` | ticker, auditor, filing_date (+ change detection) | ✅ ticker page auditor box |
+| **Ticker rollups** | `internal/newssite/catalog` (`TickerRow`) | signal_count, gov_signals, doc_count, director_count, max_severity, latest_activity | ✅ `/tickers`, `/search`, ticker fact box |
+| **Live signal stream** | `graphread.Store` + `/live/events` SSE | event-by-event push on store refresh | ✅ `/live` with EventSource progressive enhancement |
+| **Query API** | `signalapi` `:9091` — `/v1/signals`, `/v1/signals/{ticker}`, `/v1/signals/{ticker}/latest` | JSON, filterable by `signal_type`, `min_importance`, `from`, `limit` | n/a (separate API binary, not newssite) |
 
 The governance-signal taxonomy we can headline against (from `internal/entitygraph/signals.go`):
 
@@ -99,7 +99,7 @@ All served from the single `newssite` binary on `:8082`.
 /search?q=                ✅ Search across tickers; exact-match redirects straight to /ticker/
 /api/tickers?q=           ✅ JSON typeahead endpoint for the masthead search box
 /archive                  ✅ The morgue — full reverse-chron event index, permalinked
-/live                     ❌ SSE stream of incoming signals — not yet built (P3 remainder)
+/live                     ✅ Live desk — static breaking-signal list + EventSource SSE progressive enhancement
 /about                    ✅ Masthead / colophon — what signals mean, base rates, caveats
 /healthz                  ✅ Liveness (unchanged ops surface)
 ```
@@ -309,7 +309,7 @@ Each phase is independently shippable and leaves the site working.
 - ✅ `/about` — masthead/colophon with signal definitions and base rates
 - ✅ ARCHIVE badge + "Indexed DATE" byline for historical filings (date provenance fix)
 - ✅ RSS feed — `/feed.xml` (front page) + `/section/{slug}/feed.xml` (per desk); `<link rel="alternate">` in front-page `<head>`
-- ❌ Corrections box wired to rule-version changes — not yet built
+- ✅ Corrections box — `/about` shows "Methodology recently updated" with date when `config/entity-graph-rules.json` mtime is within 14 days; graphread.Store tracks rules file mtime on each Refresh
 - ✅ Succession watch rail — front-page sidebar showing up to 5 `director_decay` directors with approval % and link to person dossier
 - ❌ Accessibility pass (semantic headings, contrast audit) — not yet done
 

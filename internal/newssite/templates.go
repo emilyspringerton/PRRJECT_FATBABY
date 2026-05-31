@@ -455,7 +455,9 @@ const sectionTemplate = `{{define "section"}}<!doctype html>
 
 const tickerTemplate = `{{define "ticker"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{.Symbol}} — FATBABY</title><style>` + siteCSS + `</style></head>
+<title>{{.Symbol}} — FATBABY</title>
+<link rel="alternate" type="application/rss+xml" title="{{.Symbol}} signals — FATBABY" href="/ticker/{{.Symbol}}/feed.xml">
+<style>` + siteCSS + `</style></head>
 <body><div class="wrap">
 {{template "masthead" .}}
 <div class="edition-bar">
@@ -648,6 +650,14 @@ const aboutTemplate = `{{define "about"}}<!doctype html>
 </dl>
 <h2 style="font-family:system-ui;font-size:0.85rem;font-weight:700;margin:1.5rem 0 0.5rem;">Not investment advice</h2>
 <p>All signals are model-derived from public filings. They are not investment advice and should not be relied upon for trading decisions.</p>
+{{if .RulesUpdatedAt}}
+<h2 style="font-family:system-ui;font-size:0.85rem;font-weight:700;margin:1.5rem 0 0.5rem;">
+  {{if .RulesRecent}}<span style="color:#b45309;">⟳ Methodology recently updated</span>{{else}}Methodology{{end}}
+</h2>
+<p style="font-size:0.9rem;">Signal scoring rules (<code>config/entity-graph-rules.json</code>) were last updated on <strong>{{.RulesUpdatedAt}}</strong>.
+When rules change, previously scored signals may be re-evaluated on the next entity-graph run.
+The accuracy of prior signals published before the update date should be interpreted in light of the rule version in effect at that time.</p>
+{{end}}
 </main></div>{{template "footer" .}}</body></html>{{end}}`
 
 const liveTemplate = `{{define "live"}}<!doctype html>

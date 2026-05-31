@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Newssite P4: per-ticker RSS, corrections box, stale-doc cleanup
+
+### Per-ticker RSS
+
+- `/ticker/{symbol}/feed.xml` — live governance signal feed per ticker; items use `FilingDate`
+  as `<pubDate>`; `<link rel="alternate">` autodiscovery added to every ticker page `<head>`.
+- `RenderTickerRSS` function; `serveTickerRSS` handler; route catches `HasPrefix("/ticker/") &&
+  HasSuffix("/feed.xml")` before the existing `/ticker/` page route.
+
+### Corrections box
+
+- `graphread.Store.rulesFile` — configurable via `Store.SetRulesFile(path)`; stat'd on each
+  `Refresh()` call to track mtime.
+- `Store.RulesUpdatedAt()` returns the last observed rules-file modification time.
+- `/about` page: when `RulesUpdatedAt` is set, shows "Methodology recently updated" banner (amber
+  colour) if rules changed within the last 14 days, otherwise shows the update date as a plain
+  note. The text explains that signals scored before the update date used the prior rule version.
+- `cmd/newssite/main.go` calls `gs.SetRulesFile("config/entity-graph-rules.json")` so the about
+  page automatically reflects rule changes made by the Emily → Claude Code loop.
+
+### Northstar doc cleanup
+
+- Data-exposure table updated: all surfaces now marked ✅ (governance signals, people, board
+  relationships, auditor records, ticker rollups, live stream all exposed on the site).
+- Sitemap `/live` entry corrected to ✅.
+- `newssite-tickers.md` T4 per-ticker RSS marked complete.
+
 ## 2026-05-31 — Newssite P3+P4: /live SSE page, succession-watch rail, handler test coverage
 
 ### /live SSE page (P3 completion)

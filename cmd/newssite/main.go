@@ -44,6 +44,7 @@ func main() {
 	var gs *graphread.Store
 	if *graphDir != "" {
 		gs = graphread.NewStore(*graphDir)
+		gs.SetRulesFile("config/entity-graph-rules.json")
 		if err := gs.Refresh(); err != nil {
 			logger.Printf("newssite graph load: %v", err)
 		} else {
