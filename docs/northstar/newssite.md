@@ -2,9 +2,9 @@
 
 ## Turning the FATBABY event store into a usable financial-intelligence publication
 
-**Status**: Implementation Framework
-**Version**: 1.0
-**Date**: 30 May 2026
+**Status**: P0–P2 complete; P3 mostly complete (live page outstanding); P4 in progress (RSS done; corrections box + succession rail outstanding)
+**Version**: 1.1
+**Date**: 30 May 2026 · updated 31 May 2026
 **Scope**: `cmd/newssite`, `internal/newssite/*` (and a small set of new read-model packages)
 **Architecture**: FATBABY-native — Go standard library only, no external dependencies, no CMS, no database (yet)
 
@@ -86,19 +86,22 @@ The point of leaning on tropes: a reader who has used *any* news site already kn
 All served from the single `newssite` binary on `:8082`.
 
 ```
-/                         Front page — leads + ticker tape + sections rail + most-watched
-/section/{slug}           Desk page — one signal family, newest first
-                          slugs: governance, activism, boardroom, auditor, pay, wire, filings
-/company/{ticker}         Company desk — signals, filings, directors, auditor, fact box
-/person/{canonical_id}    Director dossier — vote history, approval trend, board map
-/doc/{identity}           The filing — enriched primary source (keeps existing URL shape)
-/wire                     The Wire — press releases only, chronological
-/breaking                 Critical & high signals, last 48h (the banner's full page)
-/search?q=                Search across tickers, names, headlines, body text
-/archive                  The morgue — full reverse-chron event index, permalinked
-/live                     The desk — SSE stream of incoming signals (progressive enhancement)
-/about                    Masthead / colophon — what signals mean, base rates, caveats
-/healthz                  Liveness (unchanged ops surface)
+/                         ✅ Front page — leads + ticker tape + sections rail + most-watched
+/section/{slug}           ✅ Desk page — one signal family, newest first
+                             slugs: governance, activism, boardroom, auditor, pay, wire, filings
+/ticker/{symbol}          ✅ Ticker desk — signals, filings, directors, auditor, fact box
+/company/{ticker}         ✅ 301 redirect → /ticker/{symbol}  (URL shape changed; old links still work)
+/person/{canonical_id}    ✅ Director dossier — SVG sparkline, vote history, board interlocks, signals
+/doc/{identity}           ✅ The filing — enriched primary source (keeps existing URL shape)
+/wire                     ✅ The Wire — press releases only, chronological
+/breaking                 ✅ Critical & high signals (the banner's full page)
+/tickers                  ✅ Ticker directory — all covered symbols, sortable
+/search?q=                ✅ Search across tickers; exact-match redirects straight to /ticker/
+/api/tickers?q=           ✅ JSON typeahead endpoint for the masthead search box
+/archive                  ✅ The morgue — full reverse-chron event index, permalinked
+/live                     ❌ SSE stream of incoming signals — not yet built (P3 remainder)
+/about                    ✅ Masthead / colophon — what signals mean, base rates, caveats
+/healthz                  ✅ Liveness (unchanged ops surface)
 ```
 
 Backwards compatibility: `/` and `/doc/{identity}` already exist and keep working; everything else is additive. No existing permalink breaks.
@@ -137,7 +140,7 @@ Signal-type → section map:
 | The Wire | (press releases) |
 | Filings | (raw SEC source documents) |
 
-### 5.3 The Company Desk (`/company/{ticker}`)
+### 5.3 The Ticker Desk (`/ticker/{symbol}`) ✅ Built — see `newssite-tickers.md` for full spec
 
 The tag page. Everything we know about one issuer, in newspaper order:
 
@@ -149,7 +152,7 @@ The tag page. Everything we know about one issuer, in newspaper order:
 - **Filings list:** source documents for the ticker, linking to `/doc/{identity}`.
 - **Fact box:** counts — total signals, critical/high count, distinct directors tracked, first/last seen.
 
-### 5.4 The Director Dossier (`/person/{canonical_id}`)
+### 5.4 The Director Dossier (`/person/{canonical_id}`) ✅ Built
 
 The "people we cover" page — the data nobody has ever seen rendered.
 
@@ -281,20 +284,34 @@ Reuse `internal/signalindex` directly for pipeline signals — it already does t
 
 Each phase is independently shippable and leaves the site working.
 
-**P0 — Reskin & templatize (foundation).**
-Move rendering to `html/template` with the broadsheet house style. Same data as today (documents only), but the front page becomes a real layout and `/doc/` gets a fact box and dateline. *Done when:* the current functionality looks like a newspaper and templates are in place for everyone else to build on.
+**P0 — Reskin & templatize (foundation). ✅ Complete.**
+`html/template` with broadsheet house style. Front page is a real layout; `/doc/` has fact box and dateline.
 
-**P1 — Surface the signals (the unlock).**
-Stand up `graphread` + reuse `signalindex`. Build `edition`: ranking, headline generation, the lead story, the ticker tape, `/breaking`. The front page now leads with what matters, not what's newest. *Done when:* a critical signal lands and is the lead within one refresh cycle.
+**P1 — Surface the signals (the unlock). ✅ Complete.**
+`graphread` + `signalindex` + `edition` package. Lead story is the highest-severity live signal. Ticker tape, `/breaking`, section routing all live. Front page historical-article suppression added (backfill filings >90 days old route to ticker pages only, not the front page).
 
-**P2 — Sections, companies, people.**
-`/section/{slug}`, `/company/{ticker}`, `/person/{canonical_id}`, including the approval sparkline and board-interlock links. Cross-link everything: every ticker and director mention becomes a link. *Done when:* you can navigate from a front-page headline → company desk → director dossier → another company without typing.
+**P2 — Sections, companies, people. 🔄 Mostly complete.**
+- ✅ `/section/{slug}` — all seven desks
+- ✅ `/ticker/{symbol}` — full layout per `newssite-tickers.md` spec; replaces `/company/{ticker}` (301 redirect kept)
+- ✅ `/tickers` — directory sorted by activity and alpha
+- ✅ `/person/{canonical_id}` — director dossier with SVG sparkline (approval trend over time), per-filing vote breakdown table, signals about the person, board-interlock co-director grid
 
-**P3 — Wire, search, archive, live.**
-`/wire`, `/search`, `/archive`, `/live` (SSE progressive enhancement). *Done when:* a reader can find any company or person by name and reach the raw record behind any story.
+*P2 complete.* Full navigation flow works: front page → ticker desk → director dossier → another ticker, zero URL typing required.
 
-**P4 — Polish & honesty.**
-`/about` masthead with signal definitions and base rates, the corrections box wired to rule-version changes, the "succession watch" rail, accessibility pass (semantic `<article>`, headings, contrast), and a `<link rel="alternate" type="application/rss+xml">` feed for the front page and each section — RSS being the most classic news trope of all and nearly free to emit.
+**P3 — Wire, search, archive, live. 🔄 Mostly complete.**
+- ✅ `/wire` — press releases only
+- ✅ `/search?q=` — exact-match redirect + prefix/substring ranking; masthead datalist typeahead
+- ✅ `/api/tickers?q=` — JSON typeahead for progressive enhancement
+- ✅ `/archive` — reverse-chron event index
+- ❌ `/live` — SSE stream of incoming signals (progressive enhancement) — **not yet built**
+
+**P4 — Polish & honesty. 🔄 In progress.**
+- ✅ `/about` — masthead/colophon with signal definitions and base rates
+- ✅ ARCHIVE badge + "Indexed DATE" byline for historical filings (date provenance fix)
+- ✅ RSS feed — `/feed.xml` (front page) + `/section/{slug}/feed.xml` (per desk); `<link rel="alternate">` in front-page `<head>`
+- ❌ Corrections box wired to rule-version changes — not yet built
+- ❌ Succession watch rail (director_decay directors) — not yet built
+- ❌ Accessibility pass (semantic headings, contrast audit) — not yet done
 
 ---
 

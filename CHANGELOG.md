@@ -2,6 +2,70 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Newssite P2+P4: director dossier page, RSS feeds, front-page historical filtering
+
+### /person/{canonical_id} director dossier (P2 completion)
+
+The last P2 route — the full navigation flow (front page → ticker → director → another ticker)
+now works end to end with zero URL typing.
+
+- **`internal/entitygraph/graph.go`** — `LoadEdgesFromDir`: edges were writable but never
+  loadable on startup; added the missing load method so board co-membership edges survive restart.
+- **`internal/newssite/graphread/graphread.go`** — load edges at `Refresh()` time and build an
+  `edgesByNode` reverse index (canonical_id → all edges involving that person). Added three new
+  methods: `AllNodes()`, `EdgesFor(canonicalID)`, `SignalsForPerson(canonicalID)` — the last uses
+  `entitygraph.Canonicalize` for matching so hyphenation/punctuation variants never break a lookup.
+- **`internal/newssite/render.go`** — `PersonPageView`, `BoardEntryView`, `AppearanceView`,
+  `InterlockView`, `SparklineView` view models. `buildPersonPage` assembles vote history grouped
+  by ticker (oldest-to-newest), signals filtered by canonical entity ID, board co-directors from
+  the edge index. `buildSparkline` emits SVG `<polyline>` points scaled to the 60–100% approval
+  range with a dashed friction-threshold line at 90%.
+- **`internal/newssite/templates.go`** — `personTemplate`: broadsheet layout with person header,
+  sparkline, per-ticker vote-breakdown tables (for/against/abstain/broker-NV formatted as 1.4B/
+  221M), signals rail, and interlock grid. All director names already linked to `/person/` from
+  the ticker page template.
+- **`internal/newssite/handler.go`** — `/person/{canonical_id}` route; `servePersonPage` handler.
+
+### RSS feeds (P4)
+
+- **`/feed.xml`** — front-page RSS 2.0 feed; items use `FilingDate` as `<pubDate>` so dates
+  are accurate after the date-provenance fix.
+- **`/section/{slug}/feed.xml`** — per-desk RSS feeds (governance, activism, boardroom, etc.)
+- `<link rel="alternate" type="application/rss+xml">` autodiscovery tag in front-page `<head>`.
+
+### Front-page historical filtering (backfill flood protection)
+
+Signals and documents whose `filing_date` is more than 90 days old are now suppressed from the
+front-page feed. Historical articles still appear on ticker pages and section pages, but get an
+"ARCHIVE ·" kicker prefix and "Indexed DATE" byline footnote so readers know when the pipeline
+discovered the filing vs. when the filing was made.
+
+### Signal date provenance fix
+
+- `Signal.FilingDate` field added; populated from SEC filing metadata (not pipeline processing
+  timestamp) by `ScoreDirectorVotes`, `ScoreProposals`, and `ScoreAuditorChange`.
+- `cmd/entity-graph/main.go` prefers `doc.FilingDate` over `doc.PersistedAt`; the old code
+  stamped all backfill-era documents with today's date, making 2019 filings appear as breaking news.
+- `edition.buildDateline` uses `FilingDate` as primary display date, `DetectedAt` as footnote.
+
+## 2026-05-31 — Northstar doc cohesion pass
+
+All northstar documents updated to reflect the system as it actually is rather than as it was
+planned:
+
+- `northstar.md` — all four pipeline layers marked operational; phases 1–3 marked complete;
+  phase 4 (regulatory/lobbying enrichment) marked partial; file paths corrected to actual layout.
+- `executive_summary.md` — wrong file names fixed throughout; document inventory table with
+  completion markers added; status updated from "ready to implement" to "operational".
+- `newssite.md` — per-route ✅/❌ status in sitemap; phase completion checklist replacing
+  future-tense narrative; `/company/` → `/ticker/` rename noted.
+- `newssite-tickers.md` — T1–T3 complete; T4 broken into specific done/outstanding items.
+- `quick_start.md` — complete rewrite as operational runbook (how to start processes, inspect
+  signals, tune rules, troubleshoot) replacing the "build from scratch" guide.
+- `lvl2/` docs — research-notes headers added explaining these are exploratory political-
+  intelligence notes, not active FATBABY implementation specs.
+- `agent/task.md` — marked completed (entity-graph is in Emily's process registry).
+
 ## 2026-05-30 — Self-improvement loop iteration: processor form bug + entity-graph filter + richer prompts
 
 Three bugs blocking the entity-graph → observation-watcher → Claude loop:

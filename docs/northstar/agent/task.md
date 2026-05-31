@@ -1,6 +1,11 @@
-# Add `entity-graph` to the Process Management Tool
+# Add `entity-graph` to the Process Management Tool — ✅ Completed
 
-## Problem
+> **Status**: Done. `entity-graph` is registered in `cmd/emily-agent/main.go` alongside all other
+> pipeline processes. `fatbaby_start_process("entity-graph")`, `fatbaby_process_status`, and
+> `fatbaby_read_log("entity-graph")` all work. Emily also has a dedicated
+> `fatbaby_run_entity_graph_once` tool for synchronous one-shot runs.
+
+## Problem (historical)
 
 The MCP tool that starts pipeline processes (`fatbaby_start_process`) supports six named processes:
 `secwatch`, `processor`, `newssite`, `dashboard`, `prwatch`, `prwatch-body`

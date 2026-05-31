@@ -1,9 +1,9 @@
 # NORTHSTAR: 8-K Intelligence Engine
 ## Recursive Self-Improving Financial Entity Graph System
 
-**Status**: Implementation Framework  
-**Version**: 1.0  
-**Date**: May 28, 2026  
+**Status**: Operational — all four layers running in production  
+**Version**: 2.0  
+**Date**: May 31, 2026 (updated from original May 28, 2026)  
 **Architecture**: FATBABY-native (Go + Claude CLI feedback loops)
 
 ---
@@ -49,8 +49,8 @@ Build a **self-improving entity intelligence system** that:
 ---
 
 ### Layer 2: Entity Extraction & Graph Construction
-**Owned by**: New package `cmd/entity-graph` (Go + graph database)  
-**Status**: To be built
+**Owned by**: `cmd/entity-graph` + `internal/entitygraph`  
+**Status**: ✅ Operational — running against live secwatch event store
 
 **What this layer does**:
 1. **Canonicalize names** (fuzzy match across filings: "John Smith" vs "J. Smith" vs "John T. Smith")
@@ -103,8 +103,8 @@ Build a **self-improving entity intelligence system** that:
 ---
 
 ### Layer 3: Signal Extraction & Scoring
-**Owned by**: New package `cmd/signal-extractor` (Go + rules engine)  
-**Status**: To be built
+**Owned by**: `internal/entitygraph/signals.go` + `config/entity-graph-rules.json`  
+**Status**: ✅ Operational — all 13 signal types implemented and tested
 
 **Six signal dimensions** (from the earlier analysis):
 
@@ -246,8 +246,8 @@ Build a **self-improving entity intelligence system** that:
 ---
 
 ### Layer 4: Observation Publication & Feedback Loop
-**Owned by**: New package `cmd/signal-observer` + Claude CLI integration  
-**Status**: To be built (Emily ↔ Claude feedback)
+**Owned by**: `cmd/observation-watcher` + `cmd/emily-agent`  
+**Status**: ✅ Operational — observation-watcher polls every 10s, auto-invokes Claude Code on new observations
 
 **Emily's workflow** (runs every 6 hours):
 1. Scan `var/emily-observations/latest.json` (from Layer 3)
@@ -314,123 +314,48 @@ Feedback feeds back into Claude's next prompt
 
 ---
 
-## IMPLEMENTATION ROADMAP
+## IMPLEMENTATION STATUS
 
-### Phase 1: Core Extraction (Weeks 1-2)
-**Deliverable**: End-to-end 8-K parsing → entity graph → signal export
+### Phase 1: Core Extraction — ✅ Complete
+**Delivered**: End-to-end 8-K parsing → entity graph → signal export
 
-**Checklist**:
-- [ ] Form 8-K Item 5.07 parser (Go + regex)
-  - Extract nominee names, vote counts, approval %s
-  - Detect failed proposals (supermajority threshold logic)
-  - Unit tests against 10 Schwab-like filings
-- [ ] Entity canonicalization (fuzzy name matching, known aliases)
-  - Integrate `github.com/joncrlsn/damerau-levenshtein` for edit distance
-  - Build alias dictionary from prior filings
-- [ ] Graph storage (NDJSON append-only in `var/secwatch/entity-graph.ndjson`)
-  - Node schema: person + filings + roles
-  - Edge schema: co-occurrence + metadata
-- [ ] Signal scoring (hardcoded rules for signals 3.1–3.6)
-  - Approval % → friction score (85% threshold)
-  - Trend detection (3-year historical if available)
-  - Supermajority logic (80% of *outstanding*, not votes cast)
-- [ ] Export to TCP feed (via FATBABY `cmd/signal-api`)
-
-**Test criteria**:
-- Parse Schwab 2026 8-K correctly: extract all 4 directors, their %s, and failed declassification
-- Produce 3+ signals per company
-- 90%+ precision on vote count extraction (compare to filing text)
+- ✅ Form 8-K Item 5.07 parser (`internal/entitygraph/parser.go`) — extracts nominee names, vote counts, approval %, failed proposals, supermajority logic
+- ✅ Entity canonicalization (`internal/entitygraph/canon.go`) — hyphen-normalized canonical IDs, alias-aware
+- ✅ Graph storage (NDJSON append-only in `var/entity-graph/`) — nodes.ndjson, edges.ndjson, signals.ndjson, auditors.ndjson
+- ✅ Signal scoring — all 13 signal types; thresholds in `config/entity-graph-rules.json` (hot-reloaded)
+- ✅ Accuracy retrospective — `internal/entitygraph/accuracy.go` correlates activist_risk signals with Schedule 13D filings
 
 ---
 
-### Phase 2: Recursive Refinement Loop (Weeks 3-4)
-**Deliverable**: Emily ↔ Claude feedback loop operational
+### Phase 2: Recursive Refinement Loop — ✅ Complete
+**Delivered**: Emily ↔ Claude Code feedback loop operational
 
-**Checklist**:
-- [ ] Emily integration (`cmd/emily-agent` extension)
-  - POST `/observe` endpoint: accept observation JSON
-  - Write to `var/emily-observations/latest.json`
-  - Publish "Claude, refine entity extraction" prompt
-- [ ] Claude CLI integration (`cmd/observation-watcher` extension)
-  - Poll `var/emily-observations/latest.json` every 10 min
-  - Shell out: `claude --dangerously-skip-permissions < refine_prompt.md`
-  - Parse Claude's suggestions (rules, new signals, data sources)
-  - Emit to `var/emily-observations/claude_suggestions.json`
-- [ ] Rule engine for signal refinement
-  - Accept Claude-suggested rules in YAML
-  - Hot-reload into signal scorer without restart
-  - Version rules (date + Claude feedback version)
-- [ ] Accuracy tracking
-  - After 4 weeks, measure: did friction signals correlate with director replacement?
-  - Did M&A risk signals precede activist 13D filings?
-  - Feed back into next Claude prompt as "ground truth"
-
-**Test criteria**:
-- 10 refine cycles completed
-- At least 2 new signals discovered via Claude suggestions
-- Rule hit rate >80% (rules don't fire on data outside their domain)
+- ✅ Emily writes observations to `var/emily-observations/latest.json` via `fatbaby_write_observation` tool
+- ✅ `cmd/observation-watcher` polls every 10s, detects content changes, invokes Claude Code
+- ✅ Rule hot-reload — `config/entity-graph-rules.json` reloaded by entity-graph at each batch start without restart
+- ✅ `entity-graph` added to Emily's `fatbaby_start_process` tool alongside all other pipeline processes
 
 ---
 
-### Phase 3: Multi-Company Intelligence (Weeks 5-6)
-**Deliverable**: Cross-company entity graph + related-stocks signals
+### Phase 3: Multi-Company Intelligence — ✅ Complete
+**Delivered**: Cross-company entity graph + related-stocks signals
 
-**Checklist**:
-- [ ] Expand watchlist to 20–50 financial companies
-  - Brokerages: SCHW, TD, IBKR, SOFI, HOOD, etc.
-  - Banks: JPM, BLK, GS, MS, WFC, etc.
-  - FinTech: COIN, MSTR, UPST, etc.
-- [ ] Graph merge across companies
-  - Identify shared directors (e.g., Herringer on 3 boards)
-  - Build "director centrality" metric
-  - Flag "bridge nodes" (people connecting otherwise-isolated sectors)
-- [ ] Director-linked stock signals
-  - If Herringer is at 84.3% on SCHW, apply friction score to his other companies
-  - Measure correlation: do Herringer-linked stocks move together?
-- [ ] Auditor peer signals
-  - Deloitte audits how many SCHW-peer companies?
-  - Is audit quality correlated across Deloitte clients?
-- [ ] Temporal cross-company drift
-  - Do director friction scores increase industry-wide in recession?
-  - Do M&A risk signals cluster?
-
-**Test criteria**:
-- 50+ directors identified across companies
-- 20+ shared director relationships
-- Prove director-link signal has alpha vs random selection
+- ✅ Watchlist covers financial companies across brokerages, banks, fintech — see `config/watchlist.json`
+- ✅ `director_link` signal propagates friction scores across shared board seats
+- ✅ Auditor change tracking with cross-filing detection
+- ✅ `ScoreCompositeActivistRisk` fires on governance_entrenchment + director_friction co-occurrence
 
 ---
 
-### Phase 4: Influence & Security Enrichment (Weeks 7-8)
-**Deliverable**: Regulatory, lobbying, and M&A risk signals
+### Phase 4: Influence & Security Enrichment — 🔄 Partial
+**Delivered**: Activist 13D integration; regulatory/lobbying enrichment not yet built
 
-**Checklist**:
-- [ ] Regulatory revolving door
-  - Query SEC EDGAR for director names in comment letters
-  - Cross-reference FEC donor database (www.fec.gov API)
-  - Build "regulatory affiliation" score for each director
-- [ ] Lobbying network (requires FARA data)
-  - Download FARA disclosures (opengovus.com or DIY scrape)
-  - Match director names to lobbying clients
-  - Identify financial services lobbying focus
-- [ ] Activist 13D/13G integration
-  - Monitor Edgar for Schedule 13D filings on watchlist companies
-  - Correlate with governance friction signals (did we predict this?)
-  - Measure signal accuracy retrospectively
-- [ ] M&A preparation signals
-  - Classified board + founder family seat + governance friction = M&A risk multiplier
-  - GC changes = potential transaction planning
-  - Executive comp changes = management transition risk
-- [ ] Executive turnover tracking
-  - Peter J. Morgan III (GC) as canonical node
-  - Track across filings: is he moving to another company?
-  - Predict CEO changes (CFO → CEO pipeline)
+- ✅ Activist 13D/13G integration — `cmd/schd13-watcher` monitors EDGAR, correlates with activist_risk signals, writes accuracy records
+- ❌ Regulatory revolving door (FEC data) — not yet built
+- ❌ Lobbying network (FARA data) — not yet built
+- ❌ Political donor pattern matching — not yet built
 
-**Test criteria**:
-- 10+ directors with regulatory affiliations identified
-- Lobbying data matched for 5+ directors
-- M&A risk signals published
-- Retrospective accuracy: did high-scoring signals precede M&A events?
+These remain in-scope future expansions but are not blocking any current pipeline functionality.
 
 ---
 
@@ -554,26 +479,25 @@ Please provide:
 ### Where This Lives
 ```
 cmd/
-  ├── secwatch/           (existing)
-  ├── signal-api/         (existing)
-  ├── emily-agent/        (existing, extend)
-  ├── observation-watcher/ (existing, extend)
-  ├── entity-graph/       (NEW)
-  ├── signal-extractor/   (NEW)
-  └── signal-observer/    (NEW)
+  ├── secwatch/            polls SEC EDGAR for 8-K filings
+  ├── entity-graph/        ✅ extracts vote data, builds graph, scores signals
+  ├── observation-watcher/ ✅ polls latest.json, invokes Claude Code on changes
+  ├── schd13-watcher/      ✅ monitors EDGAR for Schedule 13D activist filings
+  ├── emily-agent/         ✅ LLM ops agent with process management + observation tools
+  ├── signalapi/           HTTP API for querying signals
+  └── newssite/            broadsheet newssite rendering signals + filings
 
 var/
-  ├── secwatch/
-  │   ├── watchlist.json
-  │   ├── recent-filings/
-  │   └── raw-bodies/
+  ├── secwatch/            event store (source_document_persisted records)
   ├── emily-observations/
-  │   ├── latest.json
-  │   └── archive/
+  │   ├── latest.json      canonical observation file (observation-watcher polls this)
+  │   └── *.json           timestamped archive copies
   ├── entity-graph/
-  │   ├── nodes.ndjson
-  │   ├── edges.ndjson
-  │   └── signals.ndjson
+  │   ├── nodes.ndjson     person nodes with per-filing vote history
+  │   ├── edges.ndjson     board co-membership edges
+  │   ├── signals.ndjson   scored governance signals (13 types)
+  │   ├── auditors.ndjson  auditor tracking per ticker
+  │   └── accuracy.ndjson  activist_risk retrospective accuracy records
   └── logs/
 ```
 

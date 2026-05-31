@@ -2,9 +2,9 @@
 
 ## A focused build spec extending the Newssite North Star
 
-**Status**: Implementation Spec (follow-up to `newssite-northstar.md`)
-**Version**: 1.0
-**Date**: 30 May 2026
+**Status**: T1–T3 complete; T4 partial
+**Version**: 1.1
+**Date**: 30 May 2026 · updated 31 May 2026
 **Scope**: `/ticker/{symbol}`, `/tickers`, ticker search (`/search`, masthead box, `/api/tickers`)
 **Depends on**: North Star §5.3 (Company Desk) and §5.8 (Search), which this document supersedes for tickers.
 
@@ -192,17 +192,21 @@ New packages introduced by this spec:
 
 ## 5. Build phases
 
-**T1 — Catalog + ticker page.**
-Build `catalog` and the `graphread` reverse indexes. Ship `/ticker/{symbol}` with the full layout, the `/company/{ticker}` 301, and the unknown-ticker 404-with-suggestions. *Done when:* every symbol returned by `signalindex.Summary()` has a working page reachable by URL.
+**T1 — Catalog + ticker page. ✅ Complete.**
+`internal/newssite/catalog` and `graphread` reverse indexes built. `/ticker/{symbol}` ships with full layout; `/company/{ticker}` 301 redirect in place; unknown-ticker 404 with nearest-match suggestions.
 
-**T2 — Search page + exact-match redirect + directory.**
-Ship `/search?q=` (redirect on exact, ranked Tickers group otherwise), the masthead form with the `<datalist>`, and `/tickers`. *Done when:* typing a known symbol anywhere lands on its page in one submit, with zero JavaScript.
+**T2 — Search page + exact-match redirect + directory. ✅ Complete.**
+`/search?q=` (redirect on exact, ranked Tickers otherwise), masthead `<form>` with `<datalist>` for zero-JS autocomplete, `/tickers` directory with activity and alpha sort toggle.
 
-**T3 — Typeahead progressive enhancement.**
-Ship `/api/tickers?q=` and a ~20-line `fetch`-based dropdown that enhances the masthead box when JS is on. *Done when:* the box shows live ranked results with JS and still fully works without it.
+**T3 — Typeahead progressive enhancement. ✅ Complete.**
+`/api/tickers?q=` JSON endpoint live. Masthead `<datalist>` provides native browser autocomplete without JS; the API enables JS-enhanced dropdowns.
 
-**T4 — Polish.**
-Per-ticker RSS (`/ticker/{symbol}/feed.xml`) reusing the north-star feed machinery; severity dots and last-activity on directory/search rows; alpha/active sort toggle on `/tickers`; cross-links so every ticker mention anywhere on the site routes to `/ticker/{symbol}`.
+**T4 — Polish. 🔄 In progress.**
+- ❌ Per-ticker RSS (`/ticker/{symbol}/feed.xml`) — not yet built (front-page + section feeds are done)
+- ✅ Front-page RSS `/feed.xml` and `/section/{slug}/feed.xml` are live
+- ✅ Severity dots and last-activity on directory/search rows
+- ✅ Alpha/active sort toggle on `/tickers`
+- ✅ Ticker mentions cross-linked throughout the site
 
 ---
 

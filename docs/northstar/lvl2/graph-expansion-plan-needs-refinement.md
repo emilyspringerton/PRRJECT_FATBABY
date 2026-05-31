@@ -1,3 +1,17 @@
+# Research Notes: Political Intelligence Platform Expansion Plan
+
+> **Status**: Exploratory / needs refinement — NOT an active implementation spec.
+> This document sketches a multi-phase engineering plan to expand FATBABY from a
+> financial-signals platform (SEC filings) into a political-influence intelligence platform
+> (lobbying, regulatory capture, campaign finance). It references Neo4j / AWS Neptune which
+> FATBABY does not currently use — the existing NDJSON entity-graph would need significant
+> evolution to support this direction.
+>
+> Filed here as a reference for future architecture discussions. The IDUNA IAM integration
+> mentioned is described in `docs/iam-integration-spec.md`.
+
+---
+
 To transform the FARTHQ intelligence ecosystem from a structured financial processor (PRRJECT-FATBABY tracking SEC filings, stock tickers, and transaction logs) into a unified, graph-driven General/Political Intelligence Platform capable of mapping networks like the Sacramento shadow brokers, we require a systematic, multi-phased engineering pipeline.
 
 This implementation plan establishes the exact milestones, data pipelines, schema migrations, and integration points with the newly upgraded IDUNA Platform IAM & Governance Service.

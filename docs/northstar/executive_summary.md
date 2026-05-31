@@ -1,9 +1,9 @@
 # EXECUTIVE SUMMARY: 8-K Intelligence Engine Implementation Kit
 ## Three Documents, One System
 
-**Created**: May 28, 2026  
+**Created**: May 28, 2026 · **Updated**: May 31, 2026  
 **For**: FATBABY financial intelligence platform  
-**Objective**: Build a self-improving entity intelligence system that extracts governance signals from SEC filings and refines itself via Claude CLI
+**Status**: System is operational. This document describes the system as built, not as planned.
 
 ---
 
@@ -29,8 +29,8 @@ SEC 8-K filings contain **layers of intelligence** that are worthless in isolati
 
 ## THE SOLUTION: THREE DOCUMENTS
 
-### 1. **NORTHSTAR_8K_INTELLIGENCE_ENGINE.md**
-**Purpose**: Architecture & implementation roadmap  
+### 1. **northstar.md**
+**Purpose**: Architecture & implementation status  
 **Length**: ~600 lines  
 **Audience**: Engineers, product managers  
 
@@ -47,14 +47,14 @@ SEC 8-K filings contain **layers of intelligence** that are worthless in isolati
 - Implementation Roadmap breaks down week-by-week deliverables
 - Data Model shows exact JSON schemas
 
-**When to read this**: First. It's the bible. Understand the architecture before writing code.
+**When to read this**: First. It's the system bible. Understand the architecture and current status before making changes.
 
 ---
 
-### 2. **CLAUDE_REFINEMENT_PROMPT.md**
-**Purpose**: Weekly self-improvement template for Claude CLI  
-**Length**: ~500 lines  
-**Audience**: Emily agent, observation-watcher, Claude CLI  
+### 2. **NORTHSTAR-claude-refine.md**
+**Purpose**: Automated per-observation refinement prompt spec (how observation-watcher builds its Claude prompt)  
+**Length**: ~100 lines  
+**Audience**: Emily agent, observation-watcher, Claude Code  
 
 **Contains**:
 - Template for collecting metrics (filings processed, signals generated, accuracy)
@@ -66,37 +66,27 @@ SEC 8-K filings contain **layers of intelligence** that are worthless in isolati
 - Expected response format (JSON that observation-watcher can parse)
 
 **Key sections**:
-- "Parsing & Extraction Gaps" → Emily identifies what's failing
-- "Signal Anomalies & Contradictions" → Emily identifies logical issues
-- "Refinement Requests for Claude" → Specific areas needing improvement
-- "Response Format" → JSON structure Claude should return
+- "When this fires" → conditions under which observation-watcher invokes Claude
+- "Prompt structure" → what's in the generated prompt
+- "What Claude should edit" → priority table of target files
+- "Feedback loop cadence" → the full loop diagram
 
-**When to read this**: After understanding the architecture. This is the weekly feedback loop template.
+**When to read this**: When debugging the Emily→Claude Code loop or understanding what the automated prompt contains.
 
 ---
 
-### 3. **QUICK_START_CLAUDE_CLI.md**
-**Purpose**: Hands-on implementation guide with code examples  
-**Length**: ~400 lines  
-**Audience**: Engineers implementing the system  
+### 3. **quick_start.md**
+**Purpose**: Operational runbook for running and extending the live system  
+**Audience**: Engineers operating or extending the system  
 
 **Contains**:
-- Step-by-step setup instructions
-- Working Go code for 8-K parser, entity graph, signal scorer
-- Integration with Emily's tooling
-- Test instructions on real Schwab data
-- Emily ↔ Claude loop implementation (observation aggregator, refinement runner)
-- Bash scripts for weekly scheduling
-- TCP feed integration
+- How to start all pipeline processes
+- How to run entity-graph manually and read its output
+- How to trigger and observe a refinement cycle
+- Where all data lives
 - Troubleshooting guide
 
-**Key sections**:
-- Phase 1: Core extraction (with Go code)
-- Phase 2: Emily ↔ Claude loop (with bash scripts)
-- Phase 3: TCP feed integration
-- Full end-to-end workflow example
-
-**When to read this**: During implementation. Copy-paste the code, run the examples, test on fixtures.
+**When to read this**: When operating the system day-to-day or onboarding a new engineer.
 
 ---
 
@@ -302,52 +292,33 @@ A: ~$0.10 per refinement run (Claude processes ~500 lines of metrics/observation
 
 ---
 
-## NEXT STEPS
+## GETTING ORIENTED
 
-1. **Read NORTHSTAR** (30 min) → understand the architecture
-2. **Read QUICK_START Phase 1** (1 hour) → implement the 8-K parser
-3. **Test on Schwab fixture** (30 min) → verify parsing works
-4. **Implement Phase 2** (1 week) → Emily ↔ Claude loop
-5. **Run weekly refinements** (ongoing) → watch system improve
-
-**Total time to MVP**: 3-4 weeks  
-**Total time to production**: 8-10 weeks
+1. **New engineer** → read `northstar.md` (architecture) + `quick_start.md` (how to run everything)
+2. **Debugging Emily→Claude loop** → read `NORTHSTAR-claude-refine.md`
+3. **Working on newssite** → read `newssite.md` + `newssite-tickers.md` for what's built and what's next
+4. **Exploring future directions** → see `lvl2/` for political/influence graph research notes
 
 ---
 
-## DOCUMENTS IN THIS KIT
+## DOCUMENTS IN THIS DIRECTORY
 
-1. **NORTHSTAR_8K_INTELLIGENCE_ENGINE.md** (600 lines)
-   - Architecture blueprint
-   - 8-week roadmap
-   - Data schemas
-   - Integration points
-
-2. **CLAUDE_REFINEMENT_PROMPT.md** (500 lines)
-   - Weekly feedback template
-   - Metrics collection
-   - Anomaly detection
-   - Refinement requests
-
-3. **QUICK_START_CLAUDE_CLI.md** (400 lines)
-   - Working Go code
-   - Bash scripts
-   - Test examples
-   - Troubleshooting
-
-4. **This file** (200 lines)
-   - Executive summary
-   - Document relationships
-   - Timeline
-   - FAQ
-
-**Total**: ~1700 lines of documentation + runnable code  
-**Ready to implement?** Start with NORTHSTAR, then QUICK_START Phase 1.
+| File | Purpose | Status |
+|---|---|---|
+| `northstar.md` | Architecture, layer status, data schemas, integration | ✅ Current |
+| `NORTHSTAR-claude-refine.md` | Automated refinement prompt spec for observation-watcher | ✅ Current |
+| `quick_start.md` | Operational runbook for running and extending the system | ✅ Current |
+| `newssite.md` | Newssite-as-newspaper northstar — page designs, phases | ✅ Current |
+| `newssite-tickers.md` | Ticker pages and search spec | ✅ Current |
+| `executive_summary.md` (this file) | System overview, document map, FAQ | ✅ Current |
+| `lvl2/entity-atribute-value-graph.md` | Research notes: future political/influence graph expansion | 📋 Exploratory |
+| `lvl2/graph-expansion-plan-needs-refinement.md` | Research notes: future political/influence graph expansion | 📋 Exploratory |
+| `agent/task.md` | Task to add entity-graph to Emily's process registry | ✅ Completed |
 
 ---
 
 **Questions? Comments? Feedback?**  
 File issues in the FATBABY repo or email the implementation team.
 
-**Status**: Ready for implementation (2026-05-28)  
-**Next review**: 2026-06-27 (after Week 4 MVP)
+**Status**: Operational (all four layers running) — last updated 2026-05-31  
+**Next review**: 2026-06-30
