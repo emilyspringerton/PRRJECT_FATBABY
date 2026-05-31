@@ -2,7 +2,7 @@
 
 ## Turning the FATBABY event store into a usable financial-intelligence publication
 
-**Status**: P0–P2 complete; P3 mostly complete (live page outstanding); P4 in progress (RSS done; corrections box + succession rail outstanding)
+**Status**: P0–P3 complete; P4 in progress (RSS + succession watch + live done; corrections box + accessibility pass outstanding)
 **Version**: 1.1
 **Date**: 30 May 2026 · updated 31 May 2026
 **Scope**: `cmd/newssite`, `internal/newssite/*` (and a small set of new read-model packages)
@@ -298,19 +298,19 @@ Each phase is independently shippable and leaves the site working.
 
 *P2 complete.* Full navigation flow works: front page → ticker desk → director dossier → another ticker, zero URL typing required.
 
-**P3 — Wire, search, archive, live. 🔄 Mostly complete.**
+**P3 — Wire, search, archive, live. ✅ Complete.**
 - ✅ `/wire` — press releases only
 - ✅ `/search?q=` — exact-match redirect + prefix/substring ranking; masthead datalist typeahead
 - ✅ `/api/tickers?q=` — JSON typeahead for progressive enhancement
 - ✅ `/archive` — reverse-chron event index
-- ❌ `/live` — SSE stream of incoming signals (progressive enhancement) — **not yet built**
+- ✅ `/live` — static snapshot + EventSource SSE (`/live/events`); JS-off baseline works; JS-on prepends new cards on each graph refresh
 
 **P4 — Polish & honesty. 🔄 In progress.**
 - ✅ `/about` — masthead/colophon with signal definitions and base rates
 - ✅ ARCHIVE badge + "Indexed DATE" byline for historical filings (date provenance fix)
 - ✅ RSS feed — `/feed.xml` (front page) + `/section/{slug}/feed.xml` (per desk); `<link rel="alternate">` in front-page `<head>`
 - ❌ Corrections box wired to rule-version changes — not yet built
-- ❌ Succession watch rail (director_decay directors) — not yet built
+- ✅ Succession watch rail — front-page sidebar showing up to 5 `director_decay` directors with approval % and link to person dossier
 - ❌ Accessibility pass (semantic headings, contrast audit) — not yet done
 
 ---

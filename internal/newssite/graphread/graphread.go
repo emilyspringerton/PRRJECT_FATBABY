@@ -19,17 +19,32 @@ type Store struct {
 	auditors    map[string]*entitygraph.AuditorRecord // ticker → auditor
 	edgesByNode map[string][]*entitygraph.Edge        // canonical_id → edges involving that person
 	dir         string
+
+	// updatesMu guards updates; closed and replaced on each Refresh so waiters wake up.
+	updatesMu sync.Mutex
+	updates   chan struct{}
 }
 
 // NewStore creates a Store pointed at dir (e.g. var/entity-graph).
 func NewStore(dir string) *Store {
-	return &Store{
+	s := &Store{
 		dir:         dir,
 		nodes:       make(map[string]*entitygraph.PersonNode),
 		dirByTicker: make(map[string][]*entitygraph.PersonNode),
 		auditors:    make(map[string]*entitygraph.AuditorRecord),
 		edgesByNode: make(map[string][]*entitygraph.Edge),
 	}
+	s.updates = make(chan struct{})
+	return s
+}
+
+// Updates returns a channel that is closed (and replaced) each time Refresh
+// completes. SSE handlers and long-poll clients can wait on this channel to
+// be woken when new signal data is available.
+func (s *Store) Updates() <-chan struct{} {
+	s.updatesMu.Lock()
+	defer s.updatesMu.Unlock()
+	return s.updates
 }
 
 // Refresh reloads all entity-graph data from disk. Safe to call concurrently.
@@ -80,6 +95,14 @@ func (s *Store) Refresh() error {
 	s.auditors = g.Auditors
 	s.edgesByNode = edgesByNode
 	s.mu.Unlock()
+
+	// Wake any SSE/long-poll waiters and arm a fresh channel for the next cycle.
+	s.updatesMu.Lock()
+	old := s.updates
+	s.updates = make(chan struct{})
+	s.updatesMu.Unlock()
+	close(old)
+
 	return nil
 }
 

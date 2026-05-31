@@ -19,6 +19,7 @@ var (
 	archiveTmpl = mustLookup("archive")
 	aboutTmpl   = mustLookup("about")
 	personTmpl  = mustLookup("person")
+	liveTmpl    = mustLookup("live")
 )
 
 func mustLookup(name string) *template.Template {
@@ -307,7 +308,7 @@ const sharedFragments = `
 
 const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate +
 	sectionTemplate + tickerTemplate + ticker404Template +
-	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate + personTemplate
+	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate + personTemplate + liveTemplate
 
 const frontTemplate = `{{define "front"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -367,6 +368,16 @@ const frontTemplate = `{{define "front"}}<!doctype html>
         <a href="/doc/{{.Identity}}" style="font-family:system-ui;font-weight:600;font-size:0.82rem;color:#111;">{{.Ticker}}{{if .Form}} · {{.Form}}{{end}}</a>
         <div style="font-family:system-ui;font-size:0.7rem;color:#888;margin-top:0.1rem;">{{.DateStr}}</div>
       </div>{{end}}
+    </div>{{end}}
+    {{if .SuccessionWatch}}<div class="sidebar-box"><h4>Succession Watch</h4>
+      {{range .SuccessionWatch}}<div style="padding:0.4rem 0;border-bottom:1px dashed #eee;font-family:system-ui;font-size:0.8rem;">
+        <div><a href="{{.Link}}" style="font-weight:600;color:#111;">{{if .Name}}{{.Name}}{{else}}Director{{end}}</a>
+          {{if .Ticker}}<span style="color:#888;margin-left:0.35rem;font-size:0.72rem;">{{.Ticker}}</span>{{end}}
+          {{if .ApprovalStr}}<span style="color:#dc2626;font-size:0.72rem;margin-left:0.35rem;">{{.ApprovalStr}}</span>{{end}}
+        </div>
+        {{if .Deck}}<div style="color:#666;font-size:0.72rem;line-height:1.4;margin-top:0.15rem;">{{.Deck}}</div>{{end}}
+      </div>{{end}}
+      <div style="font-size:0.72rem;color:#888;margin-top:0.5rem;font-family:system-ui;"><a href="/section/boardroom">More boardroom →</a></div>
     </div>{{end}}
     <div class="sidebar-box"><h4>Signals</h4>
       <p style="font-size:0.8rem;color:#888;margin:0;">Governance signals surface here once the processor has run. <a href="/breaking">Breaking →</a></p>
@@ -638,6 +649,81 @@ const aboutTemplate = `{{define "about"}}<!doctype html>
 <h2 style="font-family:system-ui;font-size:0.85rem;font-weight:700;margin:1.5rem 0 0.5rem;">Not investment advice</h2>
 <p>All signals are model-derived from public filings. They are not investment advice and should not be relied upon for trading decisions.</p>
 </main></div>{{template "footer" .}}</body></html>{{end}}`
+
+const liveTemplate = `{{define "live"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Desk — FATBABY</title>
+<style>` + siteCSS + `
+#live-status { font-family:system-ui;font-size:0.72rem;color:#888;margin-bottom:0.75rem; }
+#live-status.connected { color:#065f46; }
+.live-new { animation: fadeIn 0.4s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+</style></head>
+<body><div class="wrap">
+{{template "masthead" .}}
+{{template "sectionsrail" .}}
+<main style="max-width:700px;">
+<h1 style="font-family:system-ui;font-size:1.1rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin:1.2rem 0 0.3rem;">Live Desk</h1>
+<p id="live-status">Static snapshot — connect with JavaScript for live updates.</p>
+<div id="live-feed">
+{{if .Items}}
+  {{range .Items}}<article class="story">
+    <span class="kicker {{.KickerClass}}">{{.Kicker}}</span>
+    <h3 class="hl-item"><a href="{{.Link}}">{{.Headline}}</a></h3>
+    <div class="dateline">{{.Dateline}}</div><div class="byline">{{.Byline}}</div>
+    {{if .Deck}}<p class="deck" style="font-size:0.88rem;">{{.Deck}}</p>{{end}}
+  </article>{{end}}
+{{else}}
+  <p style="color:#888;font-family:system-ui;">No critical or high signals at the moment. Check back soon.</p>
+{{end}}
+</div>
+</main>
+<script>
+(function() {
+  var status = document.getElementById('live-status');
+  var feed   = document.getElementById('live-feed');
+  if (!window.EventSource) return;
+
+  var es = new EventSource('/live/events');
+
+  es.addEventListener('connected', function() {
+    status.textContent = 'Connected — updates appear automatically.';
+    status.className = 'connected';
+  });
+
+  es.addEventListener('refresh', function() {
+    fetch('/breaking')
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var articles = doc.querySelectorAll('article.story');
+        if (articles.length === 0) return;
+        var existing = feed.querySelectorAll('article.story');
+        var existingLinks = new Set(Array.from(existing).map(function(a) {
+          var l = a.querySelector('a'); return l ? l.href : '';
+        }));
+        var added = 0;
+        articles.forEach(function(art) {
+          var link = art.querySelector('a');
+          if (!link || existingLinks.has(link.href)) return;
+          art.classList.add('live-new');
+          feed.insertBefore(art, feed.firstChild);
+          added++;
+        });
+        if (added > 0) {
+          status.textContent = 'Updated — ' + added + ' new item' + (added > 1 ? 's' : '') + ' just arrived.';
+        }
+      });
+  });
+
+  es.onerror = function() {
+    status.textContent = 'Connection lost — reconnecting…';
+    status.className = '';
+  };
+})();
+</script>
+</div>{{template "footer" .}}</body></html>{{end}}`
 
 const personTemplate = `{{define "person"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

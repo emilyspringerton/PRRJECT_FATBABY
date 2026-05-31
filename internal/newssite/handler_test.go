@@ -84,6 +84,28 @@ func TestHandler(t *testing.T) {
 			wantStatus: http.StatusNotFound,
 		},
 		{
+			name:       "person page no graph",
+			path:       "/person/frank-c-herringer",
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "feed.xml empty",
+			path:       "/feed.xml",
+			wantStatus: http.StatusOK,
+			wantContains: []string{"<?xml", "rss", "FATBABY"},
+		},
+		{
+			name:       "section feed empty",
+			path:       "/section/governance/feed.xml",
+			wantStatus: http.StatusOK,
+			wantContains: []string{"<?xml", "Governance"},
+		},
+		{
+			name:       "company redirect",
+			path:       "/company/SCHW",
+			wantStatus: http.StatusMovedPermanently,
+		},
+		{
 			name: "xss guard",
 			path: "/doc/abc:4",
 			seed: func(t *testing.T, store eventstore.EventStore) {

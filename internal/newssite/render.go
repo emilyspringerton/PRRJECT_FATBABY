@@ -44,16 +44,28 @@ type ArticleView struct {
 
 // ── Front page ────────────────────────────────────────────────────────────────
 
+// SuccessionWatchItem is one entry in the "succession watch" rail on the front page.
+// It surfaces director_decay signals framed as a forward-looking succession story.
+type SuccessionWatchItem struct {
+	Name        string
+	CanonicalID string
+	Ticker      string
+	ApprovalStr string
+	Deck        string
+	Link        string
+}
+
 type FrontPageView struct {
 	Base
-	Date        string
-	Count       int
-	TickerItems []TickerTapeItem
-	Lead        *ArticleView
-	Secondary   []ArticleView
-	MostActive  []ActiveTickerView
-	WireItems   []WireItem
-	Rest        []ArticleView
+	Date            string
+	Count           int
+	TickerItems     []TickerTapeItem
+	Lead            *ArticleView
+	Secondary       []ArticleView
+	MostActive      []ActiveTickerView
+	WireItems       []WireItem
+	Rest            []ArticleView
+	SuccessionWatch []SuccessionWatchItem
 }
 
 type TickerTapeItem struct {
@@ -266,6 +278,23 @@ func RenderBreakingPage(w io.Writer, ranked []edition.Ranked, symbols []string) 
 		items = append(items, signalToArticleView(r, 300))
 	}
 	if err := breakTmpl.Execute(w, BreakingView{Base: Base{Symbols: symbols}, Items: items}); err != nil {
+		fmt.Fprintf(w, "render error: %v", err)
+	}
+}
+
+// LiveView is the view model for /live.
+type LiveView struct {
+	Base
+	Items []ArticleView
+}
+
+func RenderLivePage(w io.Writer, ranked []edition.Ranked, symbols []string) {
+	items := make([]ArticleView, 0, len(ranked))
+	for _, r := range ranked {
+		items = append(items, signalToArticleView(r, 300))
+	}
+	view := LiveView{Base: Base{Symbols: symbols}, Items: items}
+	if err := liveTmpl.Execute(w, view); err != nil {
 		fmt.Fprintf(w, "render error: %v", err)
 	}
 }
@@ -613,15 +642,41 @@ func buildFrontPage(entries []DocEntry, ranked []edition.Ranked) FrontPageView {
 		}
 	}
 
+	// Succession watch: up to 5 director_decay signals, framed as forward succession.
+	var successionWatch []SuccessionWatchItem
+	for _, r := range ranked {
+		if r.Signal.Type != entitygraph.SignalDirectorDecay {
+			continue
+		}
+		item := SuccessionWatchItem{
+			Name:   r.Signal.Entity,
+			Ticker: normTicker(r.Signal.Ticker),
+			Deck:   truncateRunes(r.Signal.Interpretation, 120),
+			Link:   "/ticker/" + normTicker(r.Signal.Ticker),
+		}
+		if r.Signal.Entity != "" {
+			item.CanonicalID = entitygraph.Canonicalize(r.Signal.Entity)
+			item.Link = "/person/" + item.CanonicalID
+		}
+		if r.Signal.Score > 0 {
+			item.ApprovalStr = fmt.Sprintf("%.1f%%", r.Signal.Score*100)
+		}
+		successionWatch = append(successionWatch, item)
+		if len(successionWatch) >= 5 {
+			break
+		}
+	}
+
 	return FrontPageView{
-		Date:        time.Now().UTC().Format("Monday, 2 January 2006"),
-		Count:       len(entries),
-		TickerItems: tickerItems,
-		Lead:        lead,
-		Secondary:   secondary,
-		MostActive:  mostActive,
-		WireItems:   wireItems,
-		Rest:        rest,
+		Date:            time.Now().UTC().Format("Monday, 2 January 2006"),
+		Count:           len(entries),
+		TickerItems:     tickerItems,
+		Lead:            lead,
+		Secondary:       secondary,
+		MostActive:      mostActive,
+		WireItems:       wireItems,
+		Rest:            rest,
+		SuccessionWatch: successionWatch,
 	}
 }
 

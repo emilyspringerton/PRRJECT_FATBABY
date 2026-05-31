@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-31 — Newssite P3+P4: /live SSE page, succession-watch rail, handler test coverage
+
+### /live SSE page (P3 completion)
+
+- **`/live`** — renders current critical/high signal list server-side (fully works without JS)
+- **`/live/events`** — SSE endpoint; `connected` on handshake, `refresh` on each graphread
+  Store refresh, `heartbeat` comment every 30s to survive proxies
+- **`graphread.Store`** — `updates chan struct{}` closed and replaced on each `Refresh()`; exposed
+  via `Store.Updates()` so any future handler can wait for new signal data
+- **JS enhancement** (~25 lines inline) — `EventSource('/live/events')` diff-prepends new cards
+  fetched from `/breaking` on each refresh event; CSS fadeIn; fully degrades without JS
+
+### Succession-watch rail (P4)
+
+- `SuccessionWatchItem` view type; `SuccessionWatch []SuccessionWatchItem` on `FrontPageView`
+- `buildFrontPage` populates from ranked `director_decay` signals (up to 5, by rank)
+- Front-page sidebar: director name → `/person/`, ticker, approval %, brief deck
+
+### Test coverage
+
+New handler test cases: person page without graph (404), feed.xml, section feed, company redirect.
+
 ## 2026-05-31 — Newssite P2+P4: director dossier page, RSS feeds, front-page historical filtering
 
 ### /person/{canonical_id} director dossier (P2 completion)

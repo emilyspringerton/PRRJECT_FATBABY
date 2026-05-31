@@ -73,6 +73,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveArchive(w, r)
 	case path == "/about":
 		status = h.serveAbout(w, r)
+	case path == "/live":
+		status = h.serveLive(w, r)
+	case path == "/live/events":
+		status = h.serveLiveEvents(w, r)
 	case path == "/feed.xml":
 		status = h.serveRSS(w, r, "")
 	case path == "/api/tickers":
@@ -352,6 +356,64 @@ func (h *Handler) serveAbout(w http.ResponseWriter, r *http.Request) int {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
+}
+
+func (h *Handler) serveLive(w http.ResponseWriter, r *http.Request) int {
+	ranked := h.liveRanked()
+	var breaking []edition.Ranked
+	for _, item := range ranked {
+		if item.Signal.Severity == "critical" || item.Signal.Severity == "high" {
+			breaking = append(breaking, item)
+		}
+	}
+	var buf bytes.Buffer
+	RenderLivePage(&buf, breaking, h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+// serveLiveEvents is an SSE endpoint. Each time the graph store refreshes it
+// pushes a "refresh" event; the client re-fetches the /breaking list and
+// prepends any new cards. Falls back gracefully when the graph is not wired.
+func (h *Handler) serveLiveEvents(w http.ResponseWriter, r *http.Request) int {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Send an initial heartbeat so the client knows it's connected.
+	fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+	flusher.Flush()
+
+	ctx := r.Context()
+	for {
+		var updates <-chan struct{}
+		if h.graph != nil {
+			updates = h.graph.Updates()
+		}
+
+		select {
+		case <-ctx.Done():
+			return http.StatusOK
+		case <-time.After(30 * time.Second):
+			// Heartbeat to keep the connection alive through proxies.
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			flusher.Flush()
+		case _, _ = <-updates:
+			fmt.Fprintf(w, "event: refresh\ndata: {}\n\n")
+			flusher.Flush()
+			// Arm next wait: get fresh channel after the store replaced it.
+			if h.graph != nil {
+				updates = h.graph.Updates()
+			}
+		}
+	}
 }
 
 func (h *Handler) servePersonPage(w http.ResponseWriter, r *http.Request) int {
