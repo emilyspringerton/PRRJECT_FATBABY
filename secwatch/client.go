@@ -172,9 +172,13 @@ func (c *Client) doOnce(ctx context.Context, reqURL string) ([]byte, int, error)
 	}
 	defer resp.Body.Close()
 
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	const maxBodyBytes = 64 << 20 // 64 MB; large-filer submissions can exceed 32 MB
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return nil, resp.StatusCode, err
+	}
+	if int64(len(b)) >= maxBodyBytes {
+		return nil, resp.StatusCode, fmt.Errorf("response body truncated at %d bytes url=%s", maxBodyBytes, reqURL)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, resp.StatusCode, &HTTPStatusError{StatusCode: resp.StatusCode, URL: reqURL, Body: string(b)}
