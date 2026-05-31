@@ -222,7 +222,51 @@ func buildPrimeTaskPrompt(taskPath string, task primeTask) string {
 	sb.WriteString("3. Run `go test ./...` before committing — fix any failures.\n")
 	sb.WriteString("4. Commit with a message that references the task ID and describes the change.\n")
 	sb.WriteString("5. Document the change in CHANGELOG.md.\n")
+	sb.WriteString(runReportFooter(task.Description, task.Timestamp))
 	return sb.String()
+}
+
+// runReportFooter returns the mandatory reporting and git-sync section that is
+// appended to every prompt sent to Claude Code. It ensures every autonomous run
+// produces an auditable JSON artifact and a pushed git commit.
+func runReportFooter(summary, observationTimestamp string) string {
+	return `
+---
+## Mandatory: run report and git sync
+
+At the end of this run you MUST complete the following steps — they are not optional.
+
+### 1. Write a run report
+Create the directory var/claude-code/runs/ if it does not exist, then write a JSON
+file named with the current UTC time to second granularity:
+  var/claude-code/runs/YYYY-MM-DDTHH:MM:SS.json
+Example: var/claude-code/runs/2026-05-31T20:45:32.json
+
+The file must contain:
+{
+  "observation_summary":   "` + summary + `",
+  "observation_timestamp": "` + observationTimestamp + `",
+  "run_started_at":        "<ISO timestamp when you began>",
+  "run_completed_at":      "<ISO timestamp when you finished>",
+  "files_changed":         ["<path>", ...],
+  "actions_taken":         "<plain-English description of every edit and why>",
+  "git_commit_hash":       "<hash of the commit made below>",
+  "exit_status":           "success" | "partial" | "failed",
+  "notes":                 "<caveats, skipped steps, follow-up recommendations>"
+}
+
+### 2. Git sync
+After writing the report, run exactly:
+  git add -A
+  git commit -m "claude-code: ` + summary + ` [` + observationTimestamp + `]"
+  git push
+
+The run report file must be included in this commit.
+
+### 3. If git push fails
+Retry once. If it still fails, set exit_status to "partial" and record the failure
+in notes. Never silently skip the sync.
+`
 }
 
 // exec is already imported above; re-declare only if needed.
@@ -359,6 +403,7 @@ func buildGenericPrompt(latestPath string, obs observation) string {
 	sb.WriteString("4. Run `go test ./...` before committing — fix any test failures.\n")
 	sb.WriteString("5. Commit with a message describing the fix and its root cause.\n")
 	sb.WriteString("6. Document the change in CHANGELOG.md with today's date.\n")
+	sb.WriteString(runReportFooter(obs.Summary, obs.Timestamp))
 	return sb.String()
 }
 
@@ -412,6 +457,7 @@ func buildEntityGraphPrompt(latestPath string, obs observation, rulesPath string
 	sb.WriteString("4. Run `go test ./...` to verify all changes.\n")
 	sb.WriteString("5. Commit passing changes with a descriptive message explaining the refinement.\n")
 	sb.WriteString("6. Document the change in CHANGELOG.md with today's date.\n")
+	sb.WriteString(runReportFooter(obs.RequestForClaude, obs.Timestamp))
 
 	return sb.String()
 }
