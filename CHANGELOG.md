@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — entitygraph: GovernanceHealth FilingDate window fix; Phase 3 complete
+
+### GovernanceHealth window correctness (RSI)
+
+`ScoreGovernanceHealth` was filtering signals using only `DetectedAt`, so backfilled
+historical signals (2019 filing date, 2026 detection date) were incorrectly included
+in the current governance health window. Aligns with `ScoreCompositeActivistRisk`
+which already uses the `FilingDate || DetectedAt` pattern.
+
+- **`internal/entitygraph/signals.go`**: `ScoreGovernanceHealth` now uses
+  `FilingDate` when present, falls back to `DetectedAt` when empty.
+- **`internal/entitygraph/signals_test.go`**: Two new tests —
+  `TestScoreGovernanceHealth_FilingDateWindow` and `_FilingDateFallback`.
+- **`README.md`**: Phase 3 status updated to ✅ (50-ticker watchlist, director
+  centrality, `director_link`, IDUNA JWT auth). `IDUNA_JWKS_URL` added to env
+  vars table.
+
+### Emily agent: richer check_env + read_governance_signals tool
+
+- **`fatbaby_check_env`**: Now validates ANTHROPIC_API_KEY, claude CLI path
+  (via PATH and `~/.local/bin` fallback), and observation-watcher cursor state.
+- **`fatbaby_read_governance_signals`** (new): Reads `var/entity-graph/signals.ndjson`
+  directly; returns ticker summaries (signal count, severity breakdown, latest filing
+  date) plus high/critical signals. Supports ticker filter and result limit. Emily
+  can now inspect governance intelligence without running a full entity-graph batch.
+
 ## 2026-06-01 — signalapi: IDUNA JWT auth (FARTHQ ecosystem integration)
 
 ### IDUNA JWT verification for signal API
