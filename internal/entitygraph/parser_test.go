@@ -150,6 +150,71 @@ For Against Abstain
 	}
 }
 
+// TestLooksLikePersonName_HeaderRejection ensures vote-table headers and aggregate
+// row labels are never mistaken for director names. This guards against the
+// "Against Abstained" and "Broker Non-Vote" false-positives observed in live data.
+func TestLooksLikePersonName_HeaderRejection(t *testing.T) {
+	rejects := []string{
+		"Against Abstained",
+		"Against Abstain",
+		"Broker Non-Vote",
+		"Broker Non-Votes",
+		"Withheld Abstained",
+		"Votes Cast",
+		"Total Votes",
+	}
+	for _, s := range rejects {
+		if looksLikePersonName(s) {
+			t.Errorf("looksLikePersonName(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestLooksLikePersonName_ValidNames(t *testing.T) {
+	accepts := []string{
+		"James Bell",
+		"Tim Cook",
+		"Andrea Jung",
+		"Carolyn Schwab-Pomerantz",
+		"Frank C. Herringer",
+		"Marianne C. Brown",
+		"Robert J. Smith Jr.",
+	}
+	for _, s := range accepts {
+		if !looksLikePersonName(s) {
+			t.Errorf("looksLikePersonName(%q) = false, want true", s)
+		}
+	}
+}
+
+func TestParseItem507_NoSpuriousHeaderNodes(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+
+Director Election — Proposal 1
+
+	Name              For           Against Abstained    Broker Non-Vote
+	James Bell     800,000,000    5,000,000  2,000,000   30,000,000
+	Tim Cook       820,000,000    3,000,000  1,500,000   30,000,000
+
+Proposal 2 Ratification of independent auditors.
+appointment of Ernst Young LLP as independent
+800,000,000 10,000,000 5,000,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	for _, v := range result.DirectorVotes {
+		if v.Name == "Against Abstained" || v.Name == "Broker Non-Vote" {
+			t.Errorf("spurious header node extracted as director: %q", v.Name)
+		}
+	}
+	// Should find exactly James Bell and Tim Cook.
+	if len(result.DirectorVotes) != 2 {
+		t.Errorf("want 2 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+}
+
 func TestParseItem507_NoSection(t *testing.T) {
 	_, err := ParseItem507("This is a regular 8-K with no vote section.")
 	if err == nil {

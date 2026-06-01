@@ -265,12 +265,37 @@ func parseProposalChunk(chunk string, outstanding int64) *ProposalResult {
 }
 
 // headerPhrases is a set of vote-table header strings to reject.
+// These are column headers and aggregate-row labels that appear in 8-K Item 5.07
+// vote tables and can be mistaken for director names by the regex.
 var headerPhrases = map[string]bool{
-	"broker non-votes": true,
-	"broker non votes": true,
-	"non-votes":        true,
-	"for against":      true,
-	"against abstain":  true,
+	"broker non-votes":     true,
+	"broker non votes":     true,
+	"broker non-vote":      true,
+	"broker non vote":      true,
+	"non-votes":            true,
+	"non votes":            true,
+	"for against":          true,
+	"against abstain":      true,
+	"against abstained":    true,
+	"abstain broker":       true,
+	"votes cast":           true,
+	"total votes":          true,
+	"withheld abstained":   true,
+	"withheld abstain":     true,
+}
+
+// nonNameWords are keywords that never appear in a real director name but do
+// appear in vote-table headers and aggregate rows. Any match disqualifies the
+// candidate regardless of title-casing.
+var nonNameWords = map[string]bool{
+	"against":   true,
+	"abstain":   true,
+	"abstained": true,
+	"withheld":  true,
+	"non-vote":  true,
+	"non-votes": true,
+	"broker":    true,
+	"cast":      true,
 }
 
 // looksLikePersonName returns true when s has at least two Title-cased words
@@ -278,6 +303,13 @@ var headerPhrases = map[string]bool{
 func looksLikePersonName(s string) bool {
 	if headerPhrases[strings.ToLower(s)] {
 		return false
+	}
+	// Reject any candidate containing a known non-name keyword.
+	for _, w := range strings.Fields(strings.ToLower(s)) {
+		w = strings.TrimRight(w, ".,;:")
+		if nonNameWords[w] {
+			return false
+		}
 	}
 	words := strings.Fields(s)
 	if len(words) < 2 {
