@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — Entity graph RSI: acceleration decay, critical severity tiers, activist risk escalation
+
+### Entity graph signal improvements (recursive self-improvement cycle)
+
+Implements Emily Prime's directive to improve entity graph signal quality using RSI.
+
+- **Acceleration decay**: `ScoreDirectorDecay` now fires on a single sharp year-over-year
+  drop exceeding `acceleration_decay_pp_threshold` (default 4.0 pp), even before
+  `decay_min_years` data points are available. Catches the Herringer pattern early.
+  New severity tier: >5 pp avg drop → high (was medium); single-year acceleration → medium.
+
+- **Critical governance health**: `ScoreGovernanceHealth` now emits `critical` severity
+  when composite score falls below 0.20 (multiple concurrent governance failures).
+  Previously topped out at `high`.
+
+- **Activist risk escalation**: `ScoreCompositeActivistRisk` escalates to `critical`
+  when a `nomination_rejection` co-occurs with `governance_entrenchment` (base rate
+  ~75% for activist 13D within 6 months vs ~60% for plain friction). Also now accepts
+  signals by `FilingDate` in addition to `DetectedAt` so stale processing timestamps
+  don't exclude recent filings from the window.
+
+- **`config/entity-graph-rules.json`**: Added `acceleration_decay_pp_threshold: 4.0`.
+  Hot-reloaded; no process restart required.
+
+- **6 new tests** covering all new severity paths and the FilingDate window fix.
+
 ## 2026-05-31 — Emily Prime integration: auto-commit to Prime, observation-watcher task polling
 
 ### Emily Prime ↔ FatBaby feedback loop wired
