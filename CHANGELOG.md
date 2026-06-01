@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — entitygraph: fix spurious header-node extraction (Against Abstained, Broker Non-Vote)
+
+### Parser correctness fix (RSI observation)
+
+Vote-table column headers and aggregate-row labels (e.g. "Against Abstained",
+"Broker Non-Vote") were being extracted as director names because they pass the
+title-case heuristics but were absent from the `headerPhrases` blocklist.
+
+- **`internal/entitygraph/parser.go`**: Two-layer defence: (1) expanded
+  `headerPhrases` with missing variants; (2) new `nonNameWords` set that rejects
+  any candidate containing `against`, `abstain`, `abstained`, `withheld`,
+  `non-vote`, `broker`, or `cast` regardless of casing.
+- **`internal/entitygraph/parser_test.go`**: Three new tests —
+  `TestLooksLikePersonName_HeaderRejection`, `TestLooksLikePersonName_ValidNames`,
+  `TestParseItem507_NoSpuriousHeaderNodes`.
+
 ## 2026-06-01 — observation-watcher: claude CLI PATH fix; watchlist expanded to 50 tickers
 
 ### observation-watcher: automatic claude CLI resolution (Emily observation fix)
