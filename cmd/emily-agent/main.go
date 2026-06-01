@@ -1097,6 +1097,71 @@ type Server struct {
 	client      *http.Client
 	mu          sync.Mutex
 	anthropicURL string
+	// IDUNA agent token (spec HQ-SPEC-IAM-095 §3.1)
+	idunaMu      sync.RWMutex
+	idunaToken   string    // current JWT; empty if IDUNA not configured
+	idunaTokenExp time.Time // expiry of idunaToken
+}
+
+// idunaAgentCfg holds the configuration for Emily's IDUNA agent identity.
+type idunaAgentCfg struct {
+	BaseURL     string // e.g. "https://iam.farthq.internal"
+	AgentName   string // e.g. "EMILY"
+	AgentSecret string // raw credential (never logged)
+}
+
+func loadIDUNAAgentCfg() (idunaAgentCfg, bool) {
+	cfg := idunaAgentCfg{
+		BaseURL:     os.Getenv("IDUNA_BASE_URL"),
+		AgentName:   os.Getenv("IDUNA_AGENT_NAME"),
+		AgentSecret: os.Getenv("IDUNA_AGENT_SECRET"),
+	}
+	return cfg, cfg.BaseURL != "" && cfg.AgentName != "" && cfg.AgentSecret != ""
+}
+
+// acquireIDUNAToken calls IDUNA's /api/v1/auth/agent endpoint and stores the
+// returned JWT. Safe to call concurrently; uses idunaToken write lock.
+func (s *Server) acquireIDUNAToken(cfg idunaAgentCfg) error {
+	body, _ := json.Marshal(map[string]string{
+		"agent_name":   cfg.AgentName,
+		"agent_secret": cfg.AgentSecret,
+	})
+	req, err := http.NewRequest("POST", cfg.BaseURL+"/api/v1/auth/agent", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("call IDUNA: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("IDUNA returned status %d", resp.StatusCode)
+	}
+	var result struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("parse IDUNA response: %w", err)
+	}
+	s.idunaMu.Lock()
+	s.idunaToken = result.AccessToken
+	if result.ExpiresIn > 0 {
+		s.idunaTokenExp = time.Now().UTC().Add(time.Duration(result.ExpiresIn) * time.Second)
+	} else {
+		s.idunaTokenExp = time.Now().UTC().Add(time.Hour)
+	}
+	s.idunaMu.Unlock()
+	return nil
+}
+
+// idunaTokenFresh returns true when the token is present and not within 5min of expiry.
+func (s *Server) idunaTokenFresh() bool {
+	s.idunaMu.RLock()
+	defer s.idunaMu.RUnlock()
+	return s.idunaToken != "" && time.Now().UTC().Before(s.idunaTokenExp.Add(-5*time.Minute))
 }
 
 const defaultAnthropicURL = "https://api.anthropic.com/v1/messages"
@@ -1151,6 +1216,12 @@ const tickPrompt = `Do an unattended health sweep of the fatbaby pipeline. ` +
 	`If everything looks normal, reply "ok" and write nothing. Never write an observation for transient or self-inflicted state.`
 
 func (s *Server) handleTick(w http.ResponseWriter, _ *http.Request) {
+	// Refresh IDUNA agent token if within 5 minutes of expiry (spec §3.1).
+	if idunaCfg, ok := loadIDUNAAgentCfg(); ok && !s.idunaTokenFresh() {
+		if err := s.acquireIDUNAToken(idunaCfg); err != nil {
+			log.Printf("IDUNA agent token: refresh failed: %v", err)
+		}
+	}
 	msgs := []map[string]any{{"role": "user", "content": tickPrompt}}
 	reply, calls := s.runToolLoop(msgs)
 	w.Header().Set("Content-Type", "application/json")
@@ -1250,6 +1321,17 @@ func main() {
 		log.Fatalf("FATAL: ANTHROPIC_API_KEY environment variable is not set.\nExport it before running: export ANTHROPIC_API_KEY=sk-ant-...")
 	}
 	s := NewServer(cfg)
+
+	// Acquire IDUNA agent token at startup (spec HQ-SPEC-IAM-095 §3.1).
+	if idunaCfg, ok := loadIDUNAAgentCfg(); ok {
+		if err := s.acquireIDUNAToken(idunaCfg); err != nil {
+			log.Printf("IDUNA agent token: initial acquire failed (%v) — will retry on next tick", err)
+		} else {
+			s.idunaMu.RLock()
+			log.Printf("IDUNA agent token: acquired for %q (exp=%s)", idunaCfg.AgentName, s.idunaTokenExp.Format(time.RFC3339))
+			s.idunaMu.RUnlock()
+		}
+	}
 
 	// Build IDUNA IAM guard from IDUNA_JWKS_URL env or config/iam_config.json.
 	// Falls back to no-op guard (all requests pass through) when unconfigured.

@@ -156,7 +156,10 @@ go run ./cmd/emily-agent
 | `OBSERVATION_CMD_ARGS` | observation-watcher | No | `--dangerously-skip-permissions` | Extra args for observation command |
 | `OBSERVATION_GATE` | observation-watcher | No | `nontrivial` | `none` always invokes; `nontrivial` skips trivial batches |
 | `ENTITY_GRAPH_RULES` | observation-watcher | No | `config/entity-graph-rules.json` | Path to entity-graph rules file |
-| `IDUNA_JWKS_URL` | signalapi | No | — | IDUNA JWKS endpoint; enables JWT auth in addition to API keys |
+| `IDUNA_JWKS_URL` | signalapi, dashboard, newssite, emily-agent | No | — | IDUNA JWKS endpoint; enables JWT auth on all protected edge endpoints |
+| `IDUNA_BASE_URL` | emily-agent | No | — | IDUNA base URL for agent M2M token acquisition (e.g. `https://iam.farthq.internal`) |
+| `IDUNA_AGENT_NAME` | emily-agent | No | — | Agent name registered in IDUNA (e.g. `EMILY`) |
+| `IDUNA_AGENT_SECRET` | emily-agent | No | — | Agent credential (raw secret; never logged) |
 
 A `.env.example` stub:
 
