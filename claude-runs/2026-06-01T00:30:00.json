@@ -1,0 +1,17 @@
+{
+  "observation_summary": "continue session: northstar RSI — GovernanceHealth FilingDate fix, Phase 3 complete, emily-agent tools, EMILY collector improvements",
+  "observation_timestamp": "2026-06-01T00:00:00Z",
+  "run_started_at": "2026-06-01T00:30:00Z",
+  "run_completed_at": "2026-06-01T01:00:00Z",
+  "files_changed": [
+    "internal/entitygraph/signals.go",
+    "internal/entitygraph/signals_test.go",
+    "README.md",
+    "cmd/emily-agent/main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "1. Fixed ScoreGovernanceHealth to use FilingDate (not DetectedAt) for window filtering — backfilled historical signals no longer contaminate current governance health scores. Added 2 regression tests. 2. Updated README northstar Phase 3 to ✅ (50 tickers, IDUNA JWT). Added IDUNA_JWKS_URL to env vars table. 3. Improved fatbaby_check_env: now validates ANTHROPIC_API_KEY, claude CLI path, and observation-watcher cursor. 4. Added fatbaby_read_governance_signals tool: reads signals.ndjson directly, returns ticker summaries and high/critical signals without requiring a full entity-graph batch run. 5. EMILY: expanded Wikipedia collector batch size 50→100 per roadmap; marked bob-agent roadmap item as complete (built in IDUNA).",
+  "git_commit_hash": "700073a",
+  "exit_status": "success",
+  "notes": "All FATBABY tests green. EMILY and IDUNA tests pass. Phase 3 northstar complete. Next iteration: Phase 4 (FEC/FARA enrichment) or further signal quality improvements via RSI loop."
+}
