@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — observation-watcher: claude CLI PATH fix; watchlist expanded to 50 tickers
+
+### observation-watcher: automatic claude CLI resolution (Emily observation fix)
+
+Resolves the broken autonomous feedback loop reported by Emily (2026-05-31):
+the `claude` CLI was installed at `~/.local/bin/claude` but not on the process PATH,
+causing every observation dispatch to fail silently.
+
+- **`cmd/observation-watcher/main.go`**: Added `resolveCmd()` helper. When the
+  command is not found via `exec.LookPath`, it falls back to `~/.local/bin/<cmd>`,
+  `~/bin/<cmd>`, and `/usr/local/bin/<cmd>` in order. The resolved path is applied
+  at startup and logged, so PATH issues are visible immediately rather than at
+  first dispatch.
+
+### Watchlist expanded to 50 tickers (Emily observation)
+
+Per Emily's observation on O(1) watchlist design and sector diversity requirements.
+
+- **`config/watchlist.json`**: 24 → 50 entries. Added megacap tech (AMZN, META,
+  TSLA, NFLX), pharma (JNJ, PFE, ABBV), energy (XOM, CVX), retail (WMT, HD, COST),
+  and aerospace (BA) as enabled entries. Added 13 further tickers (UNH, MRK, TGT,
+  LOW, CAT, RTX, GE, T, VZ, CMCSA, DIS, NEE, COP) as disabled pending EDGAR CIK
+  verification. Northstar Week-8 target "50+ companies tracked" is now met.
+
 ## 2026-06-01 — Entity graph RSI: acceleration decay, critical severity tiers, activist risk escalation
 
 ### Entity graph signal improvements (recursive self-improvement cycle)
