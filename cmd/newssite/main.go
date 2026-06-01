@@ -17,6 +17,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
+	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
@@ -27,6 +28,7 @@ func main() {
 	graphDir       := flag.String("graph-dir", "var/entity-graph", "path to entity-graph directory (empty to disable)")
 	epsDir         := flag.String("eps-dir", "var/eps", "path to eps output directory (empty to disable)")
 	commentaryDir  := flag.String("commentary-dir", "var/commentary", "path to Emily commentary directory (empty to disable)")
+	guidanceDir    := flag.String("guidance-dir", "var/guidance", "path to guidance articles directory (empty to disable)")
 	addr           := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
@@ -84,6 +86,20 @@ func main() {
 			logger.Printf("newssite commentary loaded from %s", *commentaryDir)
 		}
 		h.SetCommentaryStore(cs, *commentaryDir)
+	}
+
+	// ── Guidance store ───────────────────────────────────────────────────────────
+	if *guidanceDir != "" {
+		gs := guidanceread.NewStore(*guidanceDir)
+		if err := gs.Refresh(); err != nil {
+			logger.Printf("newssite guidance load: %v", err)
+		} else {
+			logger.Printf("newssite guidance loaded count=%d from %s", gs.Count(), *guidanceDir)
+		}
+		h.SetGuidanceStore(gs)
+		done := make(chan struct{})
+		gs.StartRefresh(60*time.Second, func(f string, a ...any) { logger.Printf(f, a...) }, done)
+		defer close(done)
 	}
 
 	// ── Signal index + doc index — built in parallel ───────────────────────────

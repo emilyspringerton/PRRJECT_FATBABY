@@ -29,6 +29,7 @@ impact analysis), and streams them via SSE dashboard and a TCP feed server.
 | observation-watcher | `go run ./cmd/observation-watcher` | Invokes Claude Code when Emily publishes a new observation |
 | eps-processor | `go run ./cmd/eps-processor` | Extracts EPS from press releases, writes oracle cases + articles |
 | eps-reconciler | `go run ./cmd/eps-reconciler` | Reconciles oracle cases against filed 8-K EPS (confirms/contradicts) |
+| guidance-watcher | `go run ./cmd/guidance-watcher` | Extracts forward guidance (raises/lowers/maintains) from press releases |
 
 Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log`.
 

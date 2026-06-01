@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — guidance feed: extractor, watcher, newssite section /section/guidance
+
+### Forward guidance pipeline
+
+New end-to-end pipeline for company forward guidance (raises, lowers, maintains, initiates,
+withdraws EPS and revenue guidance from earnings press releases).
+
+**`internal/guidance/` (new package)**
+- `types.go`: `GuidanceData`, `Article` structs; `Action` (raised/lowered/maintained/
+  initiated/withdrawn/updated), `Metric` (eps/revenue/both), `Period` (Q1–Q4/FY + year)
+- `extract.go`: `Extract(text, identity, ticker)` — scans press release text for guidance
+  trigger words, detects action via ordered regex matching, extracts EPS ranges
+  (`$X.XX to $X.XX`), revenue ranges (`$X.X billion to $Y.Y billion`), period, and
+  action. Confidence-scored 0.0–1.0. Fixed sentence splitter uses `\.\s+` regex to avoid
+  splitting decimal numbers.
+- `article.go`: `Generate(g, now)` — produces publishable Article when confidence >= 0.60.
+  Builds headline: "{Issuer} raises/lowers FY 2026 EPS guidance to $X.XX–$X.XX"
+- 6 tests: EPS range, revenue range, withdrawn, no guidance, generate, low confidence reject
+
+**`cmd/guidance-watcher/` (new command)**
+- Polls `var/prwatch-body` for `pr_body_fetched` events (same as eps-processor)
+- Runs `guidance.Extract` on each press release body
+- Appends publishable articles to `var/guidance/articles.ndjson`
+- Cursor at `var/guidance-watcher/.cursor`
+- `go run ./cmd/guidance-watcher`
+
+**`internal/newssite/guidanceread/` (new package)**
+- `Store`: append-only NDJSON reader, in-memory by-ticker index, `StartRefresh`
+- `ArticleToView`, `GuidanceItemView`
+
+**Newssite**
+- `GuidanceItemView` struct with ActionLabel ("Raises"), MetricLabel ("EPS & Revenue")
+- `ToGuidanceItemView`, `GuidanceItemsFrom`, `RenderGuidancePage`
+- `/section/guidance` route → live guidance feed (color-coded by action)
+- `guidanceTemplate`: action-colored kicker (green=raised, red=lowered, amber=withdrawn)
+- "Guidance" added to sectionsrail nav
+- `cmd/newssite/main.go`: `-guidance-dir` flag, startup load + 60s refresh
+- `CLAUDE.md`: guidance-watcher added to pipeline processes table
+
 ## 2026-06-01 — Emily commentary: newssite ingest + fatbaby_publish_commentary tool
 
 ### Emily-authored governance articles (Emily observation 20260530T215349Z)

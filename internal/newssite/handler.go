@@ -16,6 +16,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
+	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
@@ -47,8 +48,9 @@ type Handler struct {
 	docIdx         *docindex.Index        // nil if not wired
 	cat            *catalog.Catalog       // nil if not wired
 	epsStore       *epsread.Store         // nil if eps-dir not configured
-	commentaryStore *commentary.Store     // nil if commentary-dir not configured
-	commentaryDir   string                // path for POST /api/commentary writes
+	commentaryStore *commentary.Store       // nil if commentary-dir not configured
+	commentaryDir   string                  // path for POST /api/commentary writes
+	guidanceStore   *guidanceread.Store     // nil if guidance-dir not configured
 	logger         *log.Logger
 	defaultLimit   int
 }
@@ -67,6 +69,7 @@ func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 	h.commentaryStore = cs
 	h.commentaryDir = dir
 }
+func (h *Handler) SetGuidanceStore(gs *guidanceread.Store) { h.guidanceStore = gs }
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +135,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusMovedPermanently
 	case path == "/section/earnings":
 		status = h.serveEarnings(w, r)
+	case path == "/section/guidance":
+		status = h.serveGuidance(w, r)
 	case strings.HasPrefix(path, "/section/"):
 		if strings.HasSuffix(path, "/feed.xml") {
 			slug := strings.TrimSuffix(strings.TrimPrefix(path, "/section/"), "/feed.xml")
@@ -582,6 +587,18 @@ func (h *Handler) serveEarnings(w http.ResponseWriter, r *http.Request) int {
 	items := EarningsItemsFrom(h.recentEPS(100))
 	var buf bytes.Buffer
 	RenderEarningsPage(&buf, items, h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+func (h *Handler) serveGuidance(w http.ResponseWriter, r *http.Request) int {
+	var items []GuidanceItemView
+	if h.guidanceStore != nil {
+		items = GuidanceItemsFrom(h.guidanceStore.Recent(100))
+	}
+	var buf bytes.Buffer
+	RenderGuidancePage(&buf, items, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK

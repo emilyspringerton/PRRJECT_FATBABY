@@ -20,7 +20,8 @@ var (
 	aboutTmpl   = mustLookup("about")
 	personTmpl   = mustLookup("person")
 	liveTmpl     = mustLookup("live")
-	earningsTmpl = mustLookup("earnings")
+	earningsTmpl  = mustLookup("earnings")
+	guidanceTmpl  = mustLookup("guidance")
 )
 
 func mustLookup(name string) *template.Template {
@@ -322,6 +323,7 @@ const sharedFragments = `
   <a href="/section/auditor">Auditor Watch</a>
   <a href="/section/pay">Pay &amp; Proxy</a>
   <a href="/section/earnings">Earnings</a>
+  <a href="/section/guidance">Guidance</a>
   <a href="/wire">The Wire</a>
   <a href="/breaking">Breaking</a>
   <a href="/live">Live</a>
@@ -344,7 +346,7 @@ const sharedFragments = `
 
 // ── Page templates ────────────────────────────────────────────────────────────
 
-const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate +
+const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate + guidanceTemplate +
 	sectionTemplate + tickerTemplate + ticker404Template +
 	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate +
 	personTemplate + liveTemplate + earningsTemplate
@@ -793,6 +795,43 @@ const liveTemplate = `{{define "live"}}<!doctype html>
   };
 })();
 </script>
+</div>{{template "footer" .}}</body></html>{{end}}`
+
+const guidanceTemplate = `{{define "guidance"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Guidance Feed — FATBABY</title>
+<link rel="alternate" type="application/rss+xml" title="Guidance Feed — FATBABY" href="/section/guidance/feed.xml">
+<style>` + siteCSS + `
+.guidance-action-raised    { color: #065f46; }
+.guidance-action-lowered   { color: #dc2626; }
+.guidance-action-withdrawn { color: #b45309; }
+.guidance-action-maintained{ color: #475569; }
+.guidance-action-initiated { color: #1d4ed8; }
+.guidance-action-updated   { color: #6b7280; }
+</style></head>
+<body><div class="wrap">
+{{template "masthead" .}}
+{{template "sectionsrail" .}}
+<main style="max-width:760px;padding:1rem 0;">
+<h1 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#1d4ed8;margin:0 0 1.2rem;">Guidance Feed</h1>
+{{if .Items}}
+{{range .Items}}
+<article class="story" style="padding:1rem 0;border-bottom:1px solid #eee;">
+  <span class="kicker kicker-filing" style="text-transform:uppercase;font-size:0.6rem;letter-spacing:1.5px;font-weight:800;">
+    {{if .Ticker}}<span style="color:#111;margin-right:0.5rem;">{{.Ticker}}</span>{{end}}
+    <span class="guidance-action-{{.Action}}">{{.ActionLabel}}</span>
+    {{if .MetricLabel}} · {{.MetricLabel}}{{end}}
+    {{if .PeriodStr}} · {{.PeriodStr}}{{end}}
+  </span>
+  <h3 class="hl-item" style="margin:0.3rem 0 0.2rem;">{{.Headline}}</h3>
+  <div class="dateline">{{if .Ticker}}{{.Ticker}} — {{end}}{{.DateStr}}</div>
+  <p style="font-size:0.85rem;color:#444;margin:0.3rem 0 0;">{{.Body}}</p>
+</article>
+{{end}}
+{{else}}
+<p style="color:#888;font-family:system-ui;font-size:0.9rem;">No guidance updates yet. The guidance-watcher processes press releases and publishes when companies issue, raise, lower, maintain, or withdraw guidance.</p>
+{{end}}
+</main>
 </div>{{template "footer" .}}</body></html>{{end}}`
 
 const earningsTemplate = `{{define "earnings"}}<!doctype html>

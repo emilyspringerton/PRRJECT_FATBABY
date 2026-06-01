@@ -12,6 +12,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/internal/eps"
+	"github.com/example/prrject-fatbaby/internal/guidance"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
@@ -144,6 +145,26 @@ type EarningsItemView struct {
 type EarningsSectionView struct {
 	Base
 	Items []EarningsItemView
+}
+
+// GuidanceItemView is one forward-guidance article card.
+type GuidanceItemView struct {
+	Ticker      string
+	Headline    string
+	Body        string
+	Action      string // raw: raised|lowered|maintained|initiated|withdrawn|updated (used as CSS class suffix)
+	ActionLabel string // display: "Raises", "Lowers", etc.
+	Metric      string // raw: eps|revenue|both
+	MetricLabel string // display: "EPS", "Revenue", "EPS & Revenue"
+	PeriodStr   string // "FY 2026" or "Q3 2026"
+	DateStr     string // "1 Jun 2026"
+	Link        string
+}
+
+// GuidanceSectionView is the view model for /section/guidance.
+type GuidanceSectionView struct {
+	Base
+	Items []GuidanceItemView
 }
 
 // ── Ticker page ───────────────────────────────────────────────────────────────
@@ -1402,6 +1423,73 @@ func EarningsItemsFrom(articles []*eps.Article) []EarningsItemView {
 		out = append(out, ToEarningsItemView(a))
 	}
 	return out
+}
+
+// ── Guidance ──────────────────────────────────────────────────────────────────
+
+var guidanceActionLabels = map[guidance.Action]string{
+	guidance.ActionRaised:     "Raises",
+	guidance.ActionLowered:    "Lowers",
+	guidance.ActionMaintained: "Maintains",
+	guidance.ActionInitiated:  "Initiates",
+	guidance.ActionWithdrawn:  "Withdraws",
+	guidance.ActionUpdated:    "Updates",
+}
+
+var guidanceMetricLabels = map[guidance.Metric]string{
+	guidance.MetricEPS:     "EPS",
+	guidance.MetricRevenue: "Revenue",
+	guidance.MetricBoth:    "EPS & Revenue",
+}
+
+// ToGuidanceItemView converts a guidance.Article to the newssite display view.
+func ToGuidanceItemView(a *guidance.Article) GuidanceItemView {
+	dateStr := ""
+	if a.PublishAt != "" {
+		if t, err := time.Parse(time.RFC3339, a.PublishAt); err == nil {
+			dateStr = t.UTC().Format("2 Jan 2006")
+		}
+	}
+	period := ""
+	if a.Period.FiscalQuarter != "" && a.Period.FiscalYear > 0 {
+		period = fmt.Sprintf("%s %d", a.Period.FiscalQuarter, a.Period.FiscalYear)
+	} else if a.Period.FiscalQuarter != "" {
+		period = a.Period.FiscalQuarter
+	} else if a.Period.FiscalYear > 0 {
+		period = fmt.Sprintf("FY%d", a.Period.FiscalYear)
+	}
+	return GuidanceItemView{
+		Ticker:      strings.ToUpper(strings.TrimSpace(a.Ticker)),
+		Headline:    a.Headline,
+		Body:        a.Body,
+		Action:      string(a.Action),
+		ActionLabel: guidanceActionLabels[a.Action],
+		Metric:      string(a.Metric),
+		MetricLabel: guidanceMetricLabels[a.Metric],
+		PeriodStr:   period,
+		DateStr:     dateStr,
+		Link:        "/section/guidance",
+	}
+}
+
+// GuidanceItemsFrom converts guidance.Article pointers to display views.
+func GuidanceItemsFrom(articles []*guidance.Article) []GuidanceItemView {
+	out := make([]GuidanceItemView, 0, len(articles))
+	for _, a := range articles {
+		out = append(out, ToGuidanceItemView(a))
+	}
+	return out
+}
+
+// RenderGuidancePage renders the /section/guidance page.
+func RenderGuidancePage(w io.Writer, items []GuidanceItemView, symbols []string) {
+	view := GuidanceSectionView{
+		Base:  Base{Symbols: symbols},
+		Items: items,
+	}
+	if err := guidanceTmpl.Execute(w, view); err != nil {
+		fmt.Fprintf(w, "render error: %v", err)
+	}
 }
 
 // ── JSON API ──────────────────────────────────────────────────────────────────
