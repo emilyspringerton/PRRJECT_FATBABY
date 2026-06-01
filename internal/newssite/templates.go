@@ -281,20 +281,33 @@ const sharedFragments = `
 <script>(function(){
   var input = document.getElementById('q');
   if (!input) return;
-  // When a datalist suggestion is selected, the browser fires 'change' with the
-  // chosen value already in the input. Navigate immediately rather than making
-  // the user press the Go button a second time.
-  input.addEventListener('change', function() {
-    var val = this.value.trim().toUpperCase();
-    if (!val) return;
-    var opts = document.querySelectorAll('#ticker-list option');
-    for (var i = 0; i < opts.length; i++) {
-      if (opts[i].value.toUpperCase() === val) {
-        window.location.href = '/ticker/' + encodeURIComponent(val);
-        return;
-      }
+  function tickerSet() {
+    var s = new Set();
+    document.querySelectorAll('#ticker-list option').forEach(function(o){ s.add(o.value.toUpperCase()); });
+    return s;
+  }
+  function navigateIfMatch(val) {
+    if (!val) return false;
+    if (tickerSet().has(val)) {
+      window.location.href = '/ticker/' + encodeURIComponent(val);
+      return true;
     }
+    return false;
+  }
+  // 'input' fires immediately on datalist click-selection and arrow+Enter —
+  // more reliable than 'change' which waits for focus loss.
+  input.addEventListener('input', function() {
+    navigateIfMatch(this.value.trim().toUpperCase());
   });
+  // Form submit: navigate directly to ticker page when value is an exact match,
+  // bypassing the /search redirect step for the common "type + Enter/Go" case.
+  var form = input.closest('form');
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      var val = input.value.trim().toUpperCase();
+      if (navigateIfMatch(val)) { e.preventDefault(); }
+    });
+  }
 }());</script>
 {{end}}
 
@@ -435,6 +448,7 @@ const detailTemplate = `{{define "detail"}}<!doctype html>
 {{template "sectionsrail" .}}
 <main class="reading-col" style="padding:1.5rem 0;">
   <nav class="back-nav" aria-label="Document navigation"><a href="/">← All documents</a>{{if .Ticker}} &nbsp;&middot;&nbsp; <a href="/ticker/{{.Ticker}}">{{.Ticker}} desk →</a>{{end}}</nav>
+  {{if .IsHistorical}}<div style="background:#f5f0e8;border-left:3px solid #a07830;padding:0.5rem 0.75rem;margin-bottom:1rem;font-family:system-ui;font-size:0.8rem;color:#6b4c1a;">🗂 HISTORICAL FILING — Originally filed {{.DateStr}}. Indexed {{.PersistedStr}}.</div>{{end}}
   <span class="kicker {{.KickerClass}}">{{.Kicker}}</span>
   <h1 class="hl-lead" style="margin-bottom:0.5rem;">{{.Headline}}</h1>
   <div class="dateline">{{.Dateline}}</div>
@@ -442,7 +456,8 @@ const detailTemplate = `{{define "detail"}}<!doctype html>
   <div class="fact-box"><h4>Filing Details</h4><dl>
     <dt>Source</dt><dd>{{.SourceLabel}}</dd>
     {{if .Form}}<dt>Form</dt><dd>{{.Form}}</dd>{{end}}
-    <dt>Persisted</dt><dd>{{.DateStr}}</dd>
+    <dt>Filed</dt><dd>{{.DateStr}}</dd>
+    <dt>Indexed</dt><dd>{{.PersistedStr}}</dd>
     {{if .CharCount}}<dt>Length</dt><dd>{{.CharCount}} characters</dd>{{end}}
     {{if .DocumentURL}}<dt>Original</dt><dd>{{if .IsExternalLink}}<a href="{{.DocumentURL}}" rel="noopener">{{.DocumentURL}}</a>{{else}}{{.DocumentURL}}{{end}}</dd>{{end}}
   </dl></div>

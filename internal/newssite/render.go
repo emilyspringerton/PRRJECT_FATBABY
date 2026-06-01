@@ -99,7 +99,9 @@ type DetailPageView struct {
 	Byline         string
 	Form           string
 	SourceLabel    string
-	DateStr        string
+	DateStr        string // primary display date — filing date when available, else persisted
+	PersistedStr   string // "Indexed" timestamp for the fact box
+	IsHistorical   bool   // true when filing is older than historicalThresholdDays
 	CharCount      int
 	DocumentURL    string
 	IsExternalLink bool
@@ -722,6 +724,22 @@ func buildDetailPage(entry DocEntry) DetailPageView {
 	}
 	headline := fmt.Sprintf("%s — %s", normTicker(entry.Ticker), formOrType)
 	dateline := fmt.Sprintf("%s — %s.", normTicker(entry.Ticker), displayDateFull(entry))
+
+	// Primary display date: use filing date when available so historical filings
+	// show their correct SEC date rather than the indexed date.
+	primaryDate := displayDateShort(entry)
+
+	// Detect historical filings for the ARCHIVE badge on the detail page.
+	fd := entry.FilingDate
+	if fd == "" && !entry.PersistedAt.IsZero() {
+		fd = entry.PersistedAt.Format("2006-01-02")
+	}
+	historical := isHistoricalDateStr(fd)
+	if historical {
+		kicker = "ARCHIVE · " + kicker
+		kickerClass = "kicker-archive"
+	}
+
 	return DetailPageView{
 		Title:          headline,
 		Headline:       headline,
@@ -731,7 +749,9 @@ func buildDetailPage(entry DocEntry) DetailPageView {
 		Byline:         byline,
 		Form:           entry.Form,
 		SourceLabel:    srcLabel,
-		DateStr:        formatTimeUTC(entry.PersistedAt),
+		DateStr:        primaryDate,
+		PersistedStr:   formatTimeUTC(entry.PersistedAt),
+		IsHistorical:   historical,
 		CharCount:      entry.CharCount,
 		DocumentURL:    entry.DocumentURL,
 		IsExternalLink: isSafeLink(entry.DocumentURL),

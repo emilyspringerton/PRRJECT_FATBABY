@@ -159,6 +159,78 @@ func slugifySimple(s string, maxLen int) string {
 	return strings.TrimRight(b.String(), "-")
 }
 
+// createGitHubIssue creates a GitHub issue for the given observation.
+// Requires GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO env vars.
+// Fails silently (logs warning) when not configured so it never blocks observation writes.
+func createGitHubIssue(summary, findings, suggestedFix, severity string) {
+	token := os.Getenv("GITHUB_TOKEN")
+	owner := os.Getenv("GITHUB_OWNER")
+	repo := os.Getenv("GITHUB_REPO")
+	if token == "" || owner == "" || repo == "" {
+		return
+	}
+
+	severityLabel := map[string]string{
+		"info":     "enhancement",
+		"warn":     "bug",
+		"error":    "critical",
+		"critical": "critical",
+	}[severity]
+	if severityLabel == "" {
+		severityLabel = "enhancement"
+	}
+
+	body := findings
+	if suggestedFix != "" {
+		body += "\n\n---\n**Suggested Fix**\n\n" + suggestedFix
+	}
+
+	payload := map[string]any{
+		"title":  summary,
+		"body":   body,
+		"labels": []string{"emily-observation", severityLabel},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("github issue: marshal err: %v", err)
+		return
+	}
+
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues", owner, repo)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	if err != nil {
+		log.Printf("github issue: new request err: %v", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("github issue: request err: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		log.Printf("github issue: status=%d body=%s", resp.StatusCode, raw)
+		return
+	}
+	var result struct {
+		Number int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+		log.Printf("github issue: created #%d %s", result.Number, result.HTMLURL)
+	}
+}
+
 func parseProcOutput(s string) string {
 	f := strings.Fields(strings.TrimSpace(s))
 	if len(f) == 0 {
@@ -400,6 +472,16 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			checks = append(checks, map[string]string{"name": "obs_watcher_cursor", "status": "no_runs", "detail": "observation-watcher has not yet processed any observations"})
 		}
 
+		// GitHub integration (optional — warn if not set)
+		ghToken := os.Getenv("GITHUB_TOKEN")
+		ghOwner := os.Getenv("GITHUB_OWNER")
+		ghRepo := os.Getenv("GITHUB_REPO")
+		if ghToken != "" && ghOwner != "" && ghRepo != "" {
+			checks = append(checks, map[string]string{"name": "github_issues", "status": "ok", "value": ghOwner + "/" + ghRepo, "detail": "GitHub issue creation enabled for observations"})
+		} else {
+			checks = append(checks, map[string]string{"name": "github_issues", "status": "warn", "detail": "GITHUB_TOKEN/GITHUB_OWNER/GITHUB_REPO not set — observation GitHub issues disabled (optional)"})
+		}
+
 		rb, _ := json.MarshalIndent(map[string]any{"checks": checks}, "", "  ")
 		return string(rb), nil
 	})
@@ -470,6 +552,10 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			return "", err
 		}
 		result := fmt.Sprintf("wrote observation severity=%s latest=%s archive=%s", severity, latest, archive)
+
+		// Create a GitHub issue for audit trail and sprint planning.
+		// Best-effort: runs in background so it never blocks the write.
+		go createGitHubIssue(summary, findings, suggested, severity)
 
 		// Auto-commit to Emily Prime's integration layer for high/critical findings.
 		// Best-effort: failures are logged but don't block the observation write.

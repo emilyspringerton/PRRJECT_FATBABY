@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — newssite date fix, ticker search UX, GitHub issue creation
+
+### Newssite: filing date as primary display date (Emily observation fix)
+
+Historical filings were showing the indexed date (PersistedAt) in the detail page edition bar
+and fact box, making 2019 filings appear as "breaking news" from today.
+
+- **`internal/newssite/render.go`** `buildDetailPage`: `DateStr` now shows the SEC filing date
+  (primary) via `displayDateShort()`. New `PersistedStr` field carries the indexed timestamp.
+  Added `IsHistorical` boolean (filing older than 90 days). Historical filings get the
+  `ARCHIVE ·` kicker prefix on the detail page, matching the article card behavior.
+- **`internal/newssite/templates.go`** detail template: edition bar shows filing date, not
+  indexed date. Fact box rows renamed "Filed" / "Indexed". Historical badge added above article
+  headline: "🗂 HISTORICAL FILING — Originally filed DATE. Indexed DATE."
+
+### Newssite: ticker search auto-navigates on datalist click and Enter
+
+- **`internal/newssite/templates.go`** masthead search script: replaced `change` event
+  listener (unreliable for datalist selection across browsers) with `input` event + form
+  `submit` intercept. Clicking a datalist suggestion or pressing Enter on an exact-match
+  ticker now navigates directly to `/ticker/{TICKER}` without requiring a second Go button click.
+
+### Emily agent: GitHub issue creation on observation write
+
+- **`cmd/emily-agent/main.go`** `createGitHubIssue()`: creates a GitHub issue via the
+  REST API whenever `fatbaby_write_observation` is called. Reads `GITHUB_TOKEN`,
+  `GITHUB_OWNER`, `GITHUB_REPO` env vars; silently skips when not configured.
+  Labels: `emily-observation` + severity-mapped label (info→enhancement, warn→bug,
+  error→critical). Runs in a goroutine so it never blocks observation writes.
+- `fatbaby_check_env` now reports GitHub integration status (ok/warn).
+- `.env.example` updated with `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`.
+
 ## 2026-06-01 — entitygraph RSI: BNV de-duplication, abstention outlier signal, spurious node cleanup
 
 ### Signal quality improvements (Emily Prime task: improve entity graph via RSI)
