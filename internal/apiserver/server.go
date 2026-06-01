@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -21,6 +22,11 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	MaxLimit     int
+	// IDUNAVerifier is an optional IDUNA JWT verifier. When non-nil, the server
+	// accepts Bearer JWTs issued by IDUNA in addition to (not instead of) static
+	// API keys. Callers with an IDUNA JWT and no API key are admitted if the
+	// token carries the "fatbaby.read" permission.
+	IDUNAVerifier *idunaauth.Verifier
 }
 
 type server struct {
@@ -40,7 +46,7 @@ func New(cfg ServerConfig) *http.Server {
 		cfg.MaxLimit = 100
 	}
 	s := &server{cfg: cfg, started: time.Now().UTC()}
-	if cfg.Logger != nil && len(cfg.APIKeys) == 0 {
+	if cfg.Logger != nil && len(cfg.APIKeys) == 0 && cfg.IDUNAVerifier == nil {
 		cfg.Logger.Printf("WARNING: signal API running without authentication")
 	}
 	mux := http.NewServeMux()
@@ -53,7 +59,9 @@ func New(cfg ServerConfig) *http.Server {
 func (s *server) withMiddleware(next func(http.ResponseWriter, *http.Request) (int, any)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		if len(s.cfg.APIKeys) > 0 && !s.isAuthorized(r.Header.Get("Authorization")) {
+		authHeader := r.Header.Get("Authorization")
+		needsAuth := len(s.cfg.APIKeys) > 0 || s.cfg.IDUNAVerifier != nil
+		if needsAuth && !s.checkAuth(authHeader) {
 			s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			s.logRequest(r, http.StatusUnauthorized, start)
 			return
@@ -62,6 +70,21 @@ func (s *server) withMiddleware(next func(http.ResponseWriter, *http.Request) (i
 		s.writeJSON(w, status, payload)
 		s.logRequest(r, status, start)
 	}
+}
+
+// checkAuth returns true if the Authorization header satisfies at least one
+// configured auth method: static API key or IDUNA JWT with fatbaby.read.
+func (s *server) checkAuth(header string) bool {
+	if len(s.cfg.APIKeys) > 0 && s.isAuthorized(header) {
+		return true
+	}
+	if s.cfg.IDUNAVerifier != nil && strings.HasPrefix(header, "Bearer ") {
+		tok := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+		if claims, err := s.cfg.IDUNAVerifier.Verify(tok); err == nil && claims.HasPermission("fatbaby.read") {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *server) dispatchSignals(w http.ResponseWriter, r *http.Request) (int, any) {

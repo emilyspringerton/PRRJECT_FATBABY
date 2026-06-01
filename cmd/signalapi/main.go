@@ -13,6 +13,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/apiserver"
+	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -41,7 +42,25 @@ func main() {
 	scanTook := time.Since(scanStart)
 	ready := signalindex.Tail(ctx, store, idx, *pollInterval, logger)
 	<-ready
-	cfg := apiserver.ServerConfig{Addr: *addr, Index: idx, Logger: logger, APIKeys: splitCSV(*apiKeys), ReadTimeout: *readTimeout, WriteTimeout: *writeTimeout, MaxLimit: *maxLimit}
+	cfg := apiserver.ServerConfig{
+		Addr:         *addr,
+		Index:        idx,
+		Logger:       logger,
+		APIKeys:      splitCSV(*apiKeys),
+		ReadTimeout:  *readTimeout,
+		WriteTimeout: *writeTimeout,
+		MaxLimit:     *maxLimit,
+	}
+	// Optional IDUNA JWT auth — activated when IDUNA_JWKS_URL is set.
+	if jwksURL := os.Getenv("IDUNA_JWKS_URL"); jwksURL != "" {
+		v, err := idunaauth.NewVerifier(jwksURL)
+		if err != nil {
+			logger.Printf("WARNING: IDUNA JWT verifier init failed (%v); falling back to API key auth only", err)
+		} else {
+			cfg.IDUNAVerifier = v
+			logger.Printf("IDUNA JWT auth enabled jwks_url=%s", jwksURL)
+		}
+	}
 	srv := apiserver.New(cfg)
 	go func() {
 		<-ctx.Done()
