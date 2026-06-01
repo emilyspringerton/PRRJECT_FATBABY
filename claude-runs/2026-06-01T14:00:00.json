@@ -1,0 +1,19 @@
+{
+  "observation_summary": "Session 3: Emily commentary pipeline + older observation triage",
+  "observation_timestamp": "2026-06-01T14:00:00Z",
+  "run_started_at": "2026-06-01T14:00:00Z",
+  "run_completed_at": "2026-06-01T14:45:00Z",
+  "files_changed": [
+    "internal/newssite/commentary/commentary.go",
+    "internal/newssite/handler.go",
+    "internal/newssite/render.go",
+    "internal/newssite/templates.go",
+    "cmd/newssite/main.go",
+    "cmd/emily-agent/main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Triaged all historical Emily observations. Confirmed EDGAR pagination, entity-graph form detection, and 8-K filtering were already fixed in prior sessions. Addressed Emily observation 20260530T215349Z (newssite ingest endpoint): implemented full Emily commentary pipeline — new internal/newssite/commentary package with NDJSON store, newssite POST /api/commentary endpoint, commentaryToEntry conversion, kicker-emily CSS style, docByline override. fatbaby_publish_commentary tool added to emily-agent. Emily can now publish governance articles that appear on ticker pages alongside SEC filings.",
+  "git_commit_hash": "fac5d0c",
+  "exit_status": "success",
+  "notes": "All tests pass. Two remaining info-severity observations not yet addressed: GTM funnel (very complex product feature) and self-improving model training pipeline (very complex). Skipped by design — these are strategic product decisions, not code improvements. EMILY/IDUNA unchanged this session."
+}
