@@ -340,20 +340,65 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		b, _ := json.MarshalIndent(map[string]any{"processes": out, "store_dirs": dirs}, "", "  ")
 		return string(b), nil
 	})
-	d.Register(ToolDef{Name: "fatbaby_check_env", Description: "Check processor env and prerequisites.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+	d.Register(ToolDef{Name: "fatbaby_check_env", Description: "Check processor env and prerequisites: Go binary, watchlist, ANTHROPIC_API_KEY, claude CLI path (needed by observation-watcher), and observation-watcher cursor state.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
 		checks := []map[string]string{}
+
+		// Go binary
 		if _, err := exec.LookPath("go"); err == nil {
 			checks = append(checks, map[string]string{"name": "go_path", "status": "ok", "value": "go found"})
 		} else {
-			checks = append(checks, map[string]string{"name": "go_path", "status": "missing"})
+			checks = append(checks, map[string]string{"name": "go_path", "status": "missing", "detail": "go not in PATH"})
 		}
+
+		// Watchlist
 		watch := filepath.Join(fatbabyRoot, "config", "watchlist.json")
-		b, err := os.ReadFile(watch)
-		if err != nil {
+		if b, err := os.ReadFile(watch); err != nil {
 			checks = append(checks, map[string]string{"name": "watchlist", "status": "missing"})
 		} else if json.Valid(b) {
 			checks = append(checks, map[string]string{"name": "watchlist", "status": "ok", "value": "valid json"})
+		} else {
+			checks = append(checks, map[string]string{"name": "watchlist", "status": "invalid_json"})
 		}
+
+		// ANTHROPIC_API_KEY
+		if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+			masked := key[:min(8, len(key))] + "..."
+			checks = append(checks, map[string]string{"name": "anthropic_api_key", "status": "ok", "value": masked})
+		} else {
+			checks = append(checks, map[string]string{"name": "anthropic_api_key", "status": "missing", "detail": "ANTHROPIC_API_KEY not set — processor and emily-agent will not work"})
+		}
+
+		// claude CLI — try PATH first, then ~/.local/bin
+		claudePath := ""
+		if p, err := exec.LookPath("claude"); err == nil {
+			claudePath = p
+		} else {
+			home, _ := os.UserHomeDir()
+			for _, c := range []string{
+				filepath.Join(home, ".local", "bin", "claude"),
+				filepath.Join(home, "bin", "claude"),
+				"/usr/local/bin/claude",
+			} {
+				if _, err := os.Stat(c); err == nil {
+					claudePath = c
+					break
+				}
+			}
+		}
+		if claudePath != "" {
+			checks = append(checks, map[string]string{"name": "claude_cli", "status": "ok", "value": claudePath, "detail": "observation-watcher can invoke Claude Code"})
+		} else {
+			checks = append(checks, map[string]string{"name": "claude_cli", "status": "missing", "detail": "claude not found on PATH or in ~/.local/bin — autonomous observation-watcher loop will fail"})
+		}
+
+		// Observation-watcher cursor (indicates autonomous loop has run)
+		cursorPath := filepath.Join(fatbabyRoot, "var", "emily-observations", ".last-processed")
+		if b, err := os.ReadFile(cursorPath); err == nil {
+			checks = append(checks, map[string]string{"name": "obs_watcher_cursor", "status": "ok", "value": strings.TrimSpace(string(b)), "detail": "autonomous loop has processed at least one observation"})
+		} else {
+			checks = append(checks, map[string]string{"name": "obs_watcher_cursor", "status": "no_runs", "detail": "observation-watcher has not yet processed any observations"})
+		}
+
 		rb, _ := json.MarshalIndent(map[string]any{"checks": checks}, "", "  ")
 		return string(rb), nil
 	})
@@ -727,6 +772,130 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 
 	// ── Press release counts ────────────────────────────────────────────────
 
+	d.Register(ToolDef{
+		Name:        "fatbaby_read_governance_signals",
+		Description: "Read governance signals from var/entity-graph/signals.ndjson. Returns a summary by ticker (signal count, severity breakdown, latest filing date) plus the most recent high/critical signals. Use to understand the current governance intelligence picture without running a full entity-graph batch.",
+		Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{
+			"ticker": {Type: "string", Description: "filter to a specific ticker symbol (optional, case-insensitive)"},
+			"limit":  {Type: "number", Description: "max signals to return in detail list (default 20)"},
+		}},
+	}, func(args map[string]any) (string, error) {
+		sigPath := filepath.Join(fatbabyRoot, "var", "entity-graph", "signals.ndjson")
+		f, err := os.Open(sigPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return `{"error":"signals.ndjson not found — run fatbaby_run_entity_graph_once first"}`, nil
+			}
+			return "", fmt.Errorf("open signals: %w", err)
+		}
+		defer f.Close()
+
+		filterTicker := strings.ToUpper(strings.TrimSpace(fmt.Sprintf("%v", args["ticker"])))
+		if filterTicker == "<NIL>" || filterTicker == "" {
+			filterTicker = ""
+		}
+		limit := 20
+		if v, ok := args["limit"].(float64); ok && v > 0 {
+			limit = int(v)
+		}
+
+		type sigRecord struct {
+			Signal struct {
+				SignalID       string `json:"signal_id"`
+				Type           string `json:"type"`
+				Ticker         string `json:"ticker"`
+				Entity         string `json:"entity"`
+				Severity       string `json:"severity"`
+				Score          float64 `json:"score"`
+				FilingDate     string `json:"filing_date"`
+				Interpretation string `json:"interpretation"`
+			} `json:"signal"`
+		}
+
+		type tickerSummary struct {
+			Total    int            `json:"total"`
+			Severity map[string]int `json:"by_severity"`
+			Latest   string         `json:"latest_filing_date"`
+		}
+
+		tickerSums := map[string]*tickerSummary{}
+		var recent []map[string]string
+
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			// Try wrapped {"signal":{...}} format first, then flat.
+			var rec sigRecord
+			if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+				continue
+			}
+			s := rec.Signal
+			if s.SignalID == "" {
+				// Try flat signal record.
+				type flatSig struct {
+					SignalID       string  `json:"signal_id"`
+					Type           string  `json:"type"`
+					Ticker         string  `json:"ticker"`
+					Entity         string  `json:"entity"`
+					Severity       string  `json:"severity"`
+					Score          float64 `json:"score"`
+					FilingDate     string  `json:"filing_date"`
+					Interpretation string  `json:"interpretation"`
+				}
+				var fs flatSig
+				if err2 := json.Unmarshal(sc.Bytes(), &fs); err2 != nil {
+					continue
+				}
+				s.SignalID = fs.SignalID
+				s.Type = fs.Type
+				s.Ticker = fs.Ticker
+				s.Entity = fs.Entity
+				s.Severity = fs.Severity
+				s.Score = fs.Score
+				s.FilingDate = fs.FilingDate
+				s.Interpretation = fs.Interpretation
+			}
+			if s.SignalID == "" {
+				continue
+			}
+			t := strings.ToUpper(s.Ticker)
+			if filterTicker != "" && t != filterTicker {
+				continue
+			}
+			if _, ok := tickerSums[t]; !ok {
+				tickerSums[t] = &tickerSummary{Severity: map[string]int{}}
+			}
+			ts := tickerSums[t]
+			ts.Total++
+			ts.Severity[s.Severity]++
+			if s.FilingDate > ts.Latest {
+				ts.Latest = s.FilingDate
+			}
+			if (s.Severity == "high" || s.Severity == "critical") && len(recent) < limit {
+				recent = append(recent, map[string]string{
+					"signal_id":      s.SignalID,
+					"type":           s.Type,
+					"ticker":         t,
+					"entity":         s.Entity,
+					"severity":       s.Severity,
+					"score":          fmt.Sprintf("%.3f", s.Score),
+					"filing_date":    s.FilingDate,
+					"interpretation": s.Interpretation,
+				})
+			}
+		}
+		if err := sc.Err(); err != nil {
+			return "", fmt.Errorf("scan signals: %w", err)
+		}
+
+		b, _ := json.MarshalIndent(map[string]any{
+			"ticker_summaries":    tickerSums,
+			"high_critical_signals": recent,
+			"total_tickers":       len(tickerSums),
+		}, "", "  ")
+		return string(b), nil
+	})
+
 	d.Register(ToolDef{Name: "fatbaby_count_press_releases", Description: "Count press releases in the prwatch pipeline: how many have been discovered (pr_discovered) and how many have had their full body fetched (pr_body_fetched). Use to verify prwatch and prwatch-body are making progress.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
 		discovered, fetched, failed := 0, 0, 0
 
@@ -834,10 +1003,14 @@ When a user asks about signals, directors, companies, governance risk, or EPS da
 4. fatbaby_start_process newssite
 5. fatbaby_count_source_documents      (poll until count > 0)
 
+### Inspect governance signals (fast, no pipeline run needed):
+1. fatbaby_read_governance_signals           (read current signals from var/entity-graph/signals.ndjson)
+2. fatbaby_read_governance_signals ticker=SCHW  (filter to one company)
+
 ### Run a governance observation batch:
 1. fatbaby_run_entity_graph_once       (processes 8-K votes → signals → observation, ~30-90s)
 2. fatbaby_read_observation            (read what entity-graph found and published)
-3. fatbaby_signal_summary              (full signal dashboard)
+3. fatbaby_read_governance_signals     (inspect updated signal set)
 4. fatbaby_run_schd13_once             (optionally: check activist 13D filings + accuracy)
 
 ### Start governance pipeline as background daemons:
