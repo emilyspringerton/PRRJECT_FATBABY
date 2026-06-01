@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — Emily commentary: newssite ingest + fatbaby_publish_commentary tool
+
+### Emily-authored governance articles (Emily observation 20260530T215349Z)
+
+Emily can now publish narrative governance articles directly to the newssite,
+transforming it from a raw filing viewer into a live intelligence newspaper.
+
+**New package: `internal/newssite/commentary`**
+- `commentary.Article` struct: id, ticker, headline, body, preview, byline, kind,
+  filing_date, published_at, signal_ids
+- `commentary.Store`: append-only NDJSON store at `var/commentary/articles.ndjson`;
+  in-memory by-ticker index with background refresh
+- `commentary.Append()`: write path used by the HTTP ingest endpoint
+
+**Newssite handler**
+- `Handler.SetCommentaryStore(cs, dir)`: wires the store
+- `POST /api/commentary`: JSON ingest endpoint — Emily POSTs a commentary article;
+  stored immediately and visible on the next ticker page load
+- Commentary articles prepended to `secDocs` in `serveTicker` via `commentaryToEntry()`
+- `commentaryToEntry()`: maps `commentary.Article` → `DocEntry{SourceType: "emily_commentary"}`
+
+**Rendering**
+- `docKicker`: new `emily_commentary` case → kicker "Emily · Intelligence" with
+  `kicker-emily` class (purple, `#7c3aed`)
+- `docByline`: returns "By Emily — Signal Intelligence" for emily_commentary
+- `siteCSS`: `.kicker-emily { color: #7c3aed; }`
+
+**`cmd/newssite/main.go`**
+- `-commentary-dir` flag (default `var/commentary`); loads commentary store at startup
+
+**`cmd/emily-agent/main.go`** — new `fatbaby_publish_commentary` tool
+- Writes article to `var/commentary/articles.ndjson` (append-only)
+- Fields: headline, body, ticker, kind, filing_date, signal_ids
+- Auto-generates id, preview, byline, published_at
+- Visible immediately on newssite after next page load (30s refresh cycle)
+
 ## 2026-06-01 — newssite date fix, ticker search UX, GitHub issue creation
 
 ### Newssite: filing date as primary display date (Emily observation fix)

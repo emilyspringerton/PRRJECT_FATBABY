@@ -14,6 +14,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
+	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
@@ -40,14 +41,16 @@ func summaryToEntry(ds *docindex.DocSummary) DocEntry {
 
 // Handler is an http.Handler for the news site.
 type Handler struct {
-	store        eventstore.EventStore
-	graph        *graphread.Store    // nil if graph dir not configured
-	sigIdx       *signalindex.Index  // nil if not wired
-	docIdx       *docindex.Index     // nil if not wired
-	cat          *catalog.Catalog    // nil if not wired
-	epsStore     *epsread.Store      // nil if eps-dir not configured
-	logger       *log.Logger
-	defaultLimit int
+	store          eventstore.EventStore
+	graph          *graphread.Store       // nil if graph dir not configured
+	sigIdx         *signalindex.Index     // nil if not wired
+	docIdx         *docindex.Index        // nil if not wired
+	cat            *catalog.Catalog       // nil if not wired
+	epsStore       *epsread.Store         // nil if eps-dir not configured
+	commentaryStore *commentary.Store     // nil if commentary-dir not configured
+	commentaryDir   string                // path for POST /api/commentary writes
+	logger         *log.Logger
+	defaultLimit   int
 }
 
 // NewHandler returns a new Handler.
@@ -55,11 +58,15 @@ func NewHandler(store eventstore.EventStore, logger *log.Logger) *Handler {
 	return &Handler{store: store, logger: logger, defaultLimit: 50}
 }
 
-func (h *Handler) SetGraphStore(gs *graphread.Store)    { h.graph = gs }
-func (h *Handler) SetSignalIndex(si *signalindex.Index) { h.sigIdx = si }
-func (h *Handler) SetDocIndex(di *docindex.Index)       { h.docIdx = di }
-func (h *Handler) SetCatalog(c *catalog.Catalog)        { h.cat = c }
-func (h *Handler) SetEpsStore(es *epsread.Store)        { h.epsStore = es }
+func (h *Handler) SetGraphStore(gs *graphread.Store)          { h.graph = gs }
+func (h *Handler) SetSignalIndex(si *signalindex.Index)       { h.sigIdx = si }
+func (h *Handler) SetDocIndex(di *docindex.Index)             { h.docIdx = di }
+func (h *Handler) SetCatalog(c *catalog.Catalog)              { h.cat = c }
+func (h *Handler) SetEpsStore(es *epsread.Store)              { h.epsStore = es }
+func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
+	h.commentaryStore = cs
+	h.commentaryDir = dir
+}
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -69,13 +76,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logger.Printf("newssite method=%s path=%s status=%d dur=%s", r.Method, r.URL.Path, status, time.Since(start))
 	}()
 
+	path := r.URL.Path
+
+	// POST /api/commentary — Emily publishes a governance article.
+	if path == "/api/commentary" && r.Method == http.MethodPost {
+		status = h.servePostCommentary(w, r)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		status = http.StatusMethodNotAllowed
 		http.Error(w, "method not allowed", status)
 		return
 	}
 
-	path := r.URL.Path
 	switch {
 	case path == "/":
 		status = h.serveFrontPage(w, r)
@@ -289,6 +303,13 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 			} else {
 				secDocs = append(secDocs, e)
 			}
+		}
+	}
+
+	// Commentary articles (Emily-authored governance analysis).
+	if h.commentaryStore != nil {
+		for _, a := range h.commentaryStore.ForTicker(symbol) {
+			secDocs = append([]DocEntry{commentaryToEntry(a)}, secDocs...)
 		}
 	}
 
@@ -583,9 +604,78 @@ func (h *Handler) liveRanked() []edition.Ranked {
 	return edition.Rank(h.graph.LiveSignals("", today), today)
 }
 
+// commentaryToEntry converts an Emily-authored Article to the DocEntry shape
+// used by all newssite renderers. SourceType "emily_commentary" gets its own
+// kicker style in templates.go so it's visually distinct from SEC filings.
+func commentaryToEntry(a *commentary.Article) DocEntry {
+	preview := a.Preview
+	if preview == "" {
+		runes := []rune(a.Body)
+		if len(runes) > 300 {
+			runes = runes[:300]
+		}
+		preview = strings.TrimSpace(string(runes))
+	}
+	return DocEntry{
+		Identity:    a.ID,
+		Ticker:      strings.ToUpper(strings.TrimSpace(a.Ticker)),
+		SourceType:  "emily_commentary",
+		DocumentURL: "/commentary/" + a.ID,
+		BodyPreview: preview,
+		FullText:    a.Body,
+		CharCount:   len(a.Body),
+		FilingDate:  a.FilingDate,
+		PersistedAt: a.PublishedAt,
+	}
+}
+
 func (h *Handler) symbols() []string {
 	if h.cat == nil {
 		return nil
 	}
 	return h.cat.AllSymbols()
+}
+
+// servePostCommentary handles POST /api/commentary — Emily publishes a governance article.
+// Accepts JSON body matching commentary.Article. Requires commentaryStore to be wired.
+// Returns 201 Created on success with the article ID.
+func (h *Handler) servePostCommentary(w http.ResponseWriter, r *http.Request) int {
+	if h.commentaryStore == nil || h.commentaryDir == "" {
+		http.Error(w, `{"error":"commentary not configured"}`, http.StatusServiceUnavailable)
+		return http.StatusServiceUnavailable
+	}
+	var art commentary.Article
+	if err := json.NewDecoder(r.Body).Decode(&art); err != nil {
+		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return http.StatusBadRequest
+	}
+	if strings.TrimSpace(art.Headline) == "" || strings.TrimSpace(art.Body) == "" {
+		http.Error(w, `{"error":"headline and body required"}`, http.StatusBadRequest)
+		return http.StatusBadRequest
+	}
+	if art.ID == "" {
+		art.ID = "commentary-" + strings.ReplaceAll(time.Now().UTC().Format(time.RFC3339), ":", "")
+	}
+	if art.PublishedAt.IsZero() {
+		art.PublishedAt = time.Now().UTC()
+	}
+	if art.Preview == "" && len(art.Body) > 0 {
+		runes := []rune(art.Body)
+		if len(runes) > 300 {
+			runes = runes[:300]
+		}
+		art.Preview = strings.TrimSpace(string(runes))
+	}
+	if err := commentary.Append(h.commentaryDir, art); err != nil {
+		h.logger.Printf("commentary append err: %v", err)
+		http.Error(w, `{"error":"write failed"}`, http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	if err := h.commentaryStore.Refresh(); err != nil {
+		h.logger.Printf("commentary refresh err: %v (non-fatal)", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"status": "created", "id": art.ID})
+	return http.StatusCreated
 }

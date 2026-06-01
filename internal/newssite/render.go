@@ -981,6 +981,9 @@ func docKicker(e DocEntry) (kicker, class string) {
 	if e.SourceType == "press_release" {
 		return "The Wire", "kicker-wire"
 	}
+	if e.SourceType == "emily_commentary" {
+		return "Emily · Intelligence", "kicker-emily"
+	}
 	if e.Form != "" {
 		return "SEC Filing · " + e.Form, "kicker-filing"
 	}
@@ -988,10 +991,14 @@ func docKicker(e DocEntry) (kicker, class string) {
 }
 
 func docByline(e DocEntry) string {
-	if e.SourceType == "press_release" {
+	switch e.SourceType {
+	case "press_release":
 		return "By the Wire Desk"
+	case "emily_commentary":
+		return "By Emily — Signal Intelligence"
+	default:
+		return "By SEC Watch"
 	}
-	return "By SEC Watch"
 }
 
 func sourceTypeLabel(sourceType string) string {

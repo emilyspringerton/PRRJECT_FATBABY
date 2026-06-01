@@ -132,6 +132,7 @@ a:hover { color: #0d0d4a; }
 .kicker-low      { color: #9ca3af; }
 .kicker-archive   { color: #9ca3af; font-style: italic; }
 .kicker-earnings  { color: #065f46; font-weight: 800; }
+.kicker-emily     { color: #7c3aed; }
 .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
 
 /* Headlines */

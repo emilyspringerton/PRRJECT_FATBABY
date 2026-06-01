@@ -606,6 +606,79 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		return string(b), nil
 	})
 
+	// fatbaby_publish_commentary publishes an Emily-authored governance article to
+	// var/commentary/articles.ndjson — picked up by the newssite for rendering.
+	d.Register(ToolDef{
+		Name:        "fatbaby_publish_commentary",
+		Description: "Publish an Emily-authored governance article to the newssite. Articles appear on the ticker page alongside SEC filings. Use for signal commentary, cross-ticker summaries, governance alerts, or EPS reconciliation narratives.",
+		Parameters: ToolParameters{
+			Type: "object",
+			Properties: map[string]ToolPropSchema{
+				"ticker":      {Type: "string", Description: "Ticker symbol the article is about (e.g. SCHW). Leave empty for cross-ticker articles."},
+				"headline":    {Type: "string", Description: "Article headline (one sentence)."},
+				"body":        {Type: "string", Description: "Full article text in plain prose. No markdown."},
+				"kind":        {Type: "string", Description: "Article type: signal_commentary|governance_alert|eps_reconciliation|cross_ticker_summary"},
+				"filing_date": {Type: "string", Description: "YYYY-MM-DD of the SEC filing being discussed (if applicable)."},
+				"signal_ids":  {Type: "string", Description: "Comma-separated signal IDs this article references (optional)."},
+			},
+			Required: []string{"headline", "body"},
+		},
+	}, func(args map[string]any) (string, error) {
+		headline, _ := args["headline"].(string)
+		body, _ := args["body"].(string)
+		if strings.TrimSpace(headline) == "" || strings.TrimSpace(body) == "" {
+			return "", errors.New("headline and body are required")
+		}
+		ticker, _ := args["ticker"].(string)
+		kind, _ := args["kind"].(string)
+		filingDate, _ := args["filing_date"].(string)
+		sigIDsRaw, _ := args["signal_ids"].(string)
+		var sigIDs []string
+		for _, s := range strings.Split(sigIDsRaw, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				sigIDs = append(sigIDs, s)
+			}
+		}
+		if kind == "" {
+			kind = "signal_commentary"
+		}
+		now := time.Now().UTC()
+		id := "commentary-" + strings.ToLower(strings.TrimSpace(ticker)) + "-" + now.Format("20060102T150405Z")
+		preview := []rune(body)
+		if len(preview) > 300 {
+			preview = preview[:300]
+		}
+		article := map[string]any{
+			"id":          id,
+			"ticker":      strings.ToUpper(strings.TrimSpace(ticker)),
+			"headline":    headline,
+			"body":        body,
+			"preview":     strings.TrimSpace(string(preview)),
+			"byline":      "Emily — Signal Intelligence",
+			"kind":        kind,
+			"filing_date": filingDate,
+			"published_at": now.Format(time.RFC3339),
+			"signal_ids":  sigIDs,
+		}
+		dir := filepath.Join(fatbabyRoot, "var", "commentary")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", err
+		}
+		b, err := json.Marshal(article)
+		if err != nil {
+			return "", err
+		}
+		f, err := os.OpenFile(filepath.Join(dir, "articles.ndjson"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		if _, err := f.Write(append(b, '\n')); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("published commentary id=%s ticker=%s to %s", id, ticker, dir), nil
+	})
+
 	// fatbaby_commit_to_prime publishes the current observation to Emily Prime's
 	// integration layer at EMILY_INTEGRATION_DIR (signals/observations/).
 	// This is the handoff that closes the Emily Prime ↔ FatBaby loop.

@@ -15,6 +15,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/iamguard"
 	"github.com/example/prrject-fatbaby/internal/newssite"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
+	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
@@ -22,10 +23,11 @@ import (
 )
 
 func main() {
-	storeRoot := flag.String("store", "var/secwatch", "path to eventstore root")
-	graphDir  := flag.String("graph-dir", "var/entity-graph", "path to entity-graph directory (empty to disable)")
-	epsDir    := flag.String("eps-dir", "var/eps", "path to eps output directory (empty to disable)")
-	addr      := flag.String("addr", ":8082", "listen address")
+	storeRoot      := flag.String("store", "var/secwatch", "path to eventstore root")
+	graphDir       := flag.String("graph-dir", "var/entity-graph", "path to entity-graph directory (empty to disable)")
+	epsDir         := flag.String("eps-dir", "var/eps", "path to eps output directory (empty to disable)")
+	commentaryDir  := flag.String("commentary-dir", "var/commentary", "path to Emily commentary directory (empty to disable)")
+	addr           := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
 	flag.Parse()
@@ -71,6 +73,17 @@ func main() {
 		done := make(chan struct{})
 		es.StartRefresh(60*time.Second, func(f string, a ...any) { logger.Printf(f, a...) }, done)
 		defer close(done)
+	}
+
+	// ── Commentary store (Emily-authored governance articles) ─────────────────
+	if *commentaryDir != "" {
+		cs := commentary.NewStore(*commentaryDir)
+		if err := cs.Refresh(); err != nil {
+			logger.Printf("newssite commentary load: %v", err)
+		} else {
+			logger.Printf("newssite commentary loaded from %s", *commentaryDir)
+		}
+		h.SetCommentaryStore(cs, *commentaryDir)
 	}
 
 	// ── Signal index + doc index — built in parallel ───────────────────────────
