@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/iamguard"
 	"github.com/example/prrject-fatbaby/internal/newssite"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
@@ -125,10 +126,27 @@ func main() {
 		}
 	}()
 
+	// ── IDUNA IAM guard for machine-consumed endpoints ───────────────────────
+	// Human-facing HTML pages are public; machine-consumed streams and JSON APIs
+	// require fatbaby.read when IDUNA is configured. Falls back to no-op guard.
+	guard, err := iamguard.NewFromEnv()
+	if err != nil {
+		logger.Printf("iamguard: JWKS init failed (%v) — /live/events and /api/tickers will be unprotected", err)
+		guard = &iamguard.Guard{}
+	}
+	if guard.IsActive() {
+		logger.Printf("iamguard: newssite /live/events and /api/tickers protected by IDUNA JWT (fatbaby.read)")
+	}
+	// Wrap only the machine-consumed endpoints; all other paths use h directly.
+	mux := http.NewServeMux()
+	mux.Handle("/live/events", guard.RequirePermission("fatbaby.read")(h))
+	mux.Handle("/api/tickers", guard.RequirePermission("fatbaby.read")(h))
+	mux.Handle("/", h)
+
 	// ── HTTP server starts immediately; indexes fill in behind it ─────────────
 	srv := &http.Server{
 		Addr:         *addr,
-		Handler:      h,
+		Handler:      mux,
 		ReadTimeout:  *readTO,
 		WriteTimeout: *writeTO,
 	}
