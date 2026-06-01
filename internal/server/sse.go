@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/iamguard"
 )
 
 //go:embed static/*
@@ -21,10 +22,22 @@ type Server struct {
 	store         eventstore.EventStore
 	pollInterval  time.Duration
 	initialEvents int
+	guard         *iamguard.Guard
 }
 
+// New creates a Server with optional IDUNA IAM guard.
+// The guard is built from IDUNA_JWKS_URL env var or config/iam_config.json.
+// When neither is set the guard is a no-op and /events is unprotected.
 func New(store eventstore.EventStore) *Server {
-	return &Server{store: store, pollInterval: 1 * time.Second, initialEvents: 50}
+	g, err := iamguard.NewFromEnv()
+	if err != nil {
+		log.Printf("iamguard: JWKS init failed (%v) — /events will be unprotected", err)
+		g = &iamguard.Guard{}
+	}
+	if g.IsActive() {
+		log.Printf("iamguard: dashboard /events protected by IDUNA JWT (fatbaby.read)")
+	}
+	return &Server{store: store, pollInterval: 1 * time.Second, initialEvents: 50, guard: g}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -35,7 +48,8 @@ func (s *Server) Handler() http.Handler {
 		panic(fmt.Sprintf("sub static fs: %v", err))
 	}
 	mux.Handle("/", http.FileServer(http.FS(staticRoot)))
-	mux.HandleFunc("/events", s.handleEvents)
+	eventsHandler := http.HandlerFunc(s.handleEvents)
+	mux.Handle("/events", s.guard.RequirePermission("fatbaby.read")(eventsHandler))
 	return mux
 }
 

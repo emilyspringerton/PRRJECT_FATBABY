@@ -53,7 +53,7 @@ func NewVerifier(baseURL string) (*Verifier, error) {
 	v := &Verifier{
 		jwksURL:    strings.TrimRight(baseURL, "/") + "/api/v1/jwks",
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-		ttl:        5 * time.Minute,
+		ttl:        60 * time.Minute, // spec HQ-SPEC-IAM-094 §2.1: 60-minute cache
 	}
 	if err := v.refresh(context.Background()); err != nil {
 		return nil, fmt.Errorf("idunaauth: initial JWKS fetch: %w", err)

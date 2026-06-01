@@ -1,0 +1,5 @@
+{
+  "_comment": "IDUNA IAM configuration for PRRJECT-FATBABY edge enforcement (HQ-SPEC-IAM-095). Override iduna_jwks_url via IDUNA_JWKS_URL env var for non-default deployments.",
+  "iduna_jwks_url": "https://iam.farthq.internal/api/v1/jwks",
+  "required_audience": "farthq-ecosystem"
+}

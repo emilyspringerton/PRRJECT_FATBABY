@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/iamguard"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 )
 
@@ -1249,10 +1250,22 @@ func main() {
 		log.Fatalf("FATAL: ANTHROPIC_API_KEY environment variable is not set.\nExport it before running: export ANTHROPIC_API_KEY=sk-ant-...")
 	}
 	s := NewServer(cfg)
+
+	// Build IDUNA IAM guard from IDUNA_JWKS_URL env or config/iam_config.json.
+	// Falls back to no-op guard (all requests pass through) when unconfigured.
+	guard, err := iamguard.NewFromEnv()
+	if err != nil {
+		log.Printf("iamguard: JWKS init failed (%v) — /chat and /tick will be unprotected", err)
+		guard = &iamguard.Guard{}
+	}
+	if guard.IsActive() {
+		log.Printf("iamguard: /chat protected (fatbaby.operator), /tick protected (governance.admin)")
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("/", s)
-	mux.Handle("/chat", s)
-	mux.Handle("/tick", s)
+	mux.Handle("/chat", guard.RequirePermission("fatbaby.operator")(s))
+	mux.Handle("/tick", guard.RequirePermission("governance.admin")(s))
 	log.Printf("emily-agent listening addr=:%s model=%s tools=%d fatbaby_root=%s", cfg.Port, "claude-sonnet-4-20250514", len(s.d.Defs()), cfg.FatbabyRoot)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, mux))
 }
