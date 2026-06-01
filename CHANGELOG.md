@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — iamguard: IDUNA IAM middleware (HQ-SPEC-IAM-095); dashboard + emily-agent protected
+
+### IAM enforcement per integration mandate HQ-SPEC-IAM-095
+
+Implements the full downstream IAM enforcement specification for PRRJECT-FATBABY.
+
+- **`internal/iamguard/`** (new package): `RequirePermission(perm)` http.Handler
+  middleware wrapping `internal/idunaauth`. No-op when IDUNA not configured —
+  backward-compatible with unauthenticated local deployments. `NewFromEnv()`
+  reads `IDUNA_JWKS_URL` env or `config/iam_config.json`. 7 tests.
+- **`internal/idunaauth`**: JWKS cache TTL updated 5 min → 60 min per spec §2.1.
+- **`config/iam_config.json`** (new): externalizes IDUNA JWKS URL per spec §4.
+- **`internal/server/sse.go`**: dashboard `/events` protected by `fatbaby.read`.
+- **`cmd/emily-agent`**: `/chat` protected by `fatbaby.operator`; `/tick` by
+  `governance.admin` per spec §2.2 endpoint protection matrix.
+- Spec endpoint coverage: signalapi ✅, dashboard ✅, emily-agent chat ✅, tick ✅.
+
 ## 2026-06-01 — entitygraph: GovernanceHealth FilingDate window fix; Phase 3 complete
 
 ### GovernanceHealth window correctness (RSI)
