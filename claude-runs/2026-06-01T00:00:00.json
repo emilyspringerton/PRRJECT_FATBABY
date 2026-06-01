@@ -1,0 +1,21 @@
+{
+  "observation_summary": "interactive session: northstar iteration — PATH fix, watchlist expansion, parser fix, IDUNA auth",
+  "observation_timestamp": "2026-06-01T00:00:00Z",
+  "run_started_at": "2026-06-01T00:00:00Z",
+  "run_completed_at": "2026-06-01T00:30:00Z",
+  "files_changed": [
+    "cmd/observation-watcher/main.go",
+    "config/watchlist.json",
+    "internal/entitygraph/parser.go",
+    "internal/entitygraph/parser_test.go",
+    "internal/idunaauth/jwks.go",
+    "internal/idunaauth/jwks_test.go",
+    "internal/apiserver/server.go",
+    "cmd/signalapi/main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "1. Fixed observation-watcher to resolve claude CLI from ~/.local/bin when not on PATH (resolveCmd helper). This unblocks the autonomous Emily ↔ Claude feedback loop. 2. Expanded config/watchlist.json from 24 to 50 tickers across megacap tech, pharma, energy, retail, and industrials. Northstar Week-8 target of 50+ companies now met. 3. Fixed entity-graph parser: 'Against Abstained' and 'Broker Non-Vote' were being extracted as director names due to missing headerPhrases variants and no keyword guard. Added nonNameWords set and 3 regression tests. 4. Implemented internal/idunaauth package: stdlib-only ES256 JWT verifier backed by IDUNA JWKS endpoint. Wired into signalapi as optional middleware via IDUNA_JWKS_URL env var. 8 tests.",
+  "git_commit_hash": "8d66189",
+  "exit_status": "success",
+  "notes": "All four changes pushed to PRRJECT_FATBABY main. EMILY and IDUNA repos surveyed — both clean with all tests passing. IDUNA admin UI complete. Emily Prime integration (git-based tasks/observations) operational. No further blocking issues identified for autonomous loop."
+}

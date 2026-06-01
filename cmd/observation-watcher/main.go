@@ -268,10 +268,11 @@ func runReportFooter(summary, observationTimestamp string) string {
 At the end of this run you MUST complete the following steps — they are not optional.
 
 ### 1. Write a run report
-Create the directory var/claude-code/runs/ if it does not exist, then write a JSON
-file named with the current UTC time to second granularity:
-  var/claude-code/runs/YYYY-MM-DDTHH:MM:SS.json
-Example: var/claude-code/runs/2026-05-31T20:45:32.json
+Create the directory claude-runs/ at the repo root if it does not exist, then write
+a JSON file named with the current UTC time to second granularity:
+  claude-runs/YYYY-MM-DDTHH:MM:SS.json
+Example: claude-runs/2026-05-31T20:45:32.json
+(Note: use claude-runs/ NOT var/claude-code/runs/ — var/ is gitignored.)
 
 The file must contain:
 {
@@ -288,7 +289,7 @@ The file must contain:
 
 ### 2. Git sync
 After writing the report, run exactly:
-  git add -A
+  git add claude-runs/
   git commit -m "claude-code: ` + summary + ` [` + observationTimestamp + `]"
   git push
 
