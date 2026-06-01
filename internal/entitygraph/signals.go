@@ -494,6 +494,10 @@ func isCompVote(desc string) bool {
 // add +0.05 per high_trust_director signal (capped at +0.20). Does not count
 // other governance_health_index signals to avoid circular compounding.
 // Returns nil if no signals are found for the ticker in the window.
+//
+// Window matching uses FilingDate when present; falls back to DetectedAt when
+// FilingDate is empty. This prevents backfilled historical signals (old FilingDate,
+// recent DetectedAt) from polluting the current governance window.
 func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *Signal {
 	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
 
@@ -516,7 +520,14 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 	signalCount := 0
 
 	for _, s := range allSignals {
-		if s.Ticker != ticker || s.DetectedAt < cutoff || s.Type == SignalGovernanceHealth {
+		// Use FilingDate for window if available; fall back to DetectedAt.
+		// This prevents backfilled historical signals from contaminating the
+		// current governance health window.
+		effectiveDate := s.FilingDate
+		if effectiveDate == "" {
+			effectiveDate = s.DetectedAt
+		}
+		if s.Ticker != ticker || effectiveDate < cutoff || s.Type == SignalGovernanceHealth {
 			continue
 		}
 		signalCount++

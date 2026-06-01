@@ -156,6 +156,7 @@ go run ./cmd/emily-agent
 | `OBSERVATION_CMD_ARGS` | observation-watcher | No | `--dangerously-skip-permissions` | Extra args for observation command |
 | `OBSERVATION_GATE` | observation-watcher | No | `nontrivial` | `none` always invokes; `nontrivial` skips trivial batches |
 | `ENTITY_GRAPH_RULES` | observation-watcher | No | `config/entity-graph-rules.json` | Path to entity-graph rules file |
+| `IDUNA_JWKS_URL` | signalapi | No | — | IDUNA JWKS endpoint; enables JWT auth in addition to API keys |
 
 A `.env.example` stub:
 
@@ -292,9 +293,9 @@ go test ./...
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 1 — Core extraction | ✅ | 8-K parser, entity graph, 12 signal types, 30+ tests |
-| 2 — Recursive loop | ✅ | Observation-watcher, Claude refinement, hot-reload rules, severity gate |
-| 3 — Multi-company | 🔄 | 25-company watchlist; director centrality; `director_link` fires on shared directors |
+| 1 — Core extraction | ✅ | 8-K parser, entity graph, 13 signal types, 40+ tests |
+| 2 — Recursive loop | ✅ | Observation-watcher, Claude refinement, hot-reload rules, severity gate, Emily Prime integration |
+| 3 — Multi-company | ✅ | 50-ticker watchlist; director centrality; `director_link` fires on shared directors; IDUNA JWT auth |
 | 4 — Enrichment | 🔲 | FEC donor data, FARA lobbying, SEC comment letters |
 
 ---

@@ -544,3 +544,51 @@ func TestScoreCompositeActivistRisk_FilingDateWindow(t *testing.T) {
 		t.Fatal("expected activist_risk signal when filing date is recent, got nil")
 	}
 }
+
+// TestScoreGovernanceHealth_FilingDateWindow verifies that ScoreGovernanceHealth uses
+// FilingDate (not DetectedAt) when determining whether a signal is in the window.
+// This prevents backfilled historical signals from contaminating the current health score.
+func TestScoreGovernanceHealth_FilingDateWindow(t *testing.T) {
+	// Old filing (5 years ago) detected recently due to backfill — should be EXCLUDED.
+	oldFiling := time.Now().UTC().AddDate(-5, 0, 0).Format("2006-01-02")
+	recentDetect := time.Now().UTC().Format("2006-01-02")
+	// Recent filing and detection — should be INCLUDED.
+	recentFiling := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		// Old filing — heavy penalty but outside 365-day FilingDate window; should be excluded.
+		{Type: SignalNominationRejection, Ticker: "WH", DetectedAt: recentDetect, FilingDate: oldFiling, Score: 0.30},
+		// Recent filing — minor penalty; should be included.
+		{Type: SignalBrokerNonVoteAnomaly, Ticker: "WH", DetectedAt: recentDetect, FilingDate: recentFiling, Score: 0.20},
+	}
+	sig := ScoreGovernanceHealth("WH", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	// Only the BNV anomaly penalty (-0.05) should apply; score should be near 0.95.
+	// If the old nomination_rejection (-0.40) were included, score would drop to ~0.55.
+	if sig.Score < 0.80 {
+		t.Errorf("score = %.2f: old-filing nomination_rejection should be excluded by FilingDate window; only BNV penalty (-0.05) should apply", sig.Score)
+	}
+}
+
+// TestScoreGovernanceHealth_FilingDateFallback verifies that when FilingDate is empty,
+// DetectedAt is used as the window anchor (backward-compatible behavior).
+func TestScoreGovernanceHealth_FilingDateFallback(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	oldDetect := time.Now().UTC().AddDate(-2, 0, 0).Format("2006-01-02")
+	sigs := []Signal{
+		// No FilingDate — DetectedAt is old; should be excluded from 365-day window.
+		{Type: SignalNominationRejection, Ticker: "FB", DetectedAt: oldDetect, Score: 0.30},
+		// No FilingDate — DetectedAt is recent; should be included.
+		{Type: SignalHighTrustDirector, Ticker: "FB", DetectedAt: today, Score: 0.96},
+	}
+	sig := ScoreGovernanceHealth("FB", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	// Only the high_trust bonus (+0.05) applies; old signal excluded via DetectedAt fallback.
+	if sig.Score < 0.80 {
+		t.Errorf("score = %.2f: old DetectedAt signal should be excluded; only high_trust bonus applies", sig.Score)
+	}
+}
