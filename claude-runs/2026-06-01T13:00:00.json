@@ -1,0 +1,17 @@
+{
+  "observation_summary": "Session 2: address 3 unprocessed Emily observations + EMILY quality scorer bug fix",
+  "observation_timestamp": "2026-06-01T12:30:00Z",
+  "run_started_at": "2026-06-01T13:00:00Z",
+  "run_completed_at": "2026-06-01T13:45:00Z",
+  "files_changed": [
+    "internal/newssite/render.go",
+    "internal/newssite/templates.go",
+    "cmd/emily-agent/main.go",
+    ".env.example",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Addressed three previously unprocessed Emily observations and one EMILY bug: (1) Newssite filing date bug (20260530T221419Z): buildDetailPage now uses SEC filing date as primary display (DateStr), PersistedStr added for indexed date, IsHistorical boolean added with ARCHIVE kicker + historical badge on detail page. (2) Ticker search UX (20260531T203951Z): replaced unreliable 'change' event with 'input' event + form submit intercept; datalist click and Enter now navigate directly to /ticker/{TICKER}. (3) GitHub issue creation (20260531T204156Z): createGitHubIssue() added to emily-agent, called from fatbaby_write_observation; reads GITHUB_TOKEN/OWNER/REPO env vars, runs in goroutine, added to check_env and .env.example. (4) EMILY quality scorer bug: gold tier was unreachable (max score 7.0 < gold threshold 7.5); added citation richness dimension (0-1pt for [n] refs), recalibrated thresholds to gold>=6.5/silver>=4.5 against achievable 8.0 max.",
+  "git_commit_hash": "2518088",
+  "exit_status": "success",
+  "notes": "EMILY also received commit 4649489 (quality scorer fix). All tests pass in both PRRJECT_FATBABY and EMILY. IDUNA unchanged this session."
+}
