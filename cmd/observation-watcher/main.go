@@ -23,6 +23,33 @@ import (
 	"time"
 )
 
+// resolveCmd finds the absolute path of a command. If cmdName contains a
+// path separator it is returned unchanged. Otherwise exec.LookPath is tried
+// first; if that fails, a set of common install locations is checked so that
+// tools installed in ~/.local/bin (e.g. the `claude` CLI) are found even when
+// that directory is not on the invoking process's PATH.
+func resolveCmd(cmdName string) string {
+	if strings.ContainsRune(cmdName, '/') {
+		return cmdName
+	}
+	if resolved, err := exec.LookPath(cmdName); err == nil {
+		return resolved
+	}
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, ".local", "bin", cmdName),
+		filepath.Join(home, "bin", cmdName),
+		filepath.Join("/usr/local/bin", cmdName),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			log.Printf("cmd %q not on PATH; resolved via fallback: %s", cmdName, c)
+			return c
+		}
+	}
+	return cmdName
+}
+
 // observation is a union of Emily's generic health-sweep fields and the
 // entity-graph structured fields. Fields absent in any given JSON file
 // will be zero-valued and are excluded from the hash where appropriate.
@@ -86,6 +113,10 @@ func main() {
 		primeTaskCursor = filepath.Join(*primeDir, ".last-processed")
 		log.Printf("prime tasks: watching %s", *primeDir)
 	}
+
+	// Resolve the command early so PATH issues are caught and logged at startup
+	// rather than silently failing on first dispatch.
+	*cmdName = resolveCmd(*cmdName)
 
 	log.SetPrefix("observation-watcher ")
 	log.Printf("watching %s (interval=%s cmd=%q dry_run=%v)", latest, *interval, *cmdName, *dryRun)

@@ -311,6 +311,344 @@
       "enabled": false,
       "poll_priority": 3,
       "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "AMZN",
+      "company_name": "Amazon.com, Inc.",
+      "cik": "1018724",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 1,
+      "notes": "S&P 100 expansion: megacap tech / consumer"
+    },
+    {
+      "ticker": "META",
+      "company_name": "Meta Platforms, Inc.",
+      "cik": "1326801",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 1,
+      "notes": "S&P 100 expansion: megacap tech / social"
+    },
+    {
+      "ticker": "TSLA",
+      "company_name": "Tesla, Inc.",
+      "cik": "1318605",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: EV / high governance volatility"
+    },
+    {
+      "ticker": "NFLX",
+      "company_name": "Netflix, Inc.",
+      "cik": "1065280",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: streaming media"
+    },
+    {
+      "ticker": "JNJ",
+      "company_name": "Johnson & Johnson",
+      "cik": "200406",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: large-cap pharma / healthcare"
+    },
+    {
+      "ticker": "PFE",
+      "company_name": "Pfizer Inc.",
+      "cik": "78003",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: large-cap pharma"
+    },
+    {
+      "ticker": "ABBV",
+      "company_name": "AbbVie Inc.",
+      "cik": "1551152",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: large-cap pharma / governance watch"
+    },
+    {
+      "ticker": "XOM",
+      "company_name": "Exxon Mobil Corporation",
+      "cik": "34088",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: major integrated oil"
+    },
+    {
+      "ticker": "CVX",
+      "company_name": "Chevron Corporation",
+      "cik": "93410",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: major integrated oil"
+    },
+    {
+      "ticker": "WMT",
+      "company_name": "Walmart Inc.",
+      "cik": "104169",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: consumer staples / retail"
+    },
+    {
+      "ticker": "HD",
+      "company_name": "The Home Depot, Inc.",
+      "cik": "354950",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: consumer discretionary / home improvement"
+    },
+    {
+      "ticker": "COST",
+      "company_name": "Costco Wholesale Corporation",
+      "cik": "909832",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: consumer staples / warehouse retail"
+    },
+    {
+      "ticker": "BA",
+      "company_name": "The Boeing Company",
+      "cik": "12927",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": true,
+      "poll_priority": 2,
+      "notes": "S&P 100 expansion: aerospace / high governance event frequency"
+    },
+    {
+      "ticker": "UNH",
+      "company_name": "UnitedHealth Group Incorporated",
+      "cik": "731766",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: managed care — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "MRK",
+      "company_name": "Merck & Co., Inc.",
+      "cik": "310158",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: large-cap pharma — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "TGT",
+      "company_name": "Target Corporation",
+      "cik": "27419",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: retail — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "LOW",
+      "company_name": "Lowe's Companies, Inc.",
+      "cik": "60667",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: home improvement — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "CAT",
+      "company_name": "Caterpillar Inc.",
+      "cik": "18230",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: industrials — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "RTX",
+      "company_name": "RTX Corporation",
+      "cik": "101829",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: aerospace/defense — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "GE",
+      "company_name": "GE Aerospace",
+      "cik": "40987",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: aerospace/industrials — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "T",
+      "company_name": "AT&T Inc.",
+      "cik": "732717",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: telecom — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "VZ",
+      "company_name": "Verizon Communications Inc.",
+      "cik": "732712",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: telecom — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "CMCSA",
+      "company_name": "Comcast Corporation",
+      "cik": "1166691",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: media/telecom — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "DIS",
+      "company_name": "The Walt Disney Company",
+      "cik": "1001293",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: media/entertainment — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "NEE",
+      "company_name": "NextEra Energy, Inc.",
+      "cik": "753308",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: utilities — CIK needs EDGAR verification before enabling"
+    },
+    {
+      "ticker": "COP",
+      "company_name": "ConocoPhillips",
+      "cik": "1163165",
+      "allowed_forms": [
+        "10-K",
+        "10-Q",
+        "8-K"
+      ],
+      "enabled": false,
+      "poll_priority": 3,
+      "notes": "S&P 100 expansion: E&P energy — CIK needs EDGAR verification before enabling"
     }
   ]
 }
