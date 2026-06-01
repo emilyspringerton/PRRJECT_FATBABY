@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — emily-agent: IDUNA M2M token acquisition (HQ-SPEC-IAM-095 §3.1)
+
+### Emily agent identity governance (spec §3.1)
+
+Emily now acquires a short-lived IDUNA JWT at startup and refreshes it on tick.
+
+- **`cmd/emily-agent/main.go`**: `acquireIDUNAToken`, `idunaTokenFresh`,
+  `loadIDUNAAgentCfg` — reads `IDUNA_BASE_URL`, `IDUNA_AGENT_NAME`,
+  `IDUNA_AGENT_SECRET` at startup; calls `POST /api/v1/auth/agent`; stores
+  JWT in `Server.idunaToken`. `handleTick` refreshes when within 5 min of expiry.
+- **`README.md`**: four IDUNA env vars documented.
+
 ## 2026-06-01 — iamguard: IDUNA IAM middleware (HQ-SPEC-IAM-095); dashboard + emily-agent protected
 
 ### IAM enforcement per integration mandate HQ-SPEC-IAM-095
