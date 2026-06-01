@@ -66,6 +66,13 @@ type Rules struct {
 	// when aggregating all signal types into a composite health index.
 	// Default 365 — matches activist_risk window so both composites use the same view.
 	GovernanceHealthWindowDays int `json:"governance_health_window_days"`
+
+	// AccelerationDecayPPThreshold: single-year approval drop (in percentage points)
+	// that triggers a director_decay signal even when DecayMinYears data points are
+	// not yet available. Catches the Herringer pattern early: a sharp single-year drop
+	// (e.g. 4 pp) is a leading indicator before multi-year trend confirmation.
+	// Default 4.0 pp. Set to 0 to use default.
+	AccelerationDecayPPThreshold float64 `json:"acceleration_decay_pp_threshold"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -84,6 +91,7 @@ func DefaultRules() Rules {
 		NominationRejectionThreshold:  0.50,
 		ActivistRiskWindowDays:        365,
 		GovernanceHealthWindowDays:    365,
+		AccelerationDecayPPThreshold:  4.0,
 	}
 }
 
@@ -140,6 +148,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.GovernanceHealthWindowDays == 0 {
 		r.GovernanceHealthWindowDays = defaults.GovernanceHealthWindowDays
+	}
+	if r.AccelerationDecayPPThreshold == 0 {
+		r.AccelerationDecayPPThreshold = defaults.AccelerationDecayPPThreshold
 	}
 	return r
 }

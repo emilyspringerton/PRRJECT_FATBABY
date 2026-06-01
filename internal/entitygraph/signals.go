@@ -189,17 +189,40 @@ func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal
 
 // ScoreDirectorDecay emits a decay signal when a director's approval trend is declining.
 // approvalHistory should be ordered oldest-to-newest.
+//
+// Severity tiers (RSI-tuned):
+//   - avgDrop > 5 pp/yr  → high (trajectory implies sub-80% within 2 cycles)
+//   - avgDrop > 3 pp/yr  → medium
+//   - otherwise          → low
+//
+// Single-year acceleration: if exactly 2 data points show a drop exceeding
+// r.AccelerationDecayPPThreshold (default 4 pp), the signal fires at medium severity
+// even though DecayMinYears would normally require more history. This catches the
+// Herringer pattern (multi-year decline visible after just one YoY comparison).
 func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules) *Signal {
-	if len(approvalHistory) < r.DecayMinYears {
+	n := len(approvalHistory)
+	if n < 2 {
 		return nil
 	}
+
 	// Compute average year-over-year drop.
 	drops := 0.0
-	for i := 1; i < len(approvalHistory); i++ {
+	for i := 1; i < n; i++ {
 		drops += approvalHistory[i-1] - approvalHistory[i]
 	}
-	avgDrop := drops / float64(len(approvalHistory)-1)
-	if avgDrop < r.DecayMinDropPP/100.0 {
+	avgDrop := drops / float64(n-1)
+
+	// Single-year acceleration path: fire early on a sharp single drop.
+	accelThreshold := r.AccelerationDecayPPThreshold / 100.0
+	if accelThreshold <= 0 {
+		accelThreshold = 0.04 // 4 pp default
+	}
+	if n < r.DecayMinYears {
+		if avgDrop < accelThreshold {
+			return nil
+		}
+		// Falls through to emit with acceleration framing.
+	} else if avgDrop < r.DecayMinDropPP/100.0 {
 		return nil
 	}
 
@@ -209,9 +232,23 @@ func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules)
 
 	sev := SeverityLow
 	conf := 0.65
-	if avgDrop > 0.03 {
+	switch {
+	case avgDrop > 0.05:
+		sev = SeverityHigh
+		conf = 0.80
+	case avgDrop > 0.03:
 		sev = SeverityMedium
 		conf = 0.72
+	}
+	// Acceleration-only path uses slightly lower confidence (less history).
+	if n < r.DecayMinYears {
+		sev = SeverityMedium
+		conf = 0.68
+	}
+
+	interp := fmt.Sprintf("Director approval declining avg %.1f pp/year over %d data points. Continued trend suggests replacement within 12-18 months.", avgDrop*100, n)
+	if n < r.DecayMinYears {
+		interp = fmt.Sprintf("Director approval dropped %.1f pp in a single year — exceeds acceleration threshold of %.0f pp. Single data point; monitor for confirmation next cycle.", avgDrop*100, accelThreshold*100)
 	}
 
 	return &Signal{
@@ -224,7 +261,7 @@ func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules)
 		Score:          avgDrop,
 		DetectedAt:     today,
 		ValidThrough:   nextYear,
-		Interpretation: fmt.Sprintf("Director approval declining avg %.1f pp/year over %d data points. Continued trend suggests replacement within 12-18 months.", avgDrop*100, len(approvalHistory)),
+		Interpretation: interp,
 	}
 }
 
@@ -311,24 +348,40 @@ func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rul
 // historical pattern: board entrenchment + director dissent precedes activist 13D
 // filings within 6 months in roughly 60% of documented cases.
 //
+// Severity escalates to critical when a nomination_rejection (director failed majority vote)
+// co-occurs with entrenchment — this combination signals acute board crisis, not just
+// monitoring-level risk.
+//
 // allSignals should include both current-batch and previously stored signals so the
 // composite can fire even when the two components arrived in different filings.
 func ScoreCompositeActivistRisk(ticker string, allSignals []Signal, windowDays int) *Signal {
 	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
 
 	var (
-		hasEntrenchment  bool
-		hasFriction      bool
-		worstFrictionPct float64 = 1.0 // lower = worse; track the most alarming director
+		hasEntrenchment    bool
+		hasFriction        bool
+		hasRejection       bool
+		worstFrictionPct   float64 = 1.0 // lower = worse; track the most alarming director
 	)
 	for _, s := range allSignals {
-		if s.Ticker != ticker || s.DetectedAt < cutoff {
+		if s.Ticker != ticker {
+			continue
+		}
+		// Accept signals within window by either DetectedAt or FilingDate.
+		inWindow := s.DetectedAt >= cutoff || (s.FilingDate != "" && s.FilingDate >= cutoff)
+		if !inWindow {
 			continue
 		}
 		switch s.Type {
 		case SignalGovernanceEntrenchment:
 			hasEntrenchment = true
-		case SignalDirectorFriction, SignalNominationRejection:
+		case SignalNominationRejection:
+			hasFriction = true
+			hasRejection = true
+			if s.Score < worstFrictionPct {
+				worstFrictionPct = s.Score
+			}
+		case SignalDirectorFriction:
 			hasFriction = true
 			if s.Score < worstFrictionPct {
 				worstFrictionPct = s.Score
@@ -343,18 +396,31 @@ func ScoreCompositeActivistRisk(ticker string, allSignals []Signal, windowDays i
 	// is blocking, weighted by worst director approval deficit.
 	compositeScore := 1.0 - worstFrictionPct // 0.157 for Herringer at 84.3%
 
+	sev := SeverityHigh
+	conf := 0.82
+	baseRate := "~60%"
+	interp := fmt.Sprintf("Co-occurrence of governance_entrenchment and director_friction at %s within %d days. Board is using structural defenses (supermajority threshold) while at least one director faces declining shareholder support (%.1f%% approval). Historical base rate: activist 13D filed within 6 months in %s of similar co-occurrences.", ticker, windowDays, worstFrictionPct*100, baseRate)
+
+	if hasRejection {
+		// Director failed a majority vote while the board maintains structural defenses —
+		// acute crisis pattern. Base rate for activist filing jumps to ~75%.
+		sev = SeverityCritical
+		conf = 0.88
+		interp = fmt.Sprintf("CRITICAL: governance_entrenchment co-occurs with a director nomination_rejection at %s within %d days. A director failed to achieve majority support (%.1f%% approval) while the board enforces supermajority structural defenses. Historical base rate for activist 13D within 6 months: ~75%%. Immediate monitoring warranted.", ticker, windowDays, worstFrictionPct*100)
+	}
+
 	today := time.Now().UTC().Format("2006-01-02")
 	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
 	return &Signal{
 		SignalID:       fmt.Sprintf("activist_risk_%s_%s", strings.ToLower(ticker), today),
 		Type:           SignalActivistRisk,
 		Ticker:         ticker,
-		Severity:       SeverityHigh,
-		Confidence:     0.82,
+		Severity:       sev,
+		Confidence:     conf,
 		Score:          compositeScore,
 		DetectedAt:     today,
 		ValidThrough:   nextYear,
-		Interpretation: fmt.Sprintf("Co-occurrence of governance_entrenchment and director_friction at %s within %d days. Board is using structural defenses (supermajority threshold) while at least one director faces declining shareholder support (%.1f%% approval). Historical base rate: activist 13D filed within 6 months in ~60%% of similar co-occurrences.", ticker, windowDays, worstFrictionPct*100),
+		Interpretation: interp,
 	}
 }
 
@@ -480,6 +546,10 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 	conf := 0.70
 	var interp string
 	switch {
+	case score < 0.20:
+		sev = SeverityCritical
+		conf = 0.88
+		interp = fmt.Sprintf("Composite governance health score for %s: %.2f/1.00 — CRITICAL. Severe concurrent governance failures within %d days; activist intervention or forced board restructuring highly probable.", ticker, score, windowDays)
 	case score < 0.40:
 		sev = SeverityHigh
 		conf = 0.80

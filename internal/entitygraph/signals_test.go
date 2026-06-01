@@ -447,3 +447,100 @@ func TestScoreGovernanceHealth_NomRejection_Critical(t *testing.T) {
 		t.Errorf("severity = %s, want high", sig.Severity)
 	}
 }
+
+func TestScoreGovernanceHealth_CriticalSeverity(t *testing.T) {
+	// score < 0.20 → critical severity
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalNominationRejection, Ticker: "CRIT", DetectedAt: today, Score: 0.30},    // -0.40
+		{Type: SignalGovernanceEntrenchment, Ticker: "CRIT", DetectedAt: today, Score: 0.92}, // -0.30
+		{Type: SignalActivistRisk, Ticker: "CRIT", DetectedAt: today, Score: 0.70},           // -0.25
+		{Type: SignalAuditorChange, Ticker: "CRIT", DetectedAt: today, Score: 1.0},           // -0.20
+	}
+	// Total penalty: 0.40+0.30+0.25+0.20 = 1.15 → score = 0.0 (floored)
+	sig := ScoreGovernanceHealth("CRIT", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	if sig.Score > 0.20 {
+		t.Errorf("multi-critical score = %.2f, want <= 0.20", sig.Score)
+	}
+	if sig.Severity != SeverityCritical {
+		t.Errorf("severity = %s, want critical for score < 0.20", sig.Severity)
+	}
+}
+
+func TestScoreDirectorDecay_AccelerationPath(t *testing.T) {
+	r := DefaultRules()
+	// Only 1 data point of history (n < DecayMinYears=2) but a 5pp drop.
+	// Should still fire via acceleration path.
+	sig := ScoreDirectorDecay("Frank C. Herringer", "SCHW", []float64{0.891, 0.843}, r)
+	if sig == nil {
+		t.Fatal("expected decay signal for 4.8pp single-year drop, got nil")
+	}
+	if sig.Type != SignalDirectorDecay {
+		t.Errorf("type = %s, want director_decay", sig.Type)
+	}
+	// 4.8pp > 4pp acceleration threshold → should fire even with 2 data points
+	if sig.Severity != SeverityMedium {
+		t.Errorf("acceleration path severity = %s, want medium", sig.Severity)
+	}
+}
+
+func TestScoreDirectorDecay_LargeDropHighSeverity(t *testing.T) {
+	r := DefaultRules()
+	// 3 data points, 6pp avg drop → high severity
+	sig := ScoreDirectorDecay("Test Director", "TEST", []float64{0.95, 0.89, 0.83}, r)
+	if sig == nil {
+		t.Fatal("expected decay signal for 6pp avg drop, got nil")
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high for >5pp avg drop", sig.Severity)
+	}
+}
+
+func TestScoreCompositeActivistRisk_CriticalOnRejection(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	// nomination_rejection + governance_entrenchment → critical
+	sigs := []Signal{
+		{Type: SignalNominationRejection, Ticker: "TEST", DetectedAt: today, Score: 0.38},
+		{Type: SignalGovernanceEntrenchment, Ticker: "TEST", DetectedAt: today, Score: 0.92},
+	}
+	sig := ScoreCompositeActivistRisk("TEST", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected activist_risk signal, got nil")
+	}
+	if sig.Severity != SeverityCritical {
+		t.Errorf("severity = %s, want critical when nomination_rejection + entrenchment co-occur", sig.Severity)
+	}
+}
+
+func TestScoreCompositeActivistRisk_HighOnFriction(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	// director_friction + governance_entrenchment → high (not critical)
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "SCHW", DetectedAt: today, Score: 0.843},
+		{Type: SignalGovernanceEntrenchment, Ticker: "SCHW", DetectedAt: today, Score: 0.913},
+	}
+	sig := ScoreCompositeActivistRisk("SCHW", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected activist_risk signal, got nil")
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high for friction+entrenchment (not rejection)", sig.Severity)
+	}
+}
+
+func TestScoreCompositeActivistRisk_FilingDateWindow(t *testing.T) {
+	// Signal has old DetectedAt but recent FilingDate — should still be in window.
+	recentFiling := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	oldDetect := time.Now().UTC().AddDate(-2, 0, 0).Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "FD", DetectedAt: oldDetect, FilingDate: recentFiling, Score: 0.80},
+		{Type: SignalGovernanceEntrenchment, Ticker: "FD", DetectedAt: oldDetect, FilingDate: recentFiling, Score: 0.90},
+	}
+	sig := ScoreCompositeActivistRisk("FD", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected activist_risk signal when filing date is recent, got nil")
+	}
+}
