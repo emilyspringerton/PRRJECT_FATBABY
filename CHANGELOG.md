@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — entitygraph RSI: BNV de-duplication, abstention outlier signal, spurious node cleanup
+
+### Signal quality improvements (Emily Prime task: improve entity graph via RSI)
+
+Three entity-graph signal quality improvements from the recursive self-improvement loop:
+
+**BNV anomaly de-duplicated per filing**
+- `internal/entitygraph/signals.go`: `broker_nonvote_anomaly` now emits once per
+  filing instead of once per director. All nominees share the same broker non-vote
+  count; the old code produced N identical signals per filing. New signal ID:
+  `bnv_anomaly_{ticker}_{filingdate}` (no entity field — it's a filing-level signal).
+- Existing signals in `var/entity-graph/signals.ndjson` with the old per-director
+  IDs remain valid; they will age out naturally or can be purged during a full
+  reprocessing pass.
+
+**New `abstention_outlier` signal type**
+- `ScoreAbstentionOutliers(votes, ticker, filingDate, r)`: fires when a director's
+  abstain rate exceeds `r.AbstentionOutlierMultiplier` (default 2.5×) times the
+  filing-median abstain rate AND exceeds 1% absolute. Detects targeted protest voting
+  or proxy advisor differentiated recommendations directed at a specific director.
+- `config/entity-graph-rules.json`: `abstention_outlier_multiplier: 2.5` (hot-reloaded).
+- Added to `AllSignalTypes` and `GovernanceHealth` penalty table (−0.05).
+- 3 new tests: fires on outlier director, suppresses uniform abstain rates, BNV fires once.
+
+**Spurious node cleanup**
+- `parser.go`: new `isSpuriousName(s)` function — lightweight check that rejects
+  names containing `nonNameWords` keywords. Less strict than `looksLikePersonName`;
+  safe to apply to persisted node records (which may be single-word or short names).
+- `graph.go` `LoadNodesFromDir`: drops nodes whose names fail `isSpuriousName`.
+  Cleans up legacy "Against Abstained" and "Broker Non-Vote" nodes that were stored
+  before the parser-level fix landed without requiring a manual data migration.
+- `graph.go` `CompactNodes`: same filter applied during compaction.
+
+**Other**
+- `.env.example` created at repo root (previously documented inline in README only).
+
 ## 2026-06-01 — emily-agent: IDUNA M2M token acquisition (HQ-SPEC-IAM-095 §3.1)
 
 ### Emily agent identity governance (spec §3.1)

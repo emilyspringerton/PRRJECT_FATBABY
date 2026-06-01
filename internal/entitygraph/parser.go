@@ -298,6 +298,23 @@ var nonNameWords = map[string]bool{
 	"cast":      true,
 }
 
+// isSpuriousName returns true when a name contains known vote-table non-name
+// keywords (e.g. "Against", "Broker", "Abstained"). Used to filter previously
+// persisted spurious nodes from the graph store without requiring a full re-parse.
+// Less strict than looksLikePersonName — only rejects confirmed non-name words.
+func isSpuriousName(s string) bool {
+	if headerPhrases[strings.ToLower(s)] {
+		return true
+	}
+	for _, w := range strings.Fields(strings.ToLower(s)) {
+		w = strings.TrimRight(w, ".,;:")
+		if nonNameWords[w] {
+			return true
+		}
+	}
+	return false
+}
+
 // looksLikePersonName returns true when s has at least two Title-cased words
 // and does not look like a heading (e.g. "For Against Abstain", "Broker Non-Votes").
 func looksLikePersonName(s string) bool {

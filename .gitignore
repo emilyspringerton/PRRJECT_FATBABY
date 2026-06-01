@@ -23,5 +23,6 @@
 # Local env / editor noise.
 .env
 .env.*
+!.env.example
 *.log
 .DS_Store

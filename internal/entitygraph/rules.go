@@ -73,6 +73,13 @@ type Rules struct {
 	// (e.g. 4 pp) is a leading indicator before multi-year trend confirmation.
 	// Default 4.0 pp. Set to 0 to use default.
 	AccelerationDecayPPThreshold float64 `json:"acceleration_decay_pp_threshold"`
+
+	// AbstentionOutlierMultiplier: a director's abstain rate must exceed this multiple
+	// of the filing-median abstain rate AND 1% absolute to trigger an abstention_outlier
+	// signal. Identifies targeted protest voting directed at a specific director, as
+	// distinct from the across-the-board abstention_spike on proposals.
+	// Default 2.5. Set to 0 to use default.
+	AbstentionOutlierMultiplier float64 `json:"abstention_outlier_multiplier"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -92,6 +99,7 @@ func DefaultRules() Rules {
 		ActivistRiskWindowDays:        365,
 		GovernanceHealthWindowDays:    365,
 		AccelerationDecayPPThreshold:  4.0,
+		AbstentionOutlierMultiplier:   2.5,
 	}
 }
 
@@ -151,6 +159,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.AccelerationDecayPPThreshold == 0 {
 		r.AccelerationDecayPPThreshold = defaults.AccelerationDecayPPThreshold
+	}
+	if r.AbstentionOutlierMultiplier == 0 {
+		r.AbstentionOutlierMultiplier = defaults.AbstentionOutlierMultiplier
 	}
 	return r
 }

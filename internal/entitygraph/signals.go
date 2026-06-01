@@ -2,6 +2,7 @@ package entitygraph
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -33,6 +34,7 @@ const (
 	SignalActivistRisk           SignalType = "activist_risk"
 	SignalDirectorLink           SignalType = "director_link"
 	SignalGovernanceHealth       SignalType = "governance_health_index"
+	SignalAbstentionOutlier      SignalType = "abstention_outlier"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -51,6 +53,7 @@ var AllSignalTypes = []SignalType{
 	SignalActivistRisk,
 	SignalDirectorLink,
 	SignalGovernanceHealth,
+	SignalAbstentionOutlier,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -76,6 +79,103 @@ func ScoreDirectorVotes(votes []VoteResult, ticker, filingDate string, r Rules) 
 	for _, v := range votes {
 		sigs := scoreOneDirector(v, ticker, filingDate, r)
 		out = append(out, sigs...)
+	}
+
+	// Filing-level BNV anomaly: all nominees share the same broker non-vote count so
+	// we emit one signal per filing rather than one per director (which created N
+	// identical signals with identical scores, polluting the signal store).
+	if len(votes) > 0 {
+		v0 := votes[0]
+		total := v0.ForVotes + v0.AgainstVotes + v0.AbstainVotes + v0.BrokerNonVotes
+		if total > 0 && v0.BrokerNonVotes > 0 {
+			bnvFrac := float64(v0.BrokerNonVotes) / float64(total)
+			if bnvFrac > r.BrokerNonVoteAnomalyThreshold {
+				today := time.Now().UTC().Format("2006-01-02")
+				nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+				filingKey := filingDate
+				if filingKey == "" {
+					filingKey = today
+				}
+				out = append(out, Signal{
+					SignalID:       fmt.Sprintf("bnv_anomaly_%s_%s", strings.ToLower(ticker), strings.ReplaceAll(filingKey, "-", "")),
+					Type:           SignalBrokerNonVoteAnomaly,
+					Ticker:         ticker,
+					Severity:       SeverityLow,
+					Confidence:     0.60,
+					Score:          bnvFrac,
+					FilingDate:     filingDate,
+					DetectedAt:     today,
+					ValidThrough:   nextYear,
+					Interpretation: fmt.Sprintf("Broker non-votes represent %.1f%% of total shares in this election — above %.0f%% anomaly threshold. High BNV indicates passive/retail share concentration; institutional engagement is below average.", bnvFrac*100, r.BrokerNonVoteAnomalyThreshold*100),
+				})
+			}
+		}
+		out = append(out, ScoreAbstentionOutliers(votes, ticker, filingDate, r)...)
+	}
+
+	return out
+}
+
+// ScoreAbstentionOutliers detects directors whose abstention rate is significantly
+// higher than their peers in the same filing. A single director with an unusually
+// high abstention rate may indicate targeted protest voting, proxy advisory firm
+// differentiated recommendations, or ownership structure conflicts.
+//
+// Fires when a director's abstain rate exceeds r.AbstentionOutlierMultiplier times
+// the filing-median abstain rate AND exceeds a 1% absolute floor (to suppress noise
+// when all abstain counts are trivially small). Requires at least 3 nominees so
+// that the median is meaningful.
+func ScoreAbstentionOutliers(votes []VoteResult, ticker, filingDate string, r Rules) []Signal {
+	if len(votes) < 3 {
+		return nil
+	}
+	multiplier := r.AbstentionOutlierMultiplier
+	if multiplier <= 0 {
+		multiplier = 2.5
+	}
+
+	rates := make([]float64, len(votes))
+	for i, v := range votes {
+		total := v.ForVotes + v.AgainstVotes + v.AbstainVotes
+		if total > 0 {
+			rates[i] = float64(v.AbstainVotes) / float64(total)
+		}
+	}
+
+	sorted := make([]float64, len(rates))
+	copy(sorted, rates)
+	sort.Float64s(sorted)
+	median := sorted[len(sorted)/2]
+
+	// absFloor: absolute minimum abstain rate for a director to be considered an outlier.
+	// This prevents noise when all abstain counts are trivially small (e.g. 0.01% vs 0.02%).
+	// The multiplier*median check handles the "too uniform" case independently.
+	const absFloor = 0.01
+
+	today := time.Now().UTC().Format("2006-01-02")
+	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+
+	var out []Signal
+	for i, v := range votes {
+		rate := rates[i]
+		if rate < absFloor || rate < multiplier*median {
+			continue
+		}
+		canon := Canonicalize(v.Name)
+		out = append(out, Signal{
+			SignalID:       fmt.Sprintf("abstention_outlier_%s_%s", canon, strings.ToLower(ticker)),
+			Type:           SignalAbstentionOutlier,
+			Ticker:         ticker,
+			Entity:         v.Name,
+			Severity:       SeverityLow,
+			Confidence:     0.65,
+			Score:          rate,
+			FilingDate:     filingDate,
+			DetectedAt:     today,
+			ValidThrough:   nextYear,
+			Interpretation: fmt.Sprintf("Director %s received %.1f%% abstentions — %.1fx the filing median of %.1f%%. Targeted abstention may indicate proxy advisor differentiated recommendation, ownership conflict, or protest vote directed at this director specifically.", v.Name, rate*100, rate/median, median*100),
+			Metadata:       map[string]string{"peer_median_abstain_pct": fmt.Sprintf("%.4f", median)},
+		})
 	}
 	return out
 }
@@ -160,27 +260,6 @@ func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal
 				Metadata:       map[string]string{"keyword": kw},
 			})
 			break
-		}
-	}
-
-	// Broker non-vote anomaly: BNV > threshold fraction of total voted.
-	totalVoted := v.ForVotes + v.AgainstVotes + v.AbstainVotes
-	if totalVoted > 0 && v.BrokerNonVotes > 0 {
-		bnvFrac := float64(v.BrokerNonVotes) / float64(totalVoted+v.BrokerNonVotes)
-		if bnvFrac > r.BrokerNonVoteAnomalyThreshold {
-			out = append(out, Signal{
-				SignalID:       fmt.Sprintf("bnv_anomaly_%s_%s", canon, strings.ToLower(ticker)),
-				Type:           SignalBrokerNonVoteAnomaly,
-				Ticker:         ticker,
-				Entity:         v.Name,
-				Severity:       SeverityLow,
-				Confidence:     0.60,
-				Score:          bnvFrac,
-				FilingDate:     filingDate,
-				DetectedAt:     today,
-				ValidThrough:   nextYear,
-				Interpretation: fmt.Sprintf("Broker non-votes represent %.1f%% of total shares — above %.0f%% anomaly threshold.", bnvFrac*100, r.BrokerNonVoteAnomalyThreshold*100),
-			})
 		}
 	}
 
@@ -513,6 +592,7 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalDirectorLink:           0.10,
 		SignalBrokerNonVoteAnomaly:   0.05,
 		SignalAbstentionSpike:        0.05,
+		SignalAbstentionOutlier:      0.05,
 	}
 
 	score := 1.0

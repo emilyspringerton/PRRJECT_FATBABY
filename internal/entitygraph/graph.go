@@ -274,6 +274,9 @@ func appendNDJSON(path string, fn func(*json.Encoder) error) error {
 
 // LoadNodesFromDir reads all PersonNode records from <dir>/nodes.ndjson into g.
 // Existing in-memory nodes are overwritten by the loaded values.
+// Nodes whose names contain known non-name keywords (e.g. "Broker Non-Vote",
+// "Against Abstained") are silently dropped — they are parse artifacts that
+// pre-date the nonNameWords guard added to the parser.
 func (g *Graph) LoadNodesFromDir(dir string) error {
 	path := filepath.Join(dir, "nodes.ndjson")
 	f, err := os.Open(path)
@@ -289,6 +292,9 @@ func (g *Graph) LoadNodesFromDir(dir string) error {
 	for sc.Scan() {
 		var node PersonNode
 		if err := json.Unmarshal(sc.Bytes(), &node); err != nil {
+			continue
+		}
+		if isSpuriousName(node.Name) {
 			continue
 		}
 		g.Nodes[node.CanonicalID] = &node
@@ -357,6 +363,9 @@ func CompactNodes(dir string) error {
 	}
 	enc := json.NewEncoder(f)
 	for _, n := range nodes {
+		if isSpuriousName(n.Name) {
+			continue // drop spurious parse-artifact nodes during compaction
+		}
 		if err := enc.Encode(n); err != nil {
 			f.Close()
 			return err

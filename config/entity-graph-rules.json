@@ -20,5 +20,6 @@
   "nomination_rejection_threshold": 0.50,
   "activist_risk_window_days": 365,
   "governance_health_window_days": 365,
-  "acceleration_decay_pp_threshold": 4.0
+  "acceleration_decay_pp_threshold": 4.0,
+  "abstention_outlier_multiplier": 2.5
 }

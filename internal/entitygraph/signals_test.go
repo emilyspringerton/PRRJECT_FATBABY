@@ -572,6 +572,84 @@ func TestScoreGovernanceHealth_FilingDateWindow(t *testing.T) {
 	}
 }
 
+// TestScoreDirectorVotes_BNVOncePerFiling verifies that broker_nonvote_anomaly fires
+// exactly once per filing regardless of how many directors are in the election.
+// Previously the signal was emitted per-director, causing N identical signals per filing.
+func TestScoreDirectorVotes_BNVOncePerFiling(t *testing.T) {
+	r := DefaultRules()
+	// 5 directors, all with the same large BNV count (typical for Apple-style elections).
+	bnv := int64(1_402_346_727)
+	votes := []VoteResult{
+		{Name: "James Bell", ForVotes: 2_664_386_155, AgainstVotes: 40_229_756, AbstainVotes: 5_182_628, BrokerNonVotes: bnv, ApprovalPct: 0.983},
+		{Name: "Tim Cook", ForVotes: 2_681_116_075, AgainstVotes: 25_363_575, AbstainVotes: 3_318_889, BrokerNonVotes: bnv, ApprovalPct: 0.989},
+		{Name: "Al Gore", ForVotes: 2_599_605_229, AgainstVotes: 105_339_035, AbstainVotes: 4_854_275, BrokerNonVotes: bnv, ApprovalPct: 0.959},
+		{Name: "Andrea Jung", ForVotes: 2_588_984_846, AgainstVotes: 116_206_940, AbstainVotes: 4_606_753, BrokerNonVotes: bnv, ApprovalPct: 0.955},
+		{Name: "Ron Sugar", ForVotes: 2_668_301_042, AgainstVotes: 34_730_214, AbstainVotes: 6_767_283, BrokerNonVotes: bnv, ApprovalPct: 0.985},
+	}
+	sigs := ScoreDirectorVotes(votes, "AAPL", "2019-03-04", r)
+	bnvCount := 0
+	for _, s := range sigs {
+		if s.Type == SignalBrokerNonVoteAnomaly {
+			bnvCount++
+		}
+	}
+	if bnvCount != 1 {
+		t.Errorf("expected exactly 1 bnv_anomaly signal per filing, got %d", bnvCount)
+	}
+	// Verify it has no entity (filing-level, not director-level).
+	for _, s := range sigs {
+		if s.Type == SignalBrokerNonVoteAnomaly && s.Entity != "" {
+			t.Errorf("bnv_anomaly should have no entity (filing-level), got entity=%q", s.Entity)
+		}
+	}
+}
+
+// TestScoreAbstentionOutliers_FiresOnOutlier verifies that a director with an abstain
+// rate well above the filing median triggers an abstention_outlier signal.
+func TestScoreAbstentionOutliers_FiresOnOutlier(t *testing.T) {
+	r := DefaultRules()
+	votes := []VoteResult{
+		{Name: "Alice Normal", ForVotes: 10_000_000, AgainstVotes: 100_000, AbstainVotes: 20_000, ApprovalPct: 0.99},   // ~0.2%
+		{Name: "Bob Normal", ForVotes: 10_000_000, AgainstVotes: 120_000, AbstainVotes: 18_000, ApprovalPct: 0.988},     // ~0.18%
+		{Name: "Carol Outlier", ForVotes: 9_500_000, AgainstVotes: 100_000, AbstainVotes: 500_000, ApprovalPct: 0.99},   // ~4.9% — >2.5x peer median
+		{Name: "David Normal", ForVotes: 10_000_000, AgainstVotes: 110_000, AbstainVotes: 22_000, ApprovalPct: 0.989},   // ~0.22%
+		{Name: "Eve Normal", ForVotes: 10_000_000, AgainstVotes: 90_000, AbstainVotes: 19_000, ApprovalPct: 0.991},      // ~0.19%
+	}
+	sigs := ScoreAbstentionOutliers(votes, "TEST", "2026-01-01", r)
+	if len(sigs) == 0 {
+		t.Fatal("expected abstention_outlier signal for Carol Outlier, got none")
+	}
+	found := false
+	for _, s := range sigs {
+		if s.Entity == "Carol Outlier" {
+			found = true
+			if s.Type != SignalAbstentionOutlier {
+				t.Errorf("signal type = %s, want abstention_outlier", s.Type)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected signal for Carol Outlier specifically, not found")
+	}
+}
+
+// TestScoreAbstentionOutliers_NoFireBelowMultiplier verifies that directors with
+// uniformly similar abstain rates do not trigger the outlier signal.
+func TestScoreAbstentionOutliers_NoFireBelowMultiplier(t *testing.T) {
+	r := DefaultRules()
+	votes := []VoteResult{
+		{Name: "Alice Normal", ForVotes: 10_000_000, AgainstVotes: 100_000, AbstainVotes: 200_000},  // 2.0%
+		{Name: "Bob Normal", ForVotes: 10_000_000, AgainstVotes: 100_000, AbstainVotes: 210_000},    // 2.1%
+		{Name: "Carol Normal", ForVotes: 10_000_000, AgainstVotes: 100_000, AbstainVotes: 220_000},  // 2.2%
+		{Name: "David Normal", ForVotes: 10_000_000, AgainstVotes: 100_000, AbstainVotes: 195_000},  // 1.95%
+		{Name: "Eve Normal", ForVotes: 10_000_000, AgainstVotes: 100_000, AbstainVotes: 205_000},    // 2.05%
+	}
+	sigs := ScoreAbstentionOutliers(votes, "TEST", "2026-01-01", r)
+	if len(sigs) != 0 {
+		t.Errorf("expected no abstention_outlier signals for uniform abstention rates, got %d", len(sigs))
+	}
+}
+
 // TestScoreGovernanceHealth_FilingDateFallback verifies that when FilingDate is empty,
 // DetectedAt is used as the window anchor (backward-compatible behavior).
 func TestScoreGovernanceHealth_FilingDateFallback(t *testing.T) {
