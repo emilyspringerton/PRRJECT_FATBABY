@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-01 — signalapi: IDUNA JWT auth (FARTHQ ecosystem integration)
+
+### IDUNA JWT verification for signal API
+
+Wires IDUNA — the FARTHQ central trust authority — into the signal API so
+FARTHQ consumers can authenticate with IDUNA-issued JWTs instead of (or
+in addition to) static API keys.
+
+- **`internal/idunaauth/`** (new package): Stdlib-only ES256 JWT verifier
+  backed by IDUNA's JWKS endpoint (`/api/v1/jwks`). Fetches keys at startup,
+  caches with 5-minute TTL, re-fetches on unknown `kid`. Accepts Bearer JWTs
+  with `fatbaby.read` permission. No external dependencies.
+- **`internal/apiserver/server.go`**: `ServerConfig.IDUNAVerifier` field added.
+  `checkAuth()` accepts static API keys **or** IDUNA JWT (both paths active).
+- **`cmd/signalapi/main.go`**: Reads `IDUNA_JWKS_URL` at startup; wires
+  verifier when set, falls back gracefully on JWKS failure.
+- 8 tests: valid token, expired, wrong key, unknown kid, HasPermission,
+  base64url padding, EC key round-trip, TTL-triggered re-fetch.
+
 ## 2026-06-01 — entitygraph: fix spurious header-node extraction (Against Abstained, Broker Non-Vote)
 
 ### Parser correctness fix (RSI observation)
