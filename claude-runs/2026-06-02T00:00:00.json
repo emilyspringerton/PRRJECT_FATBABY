@@ -1,0 +1,24 @@
+{
+  "observation_summary": "IDUNA — HQ-SPEC-IAM-096 Apples implementation (golden documentation log streaming)",
+  "observation_timestamp": "2026-06-02T00:00:00Z",
+  "run_started_at": "2026-06-02T00:00:00Z",
+  "run_completed_at": "2026-06-02T00:30:00Z",
+  "source_repo": "iduna",
+  "apple_type": "improvement",
+  "files_changed": [
+    "migrations/truestore/202606020001_apples.sql",
+    "internal/auth/agent.go",
+    "internal/store/store.go",
+    "internal/store/mysql.go",
+    "internal/http/handlers/apples.go",
+    "internal/http/handlers/apples_test.go",
+    "internal/http/handlers/admin.go",
+    "internal/http/handlers/agent_auth_test.go",
+    "main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Implemented full HQ-SPEC-IAM-096 Apples spec in IDUNA. New apples table (append-only, FK to agents) with migrations including apples.write/read/admin permissions seeded. Added auth.AppleRecord type to internal/auth/agent.go. Extended IAMStore interface with AppendApple/ListApples/GetApple. MySQLStore implementation: AppendApple runs in a single transaction that inserts the row and emits ApplePublished to iam_event_stream. New internal/http/handlers/apples.go: POST /api/v1/apples (apples.write), GET /api/v1/apples (filterable by agent_id/source_repo/apple_type, limit), GET /api/v1/apples/{id} (full with body and metadata). Routes wired in main.go behind RequireAuth middleware; permission checks inside handler. Back Office admin UI: /admin/apples filterable ledger + /admin/apples/{id} detail view with markdown body as preformatted text and metadata JSON block; nav bar updated. 9 handler tests all pass, full go test ./... green.",
+  "git_commit_hash": "3d856a3",
+  "exit_status": "success",
+  "notes": "Loop-close validation (POST an Apple from the live endpoint) requires DB migration 202606020001_apples.sql to be applied first. All other checklist items from golden.md complete. The RSI cycle now has a complete paper trail: code changes in Git, Apple record in Iduna, ApplePublished event in iam_event_stream, visible in Back Office audit viewer and new /admin/apples ledger."
+}
