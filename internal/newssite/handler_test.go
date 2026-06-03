@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 )
 
@@ -305,6 +306,168 @@ func TestReadLatest_NewestFirst(t *testing.T) {
 	}
 	if entries[2].Ticker != "AAPL" {
 		t.Errorf("entries[2].Ticker = %q, want AAPL (oldest)", entries[2].Ticker)
+	}
+}
+
+// TestEarningsCalendarSection verifies that upcoming earnings dates from the
+// earningscal.Store appear on /section/earnings.
+func TestEarningsCalendarSection(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer store.Close()
+
+	// Build an earningscal.Store with one upcoming date in the 30-day window.
+	calDir := t.TempDir()
+	today := time.Now().UTC()
+	reportDate := today.AddDate(0, 0, 10).Format("2006-01-02") // 10 days away
+	bmo := true
+	d := earningscal.EarningsDate{
+		ID:            earningscal.MakeID("AAPL", "Q3", today.Year()),
+		Ticker:        "AAPL",
+		FiscalQuarter: "Q3",
+		FiscalYear:    today.Year(),
+		ReportDate:    reportDate,
+		BeforeMarket:  &bmo,
+		Status:        earningscal.StatusAnnounced,
+		Source:        "press_release",
+		UpdatedAt:     today.Format(time.RFC3339),
+	}
+	calStore := earningscal.NewStore(calDir)
+	if err := calStore.Append(d); err != nil {
+		t.Fatalf("append earnings date: %v", err)
+	}
+	if err := calStore.Refresh(); err != nil {
+		t.Fatalf("refresh earnings store: %v", err)
+	}
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	h.SetEarningsCalStore(calStore)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/section/earnings", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "AAPL") {
+		t.Errorf("/section/earnings missing AAPL ticker from upcoming calendar")
+	}
+	if !strings.Contains(body, "Announced") {
+		t.Errorf("/section/earnings missing Announced status from upcoming calendar")
+	}
+	if !strings.Contains(body, "BMO") {
+		t.Errorf("/section/earnings missing BMO timing from upcoming calendar")
+	}
+	if !strings.Contains(body, "Q3") {
+		t.Errorf("/section/earnings missing Q3 period from upcoming calendar")
+	}
+	if !strings.Contains(body, "Upcoming") {
+		t.Errorf("/section/earnings missing 'Upcoming' section header")
+	}
+}
+
+// TestEarningsCalendarSection_Empty verifies that /section/earnings renders
+// cleanly when no earningscal.Store is wired (nil-safe).
+func TestEarningsCalendarSection_NilStore(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer store.Close()
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	// earningsCalStore intentionally not set
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/section/earnings", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 when earningsCal is nil", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Earnings") {
+		t.Errorf("earnings page missing 'Earnings' heading")
+	}
+}
+
+// TestEarningsCalendarSection_PastDateExcluded verifies that earnings dates
+// before today are not shown in the upcoming section.
+func TestEarningsCalendarSection_PastDateExcluded(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := eventstore.NewFileStore(dir)
+	defer store.Close()
+
+	calDir := t.TempDir()
+	past := time.Now().UTC().AddDate(0, 0, -5).Format("2006-01-02")
+	d := earningscal.EarningsDate{
+		ID: earningscal.MakeID("PAST", "Q1", 2026), Ticker: "PAST",
+		FiscalQuarter: "Q1", FiscalYear: 2026, ReportDate: past,
+		Status: earningscal.StatusConfirmed, Source: "test",
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	calStore := earningscal.NewStore(calDir)
+	_ = calStore.Append(d)
+	_ = calStore.Refresh()
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	h.SetEarningsCalStore(calStore)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/section/earnings", nil)
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if strings.Contains(body, "PAST") {
+		t.Error("/section/earnings shows a past earnings date in the upcoming section")
+	}
+}
+
+// TestFormatPeriodStr validates the period formatter.
+func TestFormatPeriodStr(t *testing.T) {
+	cases := []struct{ q string; y int; want string }{
+		{"Q3", 2026, "Q3 2026"},
+		{"FY", 2027, "FY 2027"},
+		{"Q1", 0, "Q1"},
+		{"", 2026, ""},
+	}
+	for _, tc := range cases {
+		got := formatPeriodStr(tc.q, tc.y)
+		if got != tc.want {
+			t.Errorf("formatPeriodStr(%q, %d) = %q, want %q", tc.q, tc.y, got, tc.want)
+		}
+	}
+}
+
+// TestFormatUpcomingDate validates the date formatter.
+func TestFormatUpcomingDate(t *testing.T) {
+	got := formatUpcomingDate("2026-11-14")
+	if got != "Nov 14, 2026" {
+		t.Errorf("formatUpcomingDate(2026-11-14) = %q, want Nov 14, 2026", got)
+	}
+	// Invalid date passthrough
+	got2 := formatUpcomingDate("not-a-date")
+	if got2 != "not-a-date" {
+		t.Errorf("invalid date should pass through unchanged: %q", got2)
+	}
+}
+
+// TestEarningsStatusLabel verifies status label mapping.
+func TestEarningsStatusLabel(t *testing.T) {
+	if earningsStatusLabel(earningscal.StatusConfirmed) != "Confirmed" {
+		t.Error("expected Confirmed for StatusConfirmed")
+	}
+	if earningsStatusLabel(earningscal.StatusAnnounced) != "Announced" {
+		t.Error("expected Announced for StatusAnnounced")
+	}
+	if earningsStatusLabel(earningscal.StatusBackfilled) != "Expected" {
+		t.Error("expected Expected for StatusBackfilled")
 	}
 }
 

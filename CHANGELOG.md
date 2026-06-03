@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-03 — test coverage: schd13-watcher, newssite earnings calendar, commentary, guidanceread
+
+### schd13-watcher tests (0 → 6)
+- Extracted `parseEFTSResponse(result, ticker, cik)` for testability (was inline in `fetchSchd13`)
+- Incomplete hits (empty FormType/FileDate) are now skipped in `parseEFTSResponse`
+- Tests: `padCIK` zero-padding, multi-hit parsing, empty response, missing fields guard,
+  `loadWatchlist` happy path + missing file, round-trip JSON parse
+
+### newssite earnings calendar tests (new)
+- `TestEarningsCalendarSection`: wires earningscal.Store with upcoming date; verifies
+  AAPL/Announced/BMO/Q3/Upcoming all appear in `/section/earnings` response
+- `TestEarningsCalendarSection_NilStore`: graceful render without store wired
+- `TestEarningsCalendarSection_PastDateExcluded`: past dates not shown in upcoming table
+- `TestFormatPeriodStr`, `TestFormatUpcomingDate`, `TestEarningsStatusLabel`
+
+### commentary tests (0 → 6)
+- Load, newest-first ordering, limit, case-insensitive ForTicker, skip-invalid-records, empty dir
+
+### guidanceread tests (0 → 7)
+- Load, newest-first, ForTicker, skip-empty-headline, empty dir, formatPeriodStr, ArticleToView field mapping
+
 ## 2026-06-03 — entity graph RSI: board decay composite, configurable comp-vote keywords, earnings calendar API
 
 ### Entity graph RSI improvements (Emily Prime task: "improve entity graph stuff")

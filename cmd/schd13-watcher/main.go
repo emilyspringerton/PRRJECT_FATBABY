@@ -225,19 +225,28 @@ func fetchSchd13(ctx context.Context, client *http.Client, entry watchlistEntry,
 		return nil, fmt.Errorf("decode EFTS response: %w", err)
 	}
 
+	return parseEFTSResponse(&result, entry.Ticker, entry.CIK), nil
+}
+
+// parseEFTSResponse converts a decoded EDGAR EFTS response into Schd13Filing
+// records. Extracted for unit testability.
+func parseEFTSResponse(result *eftsResponse, ticker, cik string) []entitygraph.Schd13Filing {
 	var filings []entitygraph.Schd13Filing
 	for _, hit := range result.Hits.Hits {
 		src := hit.Source
+		if src.FormType == "" || src.FileDate == "" {
+			continue
+		}
 		filings = append(filings, entitygraph.Schd13Filing{
-			Ticker:     entry.Ticker,
-			TargetCIK:  entry.CIK,
+			Ticker:     ticker,
+			TargetCIK:  cik,
 			FilingDate: src.FileDate,
 			FilingType: src.FormType,
 			FilerName:  src.EntityName,
 			Accession:  src.AccessionNo,
 		})
 	}
-	return filings, nil
+	return filings
 }
 
 // padCIK returns the 10-digit zero-padded form of a CIK string.
