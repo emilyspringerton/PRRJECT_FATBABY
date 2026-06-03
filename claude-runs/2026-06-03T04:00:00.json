@@ -1,0 +1,20 @@
+{
+  "observation_summary": "Test coverage: schd13-watcher (0→6), newssite earnings calendar (0→7), commentary (0→6), guidanceread (0→7) — 26 new tests",
+  "observation_timestamp": "2026-06-03T04:00:00Z",
+  "run_started_at": "2026-06-03T04:00:00Z",
+  "run_completed_at": "2026-06-03T04:25:00Z",
+  "source_repo": "prrject-fatbaby",
+  "apple_type": "improvement",
+  "files_changed": [
+    "cmd/schd13-watcher/main.go",
+    "cmd/schd13-watcher/schd13_test.go",
+    "internal/newssite/handler_test.go",
+    "internal/newssite/commentary/commentary_test.go",
+    "internal/newssite/guidanceread/guidanceread_test.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Added 26 tests across four previously-untested areas. (1) schd13-watcher: extracted parseEFTSResponse from fetchSchd13 for testability; added missing-field guard (skip hits with empty FormType or FileDate); 6 tests covering padCIK, multi-hit parsing, empty response, incomplete fields, loadWatchlist happy path + missing file, round-trip JSON parse. (2) newssite earnings calendar: 7 tests covering earningscal.Store wired (verifies AAPL/Announced/BMO/Q3/Upcoming appear), nil-store graceful render, past-date exclusion, formatPeriodStr, formatUpcomingDate, earningsStatusLabel. (3) commentary: 6 tests covering load, newest-first ordering, limit, case-insensitive ForTicker, skip-invalid-records, empty dir. (4) guidanceread: 7 tests covering load, newest-first, ForTicker, skip-empty-headline, empty dir, formatPeriodStr, ArticleToView field mapping. All 29 packages now pass go test ./...",
+  "git_commit_hash": "adaf75a",
+  "exit_status": "success",
+  "notes": "All previously-untested library packages in newssite now have coverage: commentary, guidanceread, earnings-calendar integration. schd13-watcher was the only cmd binary with business logic (EDGAR response parsing) and zero tests — now fixed. 29 packages pass."
+}
