@@ -1,0 +1,21 @@
+{
+  "observation_summary": "Newssite earnings calendar integration, ArXiv LaTeX cleanup, arxiv-collector marked complete",
+  "observation_timestamp": "2026-06-03T03:00:00Z",
+  "run_started_at": "2026-06-03T03:00:00Z",
+  "run_completed_at": "2026-06-03T03:30:00Z",
+  "source_repo": "prrject-fatbaby",
+  "apple_type": "improvement",
+  "files_changed": [
+    "PRRJECT_FATBABY/internal/newssite/handler.go",
+    "PRRJECT_FATBABY/internal/newssite/render.go",
+    "PRRJECT_FATBABY/internal/newssite/templates.go",
+    "PRRJECT_FATBABY/cmd/newssite/main.go",
+    "EMILY/emily-agent/collector.go",
+    "EMILY/emily-agent/cron.go",
+    "EMILY/emily-agent/main_test.go"
+  ],
+  "actions_taken": "Two improvements. (1) PRRJECT_FATBABY: wired earningscal.Store into newssite Handler; /section/earnings now displays a 30-day upcoming earnings table (ticker, date, period, confirmed/announced/expected status, BMO/AMC timing) above historical EPS results. Added UpcomingEarningsView type, updated EarningsSectionView, updated RenderEarningsPage signature, updated earnings template with table styling, added --earnings-cal-dir flag to newssite cmd. Commit 609a293. (2) EMILY: cleanAbstract function strips raw LaTeX macros from arxiv abstracts (\\cmd{content}→content, \\begin/\\end environments, math blocks, bare commands, stray braces); applied in parseAtom; 4 new tests. Marked arxiv-collector complete in defaultRoadmap — all four collector roadmap items now complete. Commit 07fb0ca.",
+  "git_commit_hash": "609a293",
+  "exit_status": "success",
+  "notes": "All collector roadmap items complete: reddit-collector, wikipedia-collector, quality-scorer, arxiv-collector. EMILY roadmap now has only prime-triage (always-on) active. Newssite earnings calendar requires var/earnings-calendar/dates.ndjson to exist (populated by cmd/earnings-calendar daemon). All tests green."
+}
