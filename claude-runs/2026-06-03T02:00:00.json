@@ -1,0 +1,24 @@
+{
+  "observation_summary": "EMILY RSI: ArXiv full-paper HTML, per-source stats, mark 3 roadmap items complete; PRRJECT_FATBABY: earnings-calendar committed, earningscal tests",
+  "observation_timestamp": "2026-05-31T21:28:48Z",
+  "run_started_at": "2026-06-03T02:00:00Z",
+  "run_completed_at": "2026-06-03T02:30:00Z",
+  "source_repo": "emily",
+  "apple_type": "improvement",
+  "files_changed": [
+    "emily-agent/collector.go",
+    "emily-agent/cron.go",
+    "emily-agent/main.go",
+    "emily-agent/main_test.go",
+    "PRRJECT_FATBABY/.gitignore",
+    "PRRJECT_FATBABY/cmd/earnings-calendar/main.go",
+    "PRRJECT_FATBABY/internal/earningscal/extract.go",
+    "PRRJECT_FATBABY/internal/earningscal/extract_test.go",
+    "PRRJECT_FATBABY/internal/earningscal/store.go",
+    "PRRJECT_FATBABY/internal/earningscal/types.go"
+  ],
+  "actions_taken": "Three improvements to EMILY: (1) ArXiv full-paper HTML extraction via arxiv.org/html/{id}; ArXivSource.MaxFullText=10 fetches top 10 papers per batch with 1s polite delay; fetchArXivFullText extracts <article> element, strips HTML, falls back to abstract on 404; stripHTML handles script/style blocks, HTML entities, block tags; 7 new tests. (2) Per-source stats: CollectionStats.PerSource map[string]int64 tracks collected docs by source name; CollectorPipeline.perSource with perSourceMu; processOne increments on write. (3) Roadmap updated: reddit-collector, wikipedia-collector, quality-scorer marked complete with notes; arxiv-collector notes updated. EMILY commit 1b6aa79. PRRJECT_FATBABY: committed untracked earnings-calendar pipeline and earningscal package (built but never committed); added 8 earningscal tests covering ExtractDate/ExtractPeriod/ExtractBeforeMarket/MakeID; added guidance-watcher and earnings-calendar to .gitignore. Commit 3a9d60d.",
+  "git_commit_hash": "3a9d60d",
+  "exit_status": "success",
+  "notes": "All tests pass. arxiv-collector roadmap item remains in_progress: body_quality criterion (< 5% raw LaTeX) needs real corpus verification, but HTML extraction now provides full-text as the primary source. Earnings-calendar binary is ready to run but needs EDGAR/prwatch data in var/ dirs. The earningscal.Store is already wired into signalapi via EarningsCal field."
+}
