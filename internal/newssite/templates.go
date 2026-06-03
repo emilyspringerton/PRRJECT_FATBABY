@@ -838,13 +838,39 @@ const earningsTemplate = `{{define "earnings"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Earnings — FATBABY</title>
 <link rel="alternate" type="application/rss+xml" title="Earnings — FATBABY" href="/section/earnings/feed.xml">
-<style>` + siteCSS + `</style></head>
+<style>` + siteCSS + `
+.earnings-cal{border-collapse:collapse;width:100%;font-family:system-ui,sans-serif;font-size:0.82rem;margin-bottom:2rem;}
+.earnings-cal th{text-align:left;font-weight:600;font-size:0.65rem;letter-spacing:1.5px;text-transform:uppercase;color:#666;border-bottom:2px solid #111;padding:0.3rem 0.6rem 0.4rem;}
+.earnings-cal td{padding:0.35rem 0.6rem;border-bottom:1px solid #eee;}
+.earnings-cal tr:hover td{background:#f9f9f7;}
+.cal-ticker{font-weight:700;letter-spacing:0.5px;}
+.cal-status{font-size:0.65rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#065f46;}
+.cal-timing{font-size:0.72rem;color:#888;}
+</style></head>
 <body><div class="wrap">
 {{template "masthead" .}}
 {{template "sectionsrail" .}}
 <main style="max-width:760px;padding:1rem 0;">
 <h1 style="font-family:system-ui;font-size:0.65rem;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:#065f46;margin:0 0 1.2rem;">Earnings Desk</h1>
+
+{{if .Upcoming}}
+<h2 style="font-family:system-ui;font-size:0.75rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#111;margin:0 0 0.7rem;border-top:3px solid #111;padding-top:0.7rem;">Upcoming — Next 30 Days</h2>
+<table class="earnings-cal">
+<thead><tr><th>Ticker</th><th>Date</th><th>Period</th><th>Status</th><th>Timing</th></tr></thead>
+<tbody>
+{{range .Upcoming}}<tr>
+  <td><span class="cal-ticker"><a href="/ticker/{{.Ticker}}">{{.Ticker}}</a></span></td>
+  <td>{{.ReportDate}}</td>
+  <td>{{if .PeriodStr}}{{.PeriodStr}}{{else}}—{{end}}</td>
+  <td><span class="cal-status">{{.StatusLabel}}</span></td>
+  <td><span class="cal-timing">{{if .Timing}}{{.Timing}}{{else}}—{{end}}</span></td>
+</tr>{{end}}
+</tbody>
+</table>
+{{end}}
+
 {{if .Items}}
+<h2 style="font-family:system-ui;font-size:0.75rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#111;margin:0 0 0.9rem;border-top:3px solid #111;padding-top:0.7rem;">Recent Results</h2>
 {{range .Items}}<article class="story">
   <span class="kicker kicker-earnings">EARNINGS{{if .PeriodStr}} · {{.PeriodStr}}{{end}}</span>
   <h2 class="hl-secondary"><a href="{{.Link}}">{{.Headline}}</a></h2>

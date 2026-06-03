@@ -11,15 +11,16 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
-	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
+	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -42,17 +43,18 @@ func summaryToEntry(ds *docindex.DocSummary) DocEntry {
 
 // Handler is an http.Handler for the news site.
 type Handler struct {
-	store          eventstore.EventStore
-	graph          *graphread.Store       // nil if graph dir not configured
-	sigIdx         *signalindex.Index     // nil if not wired
-	docIdx         *docindex.Index        // nil if not wired
-	cat            *catalog.Catalog       // nil if not wired
-	epsStore       *epsread.Store         // nil if eps-dir not configured
-	commentaryStore *commentary.Store       // nil if commentary-dir not configured
-	commentaryDir   string                  // path for POST /api/commentary writes
-	guidanceStore   *guidanceread.Store     // nil if guidance-dir not configured
-	logger         *log.Logger
-	defaultLimit   int
+	store           eventstore.EventStore
+	graph           *graphread.Store       // nil if graph dir not configured
+	sigIdx          *signalindex.Index     // nil if not wired
+	docIdx          *docindex.Index        // nil if not wired
+	cat             *catalog.Catalog       // nil if not wired
+	epsStore        *epsread.Store         // nil if eps-dir not configured
+	commentaryStore *commentary.Store      // nil if commentary-dir not configured
+	commentaryDir   string                 // path for POST /api/commentary writes
+	guidanceStore   *guidanceread.Store    // nil if guidance-dir not configured
+	earningsCalStore *earningscal.Store    // nil if earnings-cal-dir not configured
+	logger          *log.Logger
+	defaultLimit    int
 }
 
 // NewHandler returns a new Handler.
@@ -69,7 +71,8 @@ func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 	h.commentaryStore = cs
 	h.commentaryDir = dir
 }
-func (h *Handler) SetGuidanceStore(gs *guidanceread.Store) { h.guidanceStore = gs }
+func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)        { h.guidanceStore = gs }
+func (h *Handler) SetEarningsCalStore(s *earningscal.Store)       { h.earningsCalStore = s }
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -585,11 +588,65 @@ func (h *Handler) serveRSS(w http.ResponseWriter, r *http.Request, section strin
 
 func (h *Handler) serveEarnings(w http.ResponseWriter, r *http.Request) int {
 	items := EarningsItemsFrom(h.recentEPS(100))
+
+	var upcoming []UpcomingEarningsView
+	if h.earningsCalStore != nil {
+		today := time.Now().UTC().Format("2006-01-02")
+		// Show up to 30 days of upcoming earnings.
+		horizon := time.Now().UTC().AddDate(0, 0, 30).Format("2006-01-02")
+		records := h.earningsCalStore.Query(nil, today, horizon, nil)
+		for _, d := range records {
+			uv := UpcomingEarningsView{
+				Ticker:     strings.ToUpper(d.Ticker),
+				ReportDate: formatUpcomingDate(d.ReportDate),
+				PeriodStr:  formatPeriodStr(d.FiscalQuarter, d.FiscalYear),
+				StatusLabel: earningsStatusLabel(d.Status),
+			}
+			if d.BeforeMarket != nil {
+				if *d.BeforeMarket {
+					uv.Timing = "BMO"
+				} else {
+					uv.Timing = "AMC"
+				}
+			}
+			upcoming = append(upcoming, uv)
+		}
+	}
+
 	var buf bytes.Buffer
-	RenderEarningsPage(&buf, items, h.symbols())
+	RenderEarningsPage(&buf, items, upcoming, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
+}
+
+func formatUpcomingDate(d string) string {
+	t, err := time.Parse("2006-01-02", d)
+	if err != nil {
+		return d
+	}
+	return t.Format("Jan 2, 2006")
+}
+
+func formatPeriodStr(quarter string, year int) string {
+	if quarter == "" {
+		return ""
+	}
+	if year > 0 {
+		return fmt.Sprintf("%s %d", quarter, year)
+	}
+	return quarter
+}
+
+func earningsStatusLabel(s earningscal.Status) string {
+	switch s {
+	case earningscal.StatusConfirmed:
+		return "Confirmed"
+	case earningscal.StatusAnnounced:
+		return "Announced"
+	default:
+		return "Expected"
+	}
 }
 
 func (h *Handler) serveGuidance(w http.ResponseWriter, r *http.Request) int {

@@ -141,10 +141,20 @@ type EarningsItemView struct {
 	IsGAAP     bool
 }
 
+// UpcomingEarningsView is one upcoming earnings date row.
+type UpcomingEarningsView struct {
+	Ticker      string
+	ReportDate  string // formatted: "Nov 14, 2026"
+	PeriodStr   string // "Q3 2026" or "FY 2026"
+	StatusLabel string // "Confirmed" | "Announced" | "Expected"
+	Timing      string // "BMO" | "AMC" | ""
+}
+
 // EarningsSectionView is the view model for /section/earnings.
 type EarningsSectionView struct {
 	Base
-	Items []EarningsItemView
+	Items    []EarningsItemView
+	Upcoming []UpcomingEarningsView
 }
 
 // GuidanceItemView is one forward-guidance article card.
@@ -1379,8 +1389,8 @@ func formatVotes(n int64) string {
 
 // ── EPS article rendering ─────────────────────────────────────────────────────
 
-func RenderEarningsPage(w io.Writer, items []EarningsItemView, symbols []string) {
-	if err := earningsTmpl.Execute(w, EarningsSectionView{Base: Base{Symbols: symbols}, Items: items}); err != nil {
+func RenderEarningsPage(w io.Writer, items []EarningsItemView, upcoming []UpcomingEarningsView, symbols []string) {
+	if err := earningsTmpl.Execute(w, EarningsSectionView{Base: Base{Symbols: symbols}, Items: items, Upcoming: upcoming}); err != nil {
 		fmt.Fprintf(w, "render error: %v", err)
 	}
 }
