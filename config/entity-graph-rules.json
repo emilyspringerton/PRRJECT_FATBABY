@@ -21,5 +21,14 @@
   "activist_risk_window_days": 365,
   "governance_health_window_days": 365,
   "acceleration_decay_pp_threshold": 4.0,
-  "abstention_outlier_multiplier": 2.5
+  "abstention_outlier_multiplier": 2.5,
+  "comp_vote_keywords": [
+    "compensation",
+    "executive",
+    "say-on-pay",
+    "remuneration",
+    "advisory vote on pay"
+  ],
+  "min_board_decay_count": 3,
+  "board_decay_concern_window_days": 730
 }

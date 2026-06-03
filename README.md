@@ -180,6 +180,37 @@ GIT_COMMIT=true
 
 ---
 
+## Environment variables
+
+All variables are optional unless marked **Required**.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | **Required** for AI | — | Anthropic API key; used by emily-agent and observation-watcher |
+| `FATBABY_ROOT` | No | `.` | Project root directory; used by observation-watcher and other processes to locate `var/` and `config/` |
+| `OBSERVATION_CMD` | No | `claude` | Executable invoked by observation-watcher for each new observation |
+| `OBSERVATION_CMD_ARGS` | No | `--dangerously-skip-permissions` | Space-separated extra args passed to `OBSERVATION_CMD` |
+| `OBSERVATION_GATE` | No | `nontrivial` | Gate mode for observation-watcher: `none` (always invoke) or `nontrivial` (skip trivial high-trust-only batches) |
+| `ENTITY_GRAPH_RULES` | No | `config/entity-graph-rules.json` | Path to the entity-graph rules file; loaded on each batch (hot-reload) |
+| `EMILY_INTEGRATION_DIR` | No | — | Path to the Emily Prime signals directory; enables Emily ↔ FatBaby integration |
+| `EMILY_PRIME_TASKS_DIR` | No | `../EMILY/signals/tasks` | Path to Emily Prime directed tasks directory; auto-detected from sibling EMILY repo when unset |
+| `GITHUB_TOKEN` | No | — | GitHub personal access token (issues:write scope); enables GitHub issue creation from observations |
+| `GITHUB_OWNER` | No | — | GitHub org or user for issue creation (required when `GITHUB_TOKEN` is set) |
+| `GITHUB_REPO` | No | — | GitHub repository name for issue creation (required when `GITHUB_TOKEN` is set) |
+| `IDUNA_BASE_URL` | No | — | IDUNA IAM service base URL; enables M2M token acquisition for emily-agent |
+| `IDUNA_AGENT_NAME` | No | — | Agent name for IDUNA M2M authentication |
+| `IDUNA_AGENT_SECRET` | No | — | Agent secret for IDUNA M2M authentication |
+| `IDUNA_JWKS_URL` | No | — | IDUNA JWKS URL for JWT verification in signalapi (`/api/v1/jwks`) |
+| `MODEL` | No | `claude-sonnet-4-6` | LLM model for emily-agent |
+| `VALIDATOR_MODEL` | No | same as `MODEL` | Model used for RSI validation pass |
+| `PORT` | No | `8080` | HTTP server port for emily-agent |
+| `CONVERSATION_DIR` | No | `./emily-memory` | Directory for persisted conversation history |
+| `RATE_LIMIT_RPM` | No | `60` | Requests-per-minute cap for emily-agent HTTP API |
+| `MAX_TOOL_ITERS` | No | `20` | Maximum agentic tool loop iterations per request |
+| `GIT_COMMIT` | No | — | Injected at build time (`-ldflags "-X main.GitCommit=$(git rev-parse --short HEAD)"`); shown in `/status` |
+
+---
+
 ## Quick start
 
 ### Requirements

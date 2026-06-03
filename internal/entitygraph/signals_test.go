@@ -650,6 +650,143 @@ func TestScoreAbstentionOutliers_NoFireBelowMultiplier(t *testing.T) {
 	}
 }
 
+// TestScoreBoardDecayConcern_FiresAtThreshold verifies that the board_decay_concern
+// composite fires when >= MinBoardDecayCount distinct directors have decay signals.
+func TestScoreBoardDecayConcern_FiresAtThreshold(t *testing.T) {
+	r := DefaultRules() // MinBoardDecayCount = 3
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Alice Director", DetectedAt: today},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Bob Director", DetectedAt: today},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Carol Director", DetectedAt: today},
+	}
+	sig := ScoreBoardDecayConcern("TEST", sigs, r)
+	if sig == nil {
+		t.Fatal("expected board_decay_concern when 3 directors decaying, got nil")
+	}
+	if sig.Type != SignalBoardDecayConcern {
+		t.Errorf("type = %s, want board_decay_concern", sig.Type)
+	}
+	if sig.Severity != SeverityMedium {
+		t.Errorf("severity = %s, want medium (count=3 == threshold)", sig.Severity)
+	}
+}
+
+// TestScoreBoardDecayConcern_HighSeverityAtDoubleThreshold verifies severity escalation
+// to high when >= 2x the minimum count of directors are decaying.
+func TestScoreBoardDecayConcern_HighSeverityAtDoubleThreshold(t *testing.T) {
+	r := DefaultRules() // MinBoardDecayCount = 3; 2x = 6
+	today := time.Now().UTC().Format("2006-01-02")
+	var sigs []Signal
+	for _, name := range []string{"Alice", "Bob", "Carol", "Dave", "Eve", "Frank"} {
+		sigs = append(sigs, Signal{Type: SignalDirectorDecay, Ticker: "TEST", Entity: name + " Director", DetectedAt: today})
+	}
+	sig := ScoreBoardDecayConcern("TEST", sigs, r)
+	if sig == nil {
+		t.Fatal("expected board_decay_concern for 6 decaying directors, got nil")
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high for 6 >= 2×3 threshold", sig.Severity)
+	}
+}
+
+// TestScoreBoardDecayConcern_NoFireBelowThreshold verifies no signal when fewer than
+// MinBoardDecayCount directors are decaying.
+func TestScoreBoardDecayConcern_NoFireBelowThreshold(t *testing.T) {
+	r := DefaultRules() // threshold = 3
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Alice Director", DetectedAt: today},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Bob Director", DetectedAt: today},
+	}
+	if sig := ScoreBoardDecayConcern("TEST", sigs, r); sig != nil {
+		t.Errorf("expected nil for 2 decaying directors (threshold=3), got %s", sig.Type)
+	}
+}
+
+// TestScoreBoardDecayConcern_DedupsByDirectorName verifies that multiple decay signals
+// for the same director are counted as one.
+func TestScoreBoardDecayConcern_DedupsByDirectorName(t *testing.T) {
+	r := DefaultRules()
+	today := time.Now().UTC().Format("2006-01-02")
+	// Alice appears 3 times (e.g. 3 filing batches) — should still count as 1 director.
+	sigs := []Signal{
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Alice Director", DetectedAt: today},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Alice Director", DetectedAt: today},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Alice Director", DetectedAt: today},
+	}
+	if sig := ScoreBoardDecayConcern("TEST", sigs, r); sig != nil {
+		t.Errorf("expected nil: 3 signals for same director counts as 1 distinct director, got signal")
+	}
+}
+
+// TestScoreBoardDecayConcern_IgnoresStaleSignals verifies that decay signals outside
+// the window are not counted.
+func TestScoreBoardDecayConcern_IgnoresStaleSignals(t *testing.T) {
+	r := DefaultRules()
+	stale := time.Now().UTC().AddDate(-3, 0, 0).Format("2006-01-02") // 3 years ago, beyond 730-day window
+	sigs := []Signal{
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Alice Director", DetectedAt: stale},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Bob Director", DetectedAt: stale},
+		{Type: SignalDirectorDecay, Ticker: "TEST", Entity: "Carol Director", DetectedAt: stale},
+	}
+	if sig := ScoreBoardDecayConcern("TEST", sigs, r); sig != nil {
+		t.Errorf("expected nil for stale decay signals outside window, got signal")
+	}
+}
+
+// TestIsCompVote_DefaultKeywords verifies the built-in compensation vote keyword matching.
+func TestIsCompVote_DefaultKeywords(t *testing.T) {
+	r := DefaultRules()
+	cases := []struct {
+		desc string
+		want bool
+	}{
+		{"Advisory Vote on Executive Compensation", true},
+		{"Say-on-Pay Advisory Vote", true},
+		{"Ratification of Independent Auditor", false},
+		{"Election of Directors", false},
+		{"Advisory Vote on Remuneration", true},   // new keyword
+		{"Advisory Vote on Pay", true},             // new keyword
+	}
+	for _, tc := range cases {
+		got := isCompVote(tc.desc, r)
+		if got != tc.want {
+			t.Errorf("isCompVote(%q) = %v, want %v", tc.desc, got, tc.want)
+		}
+	}
+}
+
+// TestIsCompVote_CustomKeywords verifies that custom keywords from rules override defaults.
+func TestIsCompVote_CustomKeywords(t *testing.T) {
+	r := DefaultRules()
+	r.CompVoteKeywords = []string{"remuneración"} // Spanish-language proxy, hypothetical
+	if !isCompVote("Voto Consultivo sobre la Remuneración", r) {
+		t.Error("expected isCompVote to match custom keyword 'remuneración'")
+	}
+	// Default keyword should NOT match when overridden.
+	if isCompVote("Advisory Vote on Executive Compensation", r) {
+		t.Error("expected default keyword 'compensation' to be inactive when overridden with custom keywords")
+	}
+}
+
+// TestScoreGovernanceHealth_BoardDecayConcernPenalty verifies that board_decay_concern
+// signals are counted in the governance health score.
+func TestScoreGovernanceHealth_BoardDecayConcernPenalty(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalBoardDecayConcern, Ticker: "TEST", DetectedAt: today, Score: 1.0},
+	}
+	sig := ScoreGovernanceHealth("TEST", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	// board_decay_concern penalty = 0.15; score should be 0.85.
+	if sig.Score > 0.90 || sig.Score < 0.80 {
+		t.Errorf("score = %.2f, want ~0.85 (1.0 - 0.15 board_decay_concern penalty)", sig.Score)
+	}
+}
+
 // TestScoreGovernanceHealth_FilingDateFallback verifies that when FilingDate is empty,
 // DetectedAt is used as the window anchor (backward-compatible behavior).
 func TestScoreGovernanceHealth_FilingDateFallback(t *testing.T) {

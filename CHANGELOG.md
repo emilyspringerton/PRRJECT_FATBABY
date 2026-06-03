@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-03 — entity graph RSI: board decay composite, configurable comp-vote keywords, earnings calendar API
+
+### Entity graph RSI improvements (Emily Prime task: "improve entity graph stuff")
+
+**New signal: `board_decay_concern`**
+- `ScoreBoardDecayConcern(ticker, allSignals, r)` fires when ≥ `min_board_decay_count`
+  distinct directors at a ticker have active `director_decay` signals in the trailing
+  `board_decay_concern_window_days` window (default 3 directors / 730 days)
+- Severity: medium at threshold, high at 2× threshold
+- Deduplication: multiple decay signals for the same director count as one
+- Added to `AllSignalTypes` and governance health penalty map (−0.15 per occurrence)
+- 5 new tests: fires at threshold, high severity at 2×, no-fire below, dedup, stale signals
+
+**Configurable comp-vote keywords**
+- `isCompVote` now uses `r.CompVoteKeywords` instead of hardcoded patterns
+- `Rules` struct: new `CompVoteKeywords []string` field (JSON: `comp_vote_keywords`)
+- `DefaultRules()` adds "remuneration" and "advisory vote on pay" to the default set
+- `entity-graph-rules.json`: updated with the expanded keyword list
+- 2 new tests: default keywords, custom keyword override
+
+**New Rules fields (all hot-reloadable via `config/entity-graph-rules.json`)**
+- `comp_vote_keywords` — list of lowercase substrings identifying advisory comp votes
+- `min_board_decay_count` — threshold for board_decay_concern (default 3)
+- `board_decay_concern_window_days` — lookback window (default 730)
+
+### signalapi: earnings calendar endpoint
+
+- Fixed pre-existing build failure: `handleEarningsCalendar` was registered but never implemented
+- `GET /v1/earnings-calendar` — returns earnings dates from `earningscal.Store`
+  with optional filters: `ticker`, `from`, `to`, `status`, `upcoming=1`, `limit`
+- Returns 503 when `EarningsCal` store is not configured (optional feature)
+
+### Documentation
+
+- README: added **Environment Variables** table covering all 20 env vars across all processes
+  (addresses outstanding Emily observation 2026-05-31T204315Z)
+
 ## 2026-06-01 — guidance feed: extractor, watcher, newssite section /section/guidance
 
 ### Forward guidance pipeline

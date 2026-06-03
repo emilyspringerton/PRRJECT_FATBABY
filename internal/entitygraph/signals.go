@@ -35,6 +35,7 @@ const (
 	SignalDirectorLink           SignalType = "director_link"
 	SignalGovernanceHealth       SignalType = "governance_health_index"
 	SignalAbstentionOutlier      SignalType = "abstention_outlier"
+	SignalBoardDecayConcern      SignalType = "board_decay_concern"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -54,6 +55,7 @@ var AllSignalTypes = []SignalType{
 	SignalDirectorLink,
 	SignalGovernanceHealth,
 	SignalAbstentionOutlier,
+	SignalBoardDecayConcern,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -380,7 +382,7 @@ func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rul
 		}
 
 		// Compensation concern: advisory comp vote with high opposition.
-		if isCompVote(p.Description) {
+		if isCompVote(p.Description, r) {
 			againstPct := float64(p.AgainstVotes) / float64(total)
 			if againstPct >= r.CompExecAlertThreshold {
 				out = append(out, Signal{
@@ -559,9 +561,83 @@ func ScoreDirectorLinks(graph *Graph, allSignals []Signal) []Signal {
 	return out
 }
 
-func isCompVote(desc string) bool {
+// isCompVote returns true when a proposal description matches any of the
+// configured compensation-vote keywords. Uses r.CompVoteKeywords, which is
+// configurable in entity-graph-rules.json so operators can add jurisdiction-
+// specific phrasings (e.g. "remuneration") without a code change.
+// ScoreBoardDecayConcern fires when r.MinBoardDecayCount or more distinct
+// directors at a ticker have active director_decay signals within
+// r.BoardDecayConcernWindowDays. A board with multiple simultaneously-declining
+// directors is a stronger predictor of activist intervention than any single
+// director's decline — it suggests systematic compensation misalignment,
+// repeated proxy-advisor downgrades, or a brewing governance crisis.
+//
+// Severity:
+//   - >= 2×MinBoardDecayCount decaying directors → high
+//   - >= MinBoardDecayCount              → medium
+func ScoreBoardDecayConcern(ticker string, allSignals []Signal, r Rules) *Signal {
+	minCount := r.MinBoardDecayCount
+	if minCount <= 0 {
+		minCount = 3
+	}
+	windowDays := r.BoardDecayConcernWindowDays
+	if windowDays <= 0 {
+		windowDays = 730
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
+
+	// Count distinct decaying directors (by entity name) at this ticker.
+	decayingDirectors := map[string]bool{}
+	for _, s := range allSignals {
+		if s.Type != SignalDirectorDecay || s.Ticker != ticker || s.Entity == "" {
+			continue
+		}
+		effectiveDate := s.FilingDate
+		if effectiveDate == "" {
+			effectiveDate = s.DetectedAt
+		}
+		if effectiveDate < cutoff {
+			continue
+		}
+		decayingDirectors[strings.ToLower(s.Entity)] = true
+	}
+
+	n := len(decayingDirectors)
+	if n < minCount {
+		return nil
+	}
+
+	sev := SeverityMedium
+	conf := 0.72
+	if n >= minCount*2 {
+		sev = SeverityHigh
+		conf = 0.80
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	return &Signal{
+		SignalID:       fmt.Sprintf("board_decay_concern_%s_%s", strings.ToLower(ticker), today),
+		Type:           SignalBoardDecayConcern,
+		Ticker:         ticker,
+		Severity:       sev,
+		Confidence:     conf,
+		Score:          float64(n) / float64(minCount), // normalised count
+		DetectedAt:     today,
+		ValidThrough:   nextYear,
+		Interpretation: fmt.Sprintf("%d directors at %s show declining approval trends within the past %d days (threshold: %d). Concurrent board-wide decay suggests systematic governance concerns — proxy-advisor widespread downgrades or compensation misalignment across nominees.", n, ticker, windowDays, minCount),
+		Metadata:       map[string]string{"decaying_director_count": fmt.Sprintf("%d", n)},
+	}
+}
+
+func isCompVote(desc string, r Rules) bool {
 	dl := strings.ToLower(desc)
-	return strings.Contains(dl, "compensation") || strings.Contains(dl, "executive") || strings.Contains(dl, "say-on-pay")
+	for _, kw := range r.CompVoteKeywords {
+		if strings.Contains(dl, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	return false
 }
 
 // ScoreGovernanceHealth computes a composite governance health index for a ticker
@@ -593,6 +669,7 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalBrokerNonVoteAnomaly:   0.05,
 		SignalAbstentionSpike:        0.05,
 		SignalAbstentionOutlier:      0.05,
+		SignalBoardDecayConcern:      0.15,
 	}
 
 	score := 1.0

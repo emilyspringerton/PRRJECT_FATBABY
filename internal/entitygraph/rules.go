@@ -80,6 +80,22 @@ type Rules struct {
 	// distinct from the across-the-board abstention_spike on proposals.
 	// Default 2.5. Set to 0 to use default.
 	AbstentionOutlierMultiplier float64 `json:"abstention_outlier_multiplier"`
+
+	// CompVoteKeywords is the set of lowercase substrings that identify an advisory
+	// compensation vote in a proposal description. Matched case-insensitively.
+	// Default: ["compensation", "executive", "say-on-pay"].
+	// Override to add "remuneration", jurisdiction-specific phrasings, etc.
+	CompVoteKeywords []string `json:"comp_vote_keywords"`
+
+	// MinBoardDecayCount is the minimum number of distinct directors at a ticker
+	// with active decay signals to trigger a board_decay_concern composite signal.
+	// Default 3.
+	MinBoardDecayCount int `json:"min_board_decay_count"`
+
+	// BoardDecayConcernWindowDays is the lookback window (in days) used by
+	// ScoreBoardDecayConcern when counting concurrent director_decay signals.
+	// Default 730 (2 proxy seasons).
+	BoardDecayConcernWindowDays int `json:"board_decay_concern_window_days"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -100,6 +116,9 @@ func DefaultRules() Rules {
 		GovernanceHealthWindowDays:    365,
 		AccelerationDecayPPThreshold:  4.0,
 		AbstentionOutlierMultiplier:   2.5,
+		CompVoteKeywords:              []string{"compensation", "executive", "say-on-pay", "remuneration", "advisory vote on pay"},
+		MinBoardDecayCount:            3,
+		BoardDecayConcernWindowDays:   730,
 	}
 }
 
@@ -162,6 +181,15 @@ func LoadRules(path string) Rules {
 	}
 	if r.AbstentionOutlierMultiplier == 0 {
 		r.AbstentionOutlierMultiplier = defaults.AbstentionOutlierMultiplier
+	}
+	if len(r.CompVoteKeywords) == 0 {
+		r.CompVoteKeywords = defaults.CompVoteKeywords
+	}
+	if r.MinBoardDecayCount == 0 {
+		r.MinBoardDecayCount = defaults.MinBoardDecayCount
+	}
+	if r.BoardDecayConcernWindowDays == 0 {
+		r.BoardDecayConcernWindowDays = defaults.BoardDecayConcernWindowDays
 	}
 	return r
 }

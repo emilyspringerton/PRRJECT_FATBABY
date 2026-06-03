@@ -9,19 +9,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
 // ServerConfig configures the signal API server.
 type ServerConfig struct {
-	Addr         string
-	Index        *signalindex.Index
-	Logger       *log.Logger
-	APIKeys      []string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	MaxLimit     int
+	Addr            string
+	Index           *signalindex.Index
+	EarningsCal     *earningscal.Store  // optional; enables /v1/earnings-calendar
+	Logger          *log.Logger
+	APIKeys         []string
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	MaxLimit        int
 	// IDUNAVerifier is an optional IDUNA JWT verifier. When non-nil, the server
 	// accepts Bearer JWTs issued by IDUNA in addition to (not instead of) static
 	// API keys. Callers with an IDUNA JWT and no API key are admitted if the
@@ -53,6 +55,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/health", s.withMiddleware(s.handleHealth))
 	mux.HandleFunc("/v1/signals", s.withMiddleware(s.handleSummary))
 	mux.HandleFunc("/v1/signals/", s.withMiddleware(s.dispatchSignals))
+	mux.HandleFunc("/v1/earnings-calendar", s.withMiddleware(s.handleEarningsCalendar))
 	return &http.Server{Addr: cfg.Addr, Handler: mux, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
 }
 
@@ -158,6 +161,68 @@ func (s *server) handleSummary(http.ResponseWriter, *http.Request) (int, any) {
 	tickers := len(summary)
 	return http.StatusOK, map[string]any{"tickers": tickers, "total_signals": s.cfg.Index.Depth(), "index_depth": s.cfg.Index.Depth(), "latest_seq": s.cfg.Index.LatestSeq(), "summary": summary}
 }
+// handleEarningsCalendar serves GET /v1/earnings-calendar.
+// Query params:
+//   ticker   — comma-separated ticker filter (e.g. "AAPL,MSFT")
+//   from     — YYYY-MM-DD lower bound on ReportDate (inclusive)
+//   to       — YYYY-MM-DD upper bound on ReportDate (inclusive)
+//   status   — comma-separated status filter (confirmed|announced|backfilled)
+//   upcoming — "1" to return only future dates (>= today); overrides from
+//   limit    — max results (default 50, capped at MaxLimit)
+//
+// Returns 503 when the EarningsCal store is not configured.
+func (s *server) handleEarningsCalendar(_ http.ResponseWriter, r *http.Request) (int, any) {
+	if s.cfg.EarningsCal == nil {
+		return http.StatusServiceUnavailable, map[string]string{"error": "earnings calendar not configured"}
+	}
+	q := r.URL.Query()
+
+	var tickers []string
+	if t := strings.TrimSpace(q.Get("ticker")); t != "" {
+		for _, p := range strings.Split(t, ",") {
+			if p = strings.TrimSpace(strings.ToUpper(p)); p != "" {
+				tickers = append(tickers, p)
+			}
+		}
+	}
+	var statuses []string
+	if st := strings.TrimSpace(q.Get("status")); st != "" {
+		for _, p := range strings.Split(st, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				statuses = append(statuses, p)
+			}
+		}
+	}
+
+	from := strings.TrimSpace(q.Get("from"))
+	to := strings.TrimSpace(q.Get("to"))
+	if q.Get("upcoming") == "1" {
+		today := time.Now().UTC().Format("2006-01-02")
+		if from == "" || from < today {
+			from = today
+		}
+	}
+
+	limit := 50
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > s.cfg.MaxLimit {
+		limit = s.cfg.MaxLimit
+	}
+
+	results := s.cfg.EarningsCal.Query(tickers, from, to, statuses)
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return http.StatusOK, map[string]any{
+		"count":    len(results),
+		"calendar": results,
+	}
+}
+
 func (s *server) handleHealth(http.ResponseWriter, *http.Request) (int, any) {
 	summary := s.cfg.Index.Summary()
 	return http.StatusOK, map[string]any{"ok": true, "index_depth": s.cfg.Index.Depth(), "tickers": len(summary), "latest_seq": s.cfg.Index.LatestSeq(), "uptime_seconds": int(time.Since(s.started).Seconds())}
