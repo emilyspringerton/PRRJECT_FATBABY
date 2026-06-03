@@ -1,0 +1,21 @@
+{
+  "observation_summary": "Entity graph RSI: board_decay_concern composite signal, configurable comp-vote keywords, earnings calendar API endpoint, README env vars",
+  "observation_timestamp": "2026-05-31T21:28:48Z",
+  "run_started_at": "2026-06-03T00:00:00Z",
+  "run_completed_at": "2026-06-03T00:45:00Z",
+  "source_repo": "prrject-fatbaby",
+  "apple_type": "improvement",
+  "files_changed": [
+    "CHANGELOG.md",
+    "README.md",
+    "config/entity-graph-rules.json",
+    "internal/apiserver/server.go",
+    "internal/entitygraph/rules.go",
+    "internal/entitygraph/signals.go",
+    "internal/entitygraph/signals_test.go"
+  ],
+  "actions_taken": "Addressed Emily Prime task 'use RSI to improve entity graph stuff' plus two outstanding Emily observations. (1) New board_decay_concern composite signal: ScoreBoardDecayConcern fires when >=MinBoardDecayCount distinct directors at a ticker have concurrent director_decay signals within BoardDecayConcernWindowDays; severity escalates to high at 2x threshold; added to AllSignalTypes and governance health penalties (-0.15). (2) isCompVote now uses rules-configurable CompVoteKeywords instead of hardcoded strings; default set expanded to include 'remuneration' and 'advisory vote on pay'; entity-graph-rules.json updated. (3) Fixed pre-existing build failure in internal/apiserver: handleEarningsCalendar was registered but never implemented; added GET /v1/earnings-calendar with ticker/from/to/status/upcoming/limit filters. (4) README: added complete environment variables table covering all 20 env vars across all processes — addresses Emily observation 2026-05-31T204315Z. Total: 12 new tests, all go test ./... pass.",
+  "git_commit_hash": "2c629e8",
+  "exit_status": "success",
+  "notes": "Emily Prime task task-1780262928213779380 addressed. Outstanding Emily observations: 2026-05-31T204315Z (README env vars) — resolved. 2026-05-31T205645Z (observation-watcher prompt injection) — already resolved in prior session (runReportFooter function present). 2026-05-31T213750Z (claude PATH fix) — already resolved in prior session (resolveCmd function present). 2026-05-31T210630Z (ticker watchlist expansion) — already resolved in prior session (50-ticker watchlist). IDUNA Apples loop-close test pending DB migration deployment."
+}
