@@ -106,17 +106,51 @@ Emiree holds state and strategy. Emily Prime acts on the surface. Each feeds the
 
 Neither loop has an off switch. Both are always running. The audit trail is what makes always-running safe.
 
+## IDUNA — The Trust Root
+
+All agents authenticate through IDUNA (`github.com/emilyspringerton/IDUNA`). IDUNA is the Platform IAM and Governance Service for the entire EINHORN_INDUSTRIAL ecosystem. It is intentionally not owned by any single agent.
+
+### Why IDUNA is not agent-owned
+
+If any agent owned IDUNA, it could escalate its own privileges. IDUNA is shared infrastructure. Its bootstrap is config-as-code in `IDUNA/config/agents.json` — agent permissions are declared in git and applied by a narrow one-shot CLI tool (`IDUNA/cmd/bootstrap`), not set by an agent at runtime.
+
+### Agent identity model
+
+Agents authenticate via M2M credential (`agent_name` + `agent_secret` → ES256 JWT from IDUNA). They do **not** inherit permissions via roles — only explicit grants from `agent_permissions`. This is minimum-necessary-authority by design.
+
+| Agent | IDUNA permissions | Notes |
+|---|---|---|
+| EMILY-PRIME | `emily-prime.operator`, `fatbaby.operator`, `governance.admin` | CEO surface, meta-orchestrator |
+| FATBABY-EMILY | `fatbaby.operator`, `governance.admin`, `secwatch.execute` | Domain signal intelligence |
+| EMIREE | `emily-prime.operator`, `emiree.super`, `fatbaby.operator` | State engine, peer loop |
+| JON | `fatbaby.operator`, `signalapi.read`, `jon.setups.write` | Options strategist |
+| BOB | `bob.db.admin` | DB admin only, IDUNA-scoped |
+
+### Bootstrap sequence
+
+See `docs/system-bootstrap.md` for the full startup sequence. The short version:
+
+```
+MYSQL_DSN=... go run ./cmd/bootstrap   # in IDUNA repo
+source var/agent-secrets.env
+go run .                                # start IDUNA
+# then start individual agents with their IDUNA_AGENT_SECRET
+```
+
 ## Repository Implementation Map
 
 | Governance concept | Current repository surface |
 | --- | --- |
-| FatBaby-Emily observations | `var/emily-observations/latest.json` at runtime; `emily/observations.md` for human-readable snapshots. |
+| FatBaby-Emily observations | `var/emily-observations/latest.json` at runtime; committed archive siblings. |
 | Observation publishing to Emily Prime | `fatbaby_commit_to_prime` writes structured observations into the Emily Prime integration layer. |
-| Emily Prime directives to FatBaby-Emily | `cmd/observation-watcher` can poll an Emily Prime task directory and turn directed JSON tasks into Claude Code prompts. |
+| Emily Prime directives to FatBaby-Emily | `cmd/observation-watcher` polls an Emily Prime task directory and turns directed JSON tasks into Claude Code prompts. |
 | Financial signal pipeline | `secwatch`, `prwatch`, `processor`, `entity-graph`, `signalapi`, `feedserver`, `newssite`, and related commands. |
 | Hot-reloadable signal heuristics | `config/entity-graph-rules.json`. |
-| Agent surface behavior | `cmd/emily-agent`. |
+| Agent surface behavior | `cmd/emily-agent` (FatBaby-Emily), `cmd/jon-agent` (Jon Stockwell). |
 | Recursive refinement trigger | `cmd/observation-watcher`. |
+| IAM and agent registry | `IDUNA` repo — `config/agents.json`, `cmd/bootstrap`, `cmd/bob-agent`. |
+| System startup | `docs/system-bootstrap.md`. |
+| Next data sources | `docs/next-dataset-report.md`. |
 
 ## What Success Looks Like
 
