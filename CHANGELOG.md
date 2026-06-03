@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-03 — Jon Stockwell agent (cmd/jon-agent)
+
+### Jon Stockwell — Options Strategist Agent
+
+New agent: `go run ./cmd/jon-agent` — Jon Stockwell, options strategist for EINHORN_INDUSTRIAL.
+
+**System prompt**: distilled from docs/jon.md. Jon applies divergence analysis across fatbaby
+pipeline data to surface options trade setups. Core doctrine: protect capital, patience before
+the thesis, audacity on entry, ruthlessness on exit, edge in the divergence.
+
+**FatBaby pipeline tools** (reads live data):
+- `jon_governance_signals` — entity-graph signals (director friction, board decay, activist risk, governance health)
+- `jon_eps_status` — EPS oracle precision and recent extractions
+- `jon_read_press_releases` — press release bodies from prwatch pipeline
+- `jon_read_filings` — 8-K source documents from secwatch pipeline
+- `jon_read_guidance` — forward guidance signals (raises/lowers/maintains)
+
+**Setup audit trail**:
+- `jon_log_setup` — logs structured trade setup to var/jon-setups/setups.ndjson
+- `jon_read_setups` — reads logged setups with ticker/status filtering
+- `jon_publish_to_prime` — surfaces high-conviction setups to Emily Prime's integration layer
+
+**Market data stubs** (wired up once MARKET_DATA_API_KEY + MARKET_DATA_PROVIDER set):
+- `jon_options_chain`, `jon_price_data`, `jon_iv_rank` — return clear "not connected" messages
+- `jon_expected_move` — pure-math calculator (price × IV × sqrt(DTE/365)) — works immediately
+
+**HTTP endpoints**: GET / (dark-themed web UI), POST /chat (interactive), POST /scan (autonomous divergence sweep)
+
+**Wired into Emily**: jon-agent added to `fatbaby_start_process`, `fatbaby_stop_process`, and `fatbaby_process_status` tools.
+
+**Tests**: 8 new tests — expected move math, bad input, market data stubs, setup audit log CRUD, ticker filtering, publish-to-prime.
+
 ## 2026-06-03 — test coverage: schd13-watcher, newssite earnings calendar, commentary, guidanceread
 
 ### schd13-watcher tests (0 → 6)

@@ -30,6 +30,7 @@ impact analysis), and streams them via SSE dashboard and a TCP feed server.
 | eps-processor | `go run ./cmd/eps-processor` | Extracts EPS from press releases, writes oracle cases + articles |
 | eps-reconciler | `go run ./cmd/eps-reconciler` | Reconciles oracle cases against filed 8-K EPS (confirms/contradicts) |
 | guidance-watcher | `go run ./cmd/guidance-watcher` | Extracts forward guidance (raises/lowers/maintains) from press releases |
+| jon-agent | `go run ./cmd/jon-agent` | Jon Stockwell options strategist — divergence analysis across pipeline signals, surfaces options setups on :8084 |
 
 Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log`.
 
