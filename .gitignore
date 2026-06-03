@@ -19,6 +19,8 @@
 /newssite
 /emily-agent
 /observation-watcher
+/guidance-watcher
+/earnings-calendar
 
 # Local env / editor noise.
 .env
