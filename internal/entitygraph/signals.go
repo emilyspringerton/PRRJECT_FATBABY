@@ -36,6 +36,10 @@ const (
 	SignalGovernanceHealth       SignalType = "governance_health_index"
 	SignalAbstentionOutlier      SignalType = "abstention_outlier"
 	SignalBoardDecayConcern      SignalType = "board_decay_concern"
+	SignalInsiderBuy             SignalType = "insider_buy"
+	SignalInsiderSellCluster     SignalType = "insider_sell_cluster"
+	SignalGovernanceDeterioration SignalType = "governance_deteriorating"
+	SignalGovernanceImproving    SignalType = "governance_improving"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -56,6 +60,10 @@ var AllSignalTypes = []SignalType{
 	SignalGovernanceHealth,
 	SignalAbstentionOutlier,
 	SignalBoardDecayConcern,
+	SignalInsiderBuy,
+	SignalInsiderSellCluster,
+	SignalGovernanceDeterioration,
+	SignalGovernanceImproving,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -670,6 +678,8 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalAbstentionSpike:        0.05,
 		SignalAbstentionOutlier:      0.05,
 		SignalBoardDecayConcern:      0.15,
+		SignalInsiderSellCluster:     0.12,
+		SignalGovernanceDeterioration: 0.08,
 	}
 
 	score := 1.0
@@ -742,6 +752,76 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		DetectedAt:     today,
 		ValidThrough:   nextYear,
 		Interpretation: interp,
+	}
+}
+
+// ScoreGovernanceHealthTrend compares the current governance health score to the
+// previous score for the same ticker and emits a trend signal when the delta is
+// meaningful (|delta| >= minDelta, default 0.10).
+//
+// A negative delta (deterioration) emits governance_deteriorating with the
+// magnitude encoded in the score field.
+// A positive delta (improvement) emits governance_improving.
+//
+// Returns nil when the delta is below the threshold or either score is zero.
+func ScoreGovernanceHealthTrend(ticker string, currentScore, previousScore, minDelta float64) *Signal {
+	if minDelta <= 0 {
+		minDelta = 0.10
+	}
+	if currentScore <= 0 || previousScore <= 0 {
+		return nil
+	}
+	delta := currentScore - previousScore
+	if delta >= -minDelta && delta <= minDelta {
+		return nil // no meaningful change
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+
+	if delta < 0 {
+		// Governance is getting worse.
+		absDelta := -delta
+		sev := SeverityMedium
+		conf := 0.72
+		if absDelta >= 0.20 {
+			sev = SeverityHigh
+			conf = 0.80
+		}
+		return &Signal{
+			SignalID:     fmt.Sprintf("governance_deteriorating_%s_%s", strings.ToLower(ticker), today),
+			Type:         SignalGovernanceDeterioration,
+			Ticker:       ticker,
+			Severity:     sev,
+			Confidence:   conf,
+			Score:        absDelta,
+			DetectedAt:   today,
+			ValidThrough: nextYear,
+			Interpretation: fmt.Sprintf("Governance health index for %s deteriorated by %.2f (%.2f → %.2f). Worsening governance trajectory; monitor for escalating activist risk.", ticker, absDelta, previousScore, currentScore),
+			Metadata: map[string]string{
+				"previous_score": fmt.Sprintf("%.3f", previousScore),
+				"current_score":  fmt.Sprintf("%.3f", currentScore),
+				"delta":          fmt.Sprintf("%.3f", delta),
+			},
+		}
+	}
+
+	// Governance is improving.
+	return &Signal{
+		SignalID:     fmt.Sprintf("governance_improving_%s_%s", strings.ToLower(ticker), today),
+		Type:         SignalGovernanceImproving,
+		Ticker:       ticker,
+		Severity:     SeverityLow,
+		Confidence:   0.68,
+		Score:        delta,
+		DetectedAt:   today,
+		ValidThrough: nextYear,
+		Interpretation: fmt.Sprintf("Governance health index for %s improved by %.2f (%.2f → %.2f). Positive governance trajectory; activist pressure may be easing.", ticker, delta, previousScore, currentScore),
+		Metadata: map[string]string{
+			"previous_score": fmt.Sprintf("%.3f", previousScore),
+			"current_score":  fmt.Sprintf("%.3f", currentScore),
+			"delta":          fmt.Sprintf("%.3f", delta),
+		},
 	}
 }
 

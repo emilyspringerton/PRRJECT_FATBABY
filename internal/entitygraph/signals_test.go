@@ -807,3 +807,63 @@ func TestScoreGovernanceHealth_FilingDateFallback(t *testing.T) {
 		t.Errorf("score = %.2f: old DetectedAt signal should be excluded; only high_trust bonus applies", sig.Score)
 	}
 }
+
+// ── ScoreGovernanceHealthTrend tests ─────────────────────────────────────────
+
+func TestScoreGovernanceHealthTrend_Deteriorating(t *testing.T) {
+	sig := ScoreGovernanceHealthTrend("SCHW", 0.35, 0.60, 0.10)
+	if sig == nil {
+		t.Fatal("expected deterioration signal, got nil")
+	}
+	if sig.Type != SignalGovernanceDeterioration {
+		t.Errorf("type: want %s got %s", SignalGovernanceDeterioration, sig.Type)
+	}
+	if sig.Score < 0.24 || sig.Score > 0.26 {
+		t.Errorf("score should be ~0.25 (delta magnitude), got %.3f", sig.Score)
+	}
+}
+
+func TestScoreGovernanceHealthTrend_Improving(t *testing.T) {
+	sig := ScoreGovernanceHealthTrend("AAPL", 0.80, 0.60, 0.10)
+	if sig == nil {
+		t.Fatal("expected improvement signal, got nil")
+	}
+	if sig.Type != SignalGovernanceImproving {
+		t.Errorf("type: want %s got %s", SignalGovernanceImproving, sig.Type)
+	}
+}
+
+func TestScoreGovernanceHealthTrend_BelowThreshold(t *testing.T) {
+	// Delta of 0.05 < minDelta of 0.10 — should return nil.
+	if sig := ScoreGovernanceHealthTrend("GE", 0.55, 0.50, 0.10); sig != nil {
+		t.Errorf("expected nil for below-threshold delta, got %+v", sig)
+	}
+}
+
+func TestScoreGovernanceHealthTrend_DefaultMinDelta(t *testing.T) {
+	// 0 minDelta should use default 0.10.
+	if sig := ScoreGovernanceHealthTrend("GE", 0.52, 0.50, 0); sig != nil {
+		t.Errorf("expected nil for small delta with default threshold")
+	}
+	if sig := ScoreGovernanceHealthTrend("GE", 0.30, 0.55, 0); sig == nil {
+		t.Error("expected signal for large delta with default threshold")
+	}
+}
+
+func TestScoreGovernanceHealthTrend_ZeroScore(t *testing.T) {
+	// Zero scores — no data, should return nil.
+	if sig := ScoreGovernanceHealthTrend("GE", 0, 0.55, 0.10); sig != nil {
+		t.Error("expected nil when current score is 0")
+	}
+}
+
+func TestScoreGovernanceHealthTrend_HighSeverityDrop(t *testing.T) {
+	// Drop of 0.25 (≥0.20) should be high severity.
+	sig := ScoreGovernanceHealthTrend("SCHW", 0.20, 0.55, 0.10)
+	if sig == nil {
+		t.Fatal("expected signal")
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("want high severity for large drop, got %s", sig.Severity)
+	}
+}

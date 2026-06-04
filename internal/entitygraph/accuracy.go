@@ -218,3 +218,58 @@ func WriteAccuracyRecords(dir string, records []AccuracyRecord) error {
 		return nil
 	})
 }
+
+// ── Governance health history ─────────────────────────────────────────────────
+// The health history tracks the most recent governance_health_index score per
+// ticker so ScoreGovernanceHealthTrend can compare the new score to the previous
+// one and emit deterioration/improvement signals.
+
+// HealthSnapshot is one entry in the health history file.
+type HealthSnapshot struct {
+	Ticker    string  `json:"ticker"`
+	Score     float64 `json:"score"`
+	RecordedAt string `json:"recorded_at"` // YYYY-MM-DD
+}
+
+// LoadHealthHistory reads the latest snapshot per ticker from
+// <dir>/health_history.ndjson. Returns an empty map when the file doesn't exist.
+func LoadHealthHistory(dir string) (map[string]HealthSnapshot, error) {
+	p := filepath.Join(dir, "health_history.ndjson")
+	f, err := os.Open(p)
+	if os.IsNotExist(err) {
+		return map[string]HealthSnapshot{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open health_history: %w", err)
+	}
+	defer f.Close()
+
+	// Keep only the most recent entry per ticker (last-write-wins).
+	latest := map[string]HealthSnapshot{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var s HealthSnapshot
+		if json.Unmarshal(sc.Bytes(), &s) == nil && s.Ticker != "" {
+			latest[s.Ticker] = s
+		}
+	}
+	return latest, sc.Err()
+}
+
+// AppendHealthSnapshot appends new health snapshots to <dir>/health_history.ndjson.
+// Callers pass the current scores after a processing batch. The file is
+// append-only; LoadHealthHistory handles last-write-wins deduplication.
+func AppendHealthSnapshot(dir string, snapshots []HealthSnapshot) error {
+	if len(snapshots) == 0 {
+		return nil
+	}
+	return appendNDJSON(filepath.Join(dir, "health_history.ndjson"), func(enc *json.Encoder) error {
+		for i := range snapshots {
+			if err := enc.Encode(&snapshots[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

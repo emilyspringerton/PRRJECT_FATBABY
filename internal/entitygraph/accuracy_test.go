@@ -193,3 +193,51 @@ func TestBuildAccuracyReports_NoPrecisionWithOnlyPending(t *testing.T) {
 		t.Errorf("precision should be 0 when no resolved predictions, got %.3f", reports[0].Precision)
 	}
 }
+
+// ── Health history tests ──────────────────────────────────────────────────────
+
+func TestAppendAndLoadHealthHistory(t *testing.T) {
+	dir := t.TempDir()
+	snapshots := []HealthSnapshot{
+		{Ticker: "SCHW", Score: 0.42, RecordedAt: "2026-06-01"},
+		{Ticker: "AAPL", Score: 0.88, RecordedAt: "2026-06-01"},
+	}
+	if err := AppendHealthSnapshot(dir, snapshots); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	hist, err := LoadHealthHistory(dir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(hist) != 2 {
+		t.Fatalf("want 2 tickers, got %d", len(hist))
+	}
+	if hist["SCHW"].Score != 0.42 {
+		t.Errorf("SCHW score: want 0.42, got %.3f", hist["SCHW"].Score)
+	}
+	if hist["AAPL"].Score != 0.88 {
+		t.Errorf("AAPL score: want 0.88, got %.3f", hist["AAPL"].Score)
+	}
+}
+
+func TestLoadHealthHistory_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	hist, err := LoadHealthHistory(dir)
+	if err != nil {
+		t.Fatalf("unexpected error for missing file: %v", err)
+	}
+	if len(hist) != 0 {
+		t.Errorf("want empty map, got %d entries", len(hist))
+	}
+}
+
+func TestLoadHealthHistory_LastWriteWins(t *testing.T) {
+	dir := t.TempDir()
+	// Write old score then update.
+	AppendHealthSnapshot(dir, []HealthSnapshot{{Ticker: "SCHW", Score: 0.50, RecordedAt: "2026-05-01"}})
+	AppendHealthSnapshot(dir, []HealthSnapshot{{Ticker: "SCHW", Score: 0.35, RecordedAt: "2026-06-01"}})
+	hist, _ := LoadHealthHistory(dir)
+	if hist["SCHW"].Score != 0.35 {
+		t.Errorf("last-write-wins: want 0.35, got %.3f", hist["SCHW"].Score)
+	}
+}

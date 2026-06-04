@@ -255,9 +255,10 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		"signalapi":           {"-store", "./var/secwatch"},
 		"feedserver":          {"-store", "./var/secwatch"},
 		"jon-agent":           {},
+		"form4-watcher":       {"-watchlist", "./config/watchlist.json", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/form4"},
 	}
 
-	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|observation-watcher|signalapi|feedserver|jon-agent"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
+	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|observation-watcher|signalapi|feedserver|jon-agent|form4-watcher"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
 		pn, _ := args["process_name"].(string)
 		ea, _ := args["extra_args"].(string)
 		def, ok := valid[pn]
@@ -385,11 +386,11 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		return string(b), nil
 	})
 
-	d.Register(ToolDef{Name: "fatbaby_process_status", Description: "Check if fatbaby pipeline processes are running. Covers all processes: secwatch, prwatch, prwatch-body, processor, entity-graph, eps-processor, eps-reconciler, schd13-watcher, observation-watcher, dashboard, newssite, signalapi, feedserver, jon-agent.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
+	d.Register(ToolDef{Name: "fatbaby_process_status", Description: "Check if fatbaby pipeline processes are running. Covers all processes: secwatch, prwatch, prwatch-body, processor, entity-graph, eps-processor, eps-reconciler, schd13-watcher, form4-watcher, observation-watcher, dashboard, newssite, signalapi, feedserver, jon-agent.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{}}}, func(args map[string]any) (string, error) {
 		names := []string{
 			"cmd/secwatch", "cmd/prwatch", "cmd/prwatch-body", "cmd/processor",
 			"cmd/entity-graph", "cmd/eps-processor", "cmd/eps-reconciler",
-			"cmd/schd13-watcher", "cmd/observation-watcher",
+			"cmd/schd13-watcher", "cmd/form4-watcher", "cmd/observation-watcher",
 			"cmd/dashboard", "cmd/newssite", "cmd/signalapi", "cmd/feedserver",
 			"cmd/jon-agent",
 		}

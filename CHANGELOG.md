@@ -2,6 +2,49 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-04 — Form 4 insider watcher + governance health trend signal
+
+### New: `cmd/form4-watcher`
+
+Polls SEC EDGAR submissions API for Form 4 (Statement of Changes in Beneficial Ownership) filings for every watchlisted CIK. Fetches Form 4 XML documents, parses non-derivative transactions, and emits conviction signals to the entity-graph signal store.
+
+- Writes raw transactions to `var/form4/transactions.ndjson` (deduped by accession number)
+- Respects EDGAR rate limit (200ms between document fetches)
+- De-duplicates across poll cycles via accession number set
+- Flags: `-watchlist`, `-graph-dir`, `-out-dir`, `-lookback`, `-one-shot`, `-dry-run`
+- Wired into Emily: `fatbaby_start_process form4-watcher`, included in `fatbaby_process_status`
+
+### New: `internal/insider` package
+
+Form 4 XML parser and signal scorer.
+
+- `ParseForm4XML`: parses SEC Form 4 XML (nonDerivativeTable); handles BOM, empty tables, malformed docs
+- `InsiderTransaction`: typed record with role (IsOfficer/IsDirector/IsTenPct), code, shares, price, value
+- `TransactionCode.IsConviction()`: true only for P (purchase) and S (sale) — awards/exercises/gifts excluded
+- `ScoreInsiderActivity`: produces conviction signals from a transaction window:
+  - `insider_sell_cluster`: ≥3 distinct officers/directors sold within any 30-day rolling window — high severity
+  - `insider_buy`: open-market purchase by C-level officer (CEO/CFO/COO/CTO/General Counsel) or any insider ≥$100k
+
+### New: `ScoreGovernanceHealthTrend` (entitygraph/signals.go)
+
+Compares the current governance health index score to the previous stored score and emits a trend signal when the delta exceeds 0.10:
+- `governance_deteriorating`: score dropped — medium severity (high if drop ≥0.20)
+- `governance_improving`: score rose — low severity
+
+Wired into `ScoreGovernanceHealth` penalty map: `insider_sell_cluster` penalises health by -0.12, `governance_deteriorating` by -0.08.
+
+### New: health history persistence (entitygraph/accuracy.go)
+
+`HealthSnapshot`, `AppendHealthSnapshot`, `LoadHealthHistory` — append-only NDJSON file at `var/entity-graph/health_history.ndjson`. Last-write-wins per ticker for trend comparison.
+
+### New signal types
+
+`insider_buy`, `insider_sell_cluster`, `governance_deteriorating`, `governance_improving` added to `AllSignalTypes`.
+
+### Tests
+
+25 new tests across `internal/insider` (10), `internal/entitygraph/signals_test.go` (6 trend tests), `internal/entitygraph/accuracy_test.go` (3 health history tests). All passing.
+
 ## 2026-06-03 — Jon Stockwell agent (cmd/jon-agent)
 
 ### Jon Stockwell — Options Strategist Agent
