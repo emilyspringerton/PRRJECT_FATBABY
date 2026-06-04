@@ -255,10 +255,11 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		"signalapi":           {"-store", "./var/secwatch"},
 		"feedserver":          {"-store", "./var/secwatch"},
 		"jon-agent":           {},
-		"form4-watcher":       {"-watchlist", "./config/watchlist.json", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/form4"},
+		"form4-watcher":    {"-watchlist", "./config/watchlist.json", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/form4"},
+		"dividend-watcher": {"-discovery-store", "./var/prwatch", "-body-store", "./var/prwatch-body", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/dividends"},
 	}
 
-	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|observation-watcher|signalapi|feedserver|jon-agent|form4-watcher"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
+	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|observation-watcher|signalapi|feedserver|jon-agent|form4-watcher|dividend-watcher"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
 		pn, _ := args["process_name"].(string)
 		ea, _ := args["extra_args"].(string)
 		def, ok := valid[pn]
@@ -393,6 +394,8 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			"cmd/schd13-watcher", "cmd/form4-watcher", "cmd/observation-watcher",
 			"cmd/dashboard", "cmd/newssite", "cmd/signalapi", "cmd/feedserver",
 			"cmd/jon-agent",
+			"cmd/form4-watcher",
+			"cmd/dividend-watcher",
 		}
 		type ps struct {
 			Name    string `json:"name"`

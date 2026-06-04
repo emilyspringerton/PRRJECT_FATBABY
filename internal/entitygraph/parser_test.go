@@ -259,3 +259,154 @@ func findSubstring(s, sub string) bool {
 	}
 	return false
 }
+
+// ── Item 5.02 tests ───────────────────────────────────────────────────────────
+
+func TestParseItem502_CFOResignation(t *testing.T) {
+	text := `
+Item 5.02. Departure of Directors or Certain Officers; Election of Directors.
+
+On June 1, 2026, Jane Smith notified the Company of her resignation as Chief Financial Officer, 
+effective June 15, 2026. The Company has initiated a search for a successor.
+`
+	result, err := ParseItem502(text)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Departures) == 0 {
+		t.Fatal("expected at least one departure")
+	}
+	dep := result.Departures[0]
+	if dep.DepartureType != DepartureResignation {
+		t.Errorf("departure type: want resignation, got %s", dep.DepartureType)
+	}
+	if !dep.Voluntary {
+		t.Error("resignation should be voluntary")
+	}
+	if !contains502Role(dep.Role, "Financial") {
+		t.Errorf("expected CFO role, got %q", dep.Role)
+	}
+}
+
+func TestParseItem502_CEOTermination(t *testing.T) {
+	text := `
+Item 5.02. Departure of Directors.
+
+Effective June 2, 2026, the Board of Directors terminated John Doe as Chief Executive Officer.
+The Board elected Mary Johnson as Interim Chief Executive Officer.
+`
+	result, err := ParseItem502(text)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Departures) == 0 {
+		t.Fatal("expected departure")
+	}
+	dep := result.Departures[0]
+	if dep.DepartureType != DepartureTermination {
+		t.Errorf("want termination, got %s", dep.DepartureType)
+	}
+	if dep.Voluntary {
+		t.Error("termination should not be voluntary")
+	}
+}
+
+func TestParseItem502_RetirementWithAppointment(t *testing.T) {
+	text := `
+Item 5.02.
+
+William Brown announced his retirement as Chairman of the Board effective December 31, 2026.
+The Board appointed Susan Lee as Chairman of the Board effective January 1, 2027.
+`
+	result, err := ParseItem502(text)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Departures) == 0 {
+		t.Error("expected retirement departure")
+	} else if result.Departures[0].DepartureType != DepartureRetirement {
+		t.Errorf("want retirement, got %s", result.Departures[0].DepartureType)
+	}
+}
+
+func TestParseItem502_NotFound(t *testing.T) {
+	text := `
+Item 5.07. Submission of Matters to a Vote.
+
+At the annual meeting held on June 1, 2026, shareholders voted as follows.
+`
+	_, err := ParseItem502(text)
+	if err == nil {
+		t.Error("expected ErrItem502NotFound when only 5.07 present")
+	}
+}
+
+func TestParseItem502_EmptySection(t *testing.T) {
+	// Item 5.02 present but no recognisable events.
+	text := `Item 5.02. Compensatory Arrangements of Certain Officers.
+
+The Company entered into an amendment to the employment agreement with its CEO.
+`
+	_, err := ParseItem502(text)
+	if err == nil {
+		t.Logf("Note: compensatory arrangement returned no error (may or may not extract events)")
+	}
+}
+
+func TestScoreLeadershipChange_CFODeparture(t *testing.T) {
+	result := Item502Result{
+		Departures: []LeadershipEvent{
+			{Role: "Chief Financial Officer", IsDeparture: true, DepartureType: DepartureResignation, Voluntary: true, PersonName: "Jane Smith"},
+		},
+	}
+	sigs := ScoreLeadershipChange(result, "SCHW", "2026-06-01")
+	if len(sigs) == 0 {
+		t.Fatal("expected signals for CFO departure")
+	}
+	var hasCFO, hasGeneral bool
+	for _, s := range sigs {
+		if s.Type == SignalCFODeparture {
+			hasCFO = true
+		}
+		if s.Type == SignalLeadershipDeparture {
+			hasGeneral = true
+		}
+	}
+	if !hasCFO {
+		t.Error("expected cfo_departure signal")
+	}
+	if !hasGeneral {
+		t.Error("expected leadership_departure signal")
+	}
+}
+
+func TestScoreLeadershipChange_Termination_HighSeverity(t *testing.T) {
+	result := Item502Result{
+		Departures: []LeadershipEvent{
+			{Role: "Chief Executive Officer", IsDeparture: true, DepartureType: DepartureTermination, Voluntary: false, PersonName: "John Doe"},
+		},
+	}
+	sigs := ScoreLeadershipChange(result, "GE", "2026-06-01")
+	for _, s := range sigs {
+		if s.Type == SignalLeadershipDeparture && s.Severity != SeverityHigh {
+			t.Errorf("involuntary termination should be high severity, got %s", s.Severity)
+		}
+	}
+}
+
+func contains502Role(role, substr string) bool {
+	return len(role) > 0 && (len(substr) == 0 || containsStr(role, substr))
+}
+
+func containsStr(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsSubstr(s, sub))
+}
+
+func containsSubstr(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

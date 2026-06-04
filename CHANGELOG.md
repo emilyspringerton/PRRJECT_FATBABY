@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-04 — Item 5.02 leadership parser + dividend-watcher
+
+### Item 5.02 — Leadership departure / appointment (entitygraph/parser.go)
+
+`ParseItem502(text string) (Item502Result, error)` extracts leadership changes from 8-K filings:
+- Detects resignation, retirement, and termination via keyword patterns
+- Extracts role (CEO, CFO, COO, General Counsel, Chairman, Director, etc.)
+- Attempts person name extraction adjacent to the role
+- Returns `ErrItem502NotFound` when Item 5.02 is absent (graceful skip)
+
+`ScoreLeadershipChange` converts results into signals:
+- `leadership_departure` — medium severity (high for involuntary terminations)
+- `cfo_departure` — elevated separate signal for CFO/principal financial officer departures (high severity, 0.82 confidence); CFO departures precede restatements at elevated base rates
+- Both wired into governance health penalty map (-0.10 leadership, -0.18 CFO)
+
+**Wired into entity-graph main loop**: called for every 8-K document alongside the existing Item 5.07 path — zero new watchers required.
+
+### `cmd/dividend-watcher` + `internal/dividend`
+
+New dividend signal pipeline reading `pr_body_fetched` events from prwatch-body:
+
+- `Classify(headline, body string)`: keyword classifier distinguishing:
+  - `suspension` (suspend/eliminate/omit quarterly dividend) → `dividend_cut` critical severity
+  - `cut` (reduce/decrease/discontinue dividend) → `dividend_cut` high severity
+  - `raise` (increase/boost dividend) → `dividend_raise` low severity
+  - `special` (special/extra/one-time dividend) → `special_dividend` low severity
+  - `regular` (unchanged quarterly) → no signal (noise, not scored)
+- `Score(ev)`: converts to entity-graph signals
+- `dividend_cut` added to governance health penalty map (-0.15)
+- Writes to `var/dividends/dividends.ndjson`, emits signals to entity-graph
+- Ticker resolved from pr_discovered event map (same pattern as eps-processor)
+- Cursor-based incremental processing; `-one-shot`, `-dry-run` flags
+
+### New signal types
+
+`leadership_departure`, `cfo_departure`, `dividend_cut`, `dividend_raise`, `special_dividend` added to `AllSignalTypes`.
+
+### Tests
+
+31 new tests (dividend: 11, parser Item 5.02: 7 + 2 scoring, entitygraph schd13: passing). All green.
+
 ## 2026-06-04 — Form 4 insider watcher + governance health trend signal
 
 ### New: `cmd/form4-watcher`

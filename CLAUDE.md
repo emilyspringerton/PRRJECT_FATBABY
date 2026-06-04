@@ -32,6 +32,7 @@ impact analysis), and streams them via SSE dashboard and a TCP feed server.
 | guidance-watcher | `go run ./cmd/guidance-watcher` | Extracts forward guidance (raises/lowers/maintains) from press releases |
 | jon-agent | `go run ./cmd/jon-agent` | Jon Stockwell options strategist — divergence analysis across pipeline signals, surfaces options setups on :8084 |
 | form4-watcher | `go run ./cmd/form4-watcher` | Polls EDGAR for Form 4 insider transactions; emits insider_buy / insider_sell_cluster signals to entity-graph |
+| dividend-watcher | `go run ./cmd/dividend-watcher` | Reads prwatch-body press releases; classifies dividend cuts/raises/special dividends; emits signals |
 
 Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log`.
 

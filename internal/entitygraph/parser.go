@@ -383,3 +383,180 @@ func parseInt64(s string) int64 {
 	v, _ := strconv.ParseInt(s, 10, 64)
 	return v
 }
+
+// ── Item 5.02 — Leadership departure / appointment ────────────────────────────
+
+// ErrItem502NotFound is returned when the filing contains no Item 5.02 section.
+var ErrItem502NotFound = fmt.Errorf("Item 5.02 not found in filing text")
+
+// DepartureType classifies how a departure was characterised.
+type DepartureType string
+
+const (
+	DepartureResignation DepartureType = "resignation"
+	DepartureRetirement  DepartureType = "retirement"
+	DepartureTermination DepartureType = "termination"
+	DepartureUnknown     DepartureType = "unknown"
+)
+
+// LeadershipEvent describes one departure or appointment extracted from Item 5.02.
+type LeadershipEvent struct {
+	PersonName    string
+	Role          string        // e.g. "Chief Financial Officer", "Director"
+	IsDeparture   bool          // true = departure, false = appointment
+	DepartureType DepartureType // only meaningful when IsDeparture=true
+	Voluntary     bool          // resignation/retirement = voluntary; termination = involuntary
+}
+
+// Item502Result holds all leadership events parsed from one Item 5.02 section.
+type Item502Result struct {
+	Departures   []LeadershipEvent
+	Appointments []LeadershipEvent
+}
+
+var (
+	re502Section = regexp.MustCompile(`(?i)Item\s+5\.02`)
+
+	// Departure verb patterns (earliest-matching wins).
+	reResign  = regexp.MustCompile(`(?i)\bresigned?\b|\bresignation\b|\bstepped?\s+down\b|\bwill\s+not\s+stand\s+for\s+re-?election\b`)
+	reRetire  = regexp.MustCompile(`(?i)\bretired?\b|\bretirement\b`)
+	reTerm    = regexp.MustCompile(`(?i)\bterminated?\b|\bdismissed?\b|\bremoved?\s+from\b`)
+	reAppoint = regexp.MustCompile(`(?i)\bappointed?\s+(?:as\s+)?|elected?\s+(?:as\s+)?|named\s+(?:as\s+)?|promoted\s+(?:to\s+)?`)
+
+	// Executive role patterns — ordered longest first to avoid partial matches.
+	reRoles = regexp.MustCompile(`(?i)\b(Chief\s+Executive\s+Officer|Chief\s+Financial\s+Officer|Chief\s+Operating\s+Officer|Chief\s+Technology\s+Officer|Chief\s+Legal\s+Officer|Chief\s+Accounting\s+Officer|Chief\s+Marketing\s+Officer|Chief\s+Revenue\s+Officer|General\s+Counsel|Executive\s+Vice\s+President|Senior\s+Vice\s+President|Vice\s+President|Executive\s+Chairman|Chairman\s+of\s+the\s+Board|Chairman|President\s+and\s+Chief\s+Executive\s+Officer|President|Chief\s+of\s+Staff|Chief\s+People\s+Officer|Director|Principal\s+Accounting\s+Officer|Principal\s+Financial\s+Officer)\b`)
+
+	// Person name heuristic: TitleCase word(s) possibly followed by suffix.
+	rePersonName = regexp.MustCompile(`\b([A-Z][a-z]{1,}(?:\s+[A-Z][a-z]{1,}){1,3}(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\b`)
+)
+
+// ParseItem502 extracts leadership departure and appointment events from the
+// cleaned text of an 8-K filing. Returns ErrItem502NotFound when Item 5.02
+// is absent (normal for proxy and earnings filings).
+func ParseItem502(text string) (Item502Result, error) {
+	idx := re502Section.FindStringIndex(text)
+	if idx == nil {
+		return Item502Result{}, ErrItem502NotFound
+	}
+	// Extract the Item 5.02 section body (up to the next Item header or 4000 chars).
+	sectionStart := idx[1]
+	sectionEnd := len(text)
+	if next := regexp.MustCompile(`(?i)Item\s+[0-9]+\.[0-9]+`).FindStringIndex(text[sectionStart:]); next != nil && next[0] < 4000 {
+		sectionEnd = sectionStart + next[0]
+	} else if sectionStart+4000 < len(text) {
+		sectionEnd = sectionStart + 4000
+	}
+	body := text[sectionStart:sectionEnd]
+
+	var result Item502Result
+
+	// Split into sentences for per-sentence analysis.
+	sentences := splitSentences(body)
+
+	for _, s := range sentences {
+		s = strings.TrimSpace(s)
+		if len(s) < 20 {
+			continue
+		}
+
+		// Detect roles mentioned in this sentence.
+		roles := reRoles.FindAllString(s, -1)
+		if len(roles) == 0 {
+			continue
+		}
+		role := normaliseRole(roles[0])
+
+		// Departure?
+		if reResign.MatchString(s) {
+			ev := LeadershipEvent{
+				Role:          role,
+				IsDeparture:   true,
+				DepartureType: DepartureResignation,
+				Voluntary:     true,
+				PersonName:    extractPersonName(s, role),
+			}
+			result.Departures = appendUniq(result.Departures, ev)
+			continue
+		}
+		if reRetire.MatchString(s) {
+			ev := LeadershipEvent{
+				Role:          role,
+				IsDeparture:   true,
+				DepartureType: DepartureRetirement,
+				Voluntary:     true,
+				PersonName:    extractPersonName(s, role),
+			}
+			result.Departures = appendUniq(result.Departures, ev)
+			continue
+		}
+		if reTerm.MatchString(s) {
+			ev := LeadershipEvent{
+				Role:          role,
+				IsDeparture:   true,
+				DepartureType: DepartureTermination,
+				Voluntary:     false,
+				PersonName:    extractPersonName(s, role),
+			}
+			result.Departures = appendUniq(result.Departures, ev)
+			continue
+		}
+
+		// Appointment?
+		if reAppoint.MatchString(s) {
+			ev := LeadershipEvent{
+				Role:          role,
+				IsDeparture:   false,
+				PersonName:    extractPersonName(s, role),
+			}
+			result.Appointments = appendUniq(result.Appointments, ev)
+		}
+	}
+
+	if len(result.Departures) == 0 && len(result.Appointments) == 0 {
+		return Item502Result{}, ErrItem502NotFound
+	}
+	return result, nil
+}
+
+// normaliseRole cleans role strings (e.g. collapses "President and CEO" → "President and CEO").
+func normaliseRole(r string) string {
+	return strings.TrimSpace(regexp.MustCompile(`\s+`).ReplaceAllString(r, " "))
+}
+
+// extractPersonName tries to find a person name near the role in the sentence.
+// It skips common non-name TitleCase patterns.
+func extractPersonName(sentence, role string) string {
+	// Remove the role itself so we don't match it as a name.
+	stripped := strings.Replace(sentence, role, "", 1)
+	candidates := rePersonName.FindAllString(stripped, -1)
+	for _, c := range candidates {
+		if !isSpuriousName(c) && len(strings.Fields(c)) >= 2 {
+			return c
+		}
+	}
+	return ""
+}
+
+// splitSentences splits text on sentence-ending punctuation.
+func splitSentences(text string) []string {
+	re := regexp.MustCompile(`[.!?]\s+`)
+	parts := re.Split(text, -1)
+	// Re-include trailing punctuation stripped by the split.
+	var out []string
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// appendUniq appends ev only if no existing entry has the same Role+IsDeparture.
+func appendUniq(evs []LeadershipEvent, ev LeadershipEvent) []LeadershipEvent {
+	for _, e := range evs {
+		if e.Role == ev.Role && e.IsDeparture == ev.IsDeparture {
+			return evs
+		}
+	}
+	return append(evs, ev)
+}

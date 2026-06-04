@@ -168,6 +168,24 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		logger.Printf("processing seq=%d ticker=%s identity=%s chars=%d", r.Sequence, doc.Ticker, doc.Identity, doc.CleanedCharCount)
 		processed++
 
+		// Always try Item 5.02 (leadership changes) regardless of 507 outcome.
+		// 5.02 and 5.07 appear in different 8-K subtypes; processing both costs nothing.
+		if lResult, lErr := entitygraph.ParseItem502(doc.CleanedText); lErr == nil {
+			lFilingDate := doc.FilingDate
+			if lFilingDate == "" {
+				if date, ok := filingDates[doc.Identity]; ok {
+					lFilingDate = date
+				} else if !doc.PersistedAt.IsZero() {
+					lFilingDate = doc.PersistedAt.Format("2006-01-02")
+				}
+			}
+			lSignals := entitygraph.ScoreLeadershipChange(lResult, doc.Ticker, lFilingDate)
+			if len(lSignals) > 0 {
+				allSignals = append(allSignals, lSignals...)
+				logger.Printf("item502 seq=%d ticker=%s departures=%d appointments=%d signals=%d", r.Sequence, doc.Ticker, len(lResult.Departures), len(lResult.Appointments), len(lSignals))
+			}
+		}
+
 		result, err := entitygraph.ParseItem507(doc.CleanedText)
 		if err != nil {
 			if errors.Is(err, entitygraph.ErrItem507NotFound) {

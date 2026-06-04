@@ -36,10 +36,15 @@ const (
 	SignalGovernanceHealth       SignalType = "governance_health_index"
 	SignalAbstentionOutlier      SignalType = "abstention_outlier"
 	SignalBoardDecayConcern      SignalType = "board_decay_concern"
-	SignalInsiderBuy             SignalType = "insider_buy"
-	SignalInsiderSellCluster     SignalType = "insider_sell_cluster"
+	SignalInsiderBuy              SignalType = "insider_buy"
+	SignalInsiderSellCluster      SignalType = "insider_sell_cluster"
 	SignalGovernanceDeterioration SignalType = "governance_deteriorating"
-	SignalGovernanceImproving    SignalType = "governance_improving"
+	SignalGovernanceImproving     SignalType = "governance_improving"
+	SignalLeadershipDeparture     SignalType = "leadership_departure"
+	SignalCFODeparture            SignalType = "cfo_departure"
+	SignalDividendCut             SignalType = "dividend_cut"
+	SignalDividendRaise           SignalType = "dividend_raise"
+	SignalSpecialDividend         SignalType = "special_dividend"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -64,6 +69,11 @@ var AllSignalTypes = []SignalType{
 	SignalInsiderSellCluster,
 	SignalGovernanceDeterioration,
 	SignalGovernanceImproving,
+	SignalLeadershipDeparture,
+	SignalCFODeparture,
+	SignalDividendCut,
+	SignalDividendRaise,
+	SignalSpecialDividend,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -678,8 +688,11 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalAbstentionSpike:        0.05,
 		SignalAbstentionOutlier:      0.05,
 		SignalBoardDecayConcern:      0.15,
-		SignalInsiderSellCluster:     0.12,
-		SignalGovernanceDeterioration: 0.08,
+		SignalInsiderSellCluster:      0.12,
+		SignalGovernanceDeterioration:  0.08,
+		SignalCFODeparture:             0.18,
+		SignalLeadershipDeparture:      0.10,
+		SignalDividendCut:              0.15,
 	}
 
 	score := 1.0
@@ -846,4 +859,85 @@ func ScoreAuditorChange(ticker, prevAuditor, newAuditor, filingDate string) Sign
 		Interpretation: fmt.Sprintf("Auditor changed from %q to %q. Auditor changes may indicate audit quality disputes, fee negotiations, regulatory pressure, or pre-transaction restructuring.", prevAuditor, newAuditor),
 		Metadata:       map[string]string{"prev_auditor": prevAuditor, "new_auditor": newAuditor},
 	}
+}
+
+// ScoreLeadershipChange converts Item502Result events into leadership signals.
+// A CFO departure gets an elevated cfo_departure signal in addition to the
+// generic leadership_departure, since CFO departures precede restatements and
+// earnings surprises at a materially higher base rate than other roles.
+func ScoreLeadershipChange(result Item502Result, ticker, filingDate string) []Signal {
+	if filingDate == "" {
+		filingDate = time.Now().UTC().Format("2006-01-02")
+	}
+	today := time.Now().UTC().Format("2006-01-02")
+	validThrough := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+
+	var signals []Signal
+	for _, ev := range result.Departures {
+		depType := string(ev.DepartureType)
+		voluntaryStr := "voluntary"
+		if !ev.Voluntary {
+			voluntaryStr = "involuntary"
+		}
+
+		sev := SeverityMedium
+		conf := 0.72
+		if !ev.Voluntary {
+			sev = SeverityHigh
+			conf = 0.80
+		}
+
+		person := ev.PersonName
+		if person == "" {
+			person = "unnamed executive"
+		}
+
+		interp := fmt.Sprintf("%s (%s) departed %s as %s (%s). Leadership changes can signal governance instability, strategic disagreement, or pre-disclosure restructuring.", person, ev.Role, ticker, ev.Role, depType)
+
+		sigID := fmt.Sprintf("leadership_departure_%s_%s_%s", strings.ToLower(ticker), strings.ToLower(strings.ReplaceAll(ev.Role, " ", "_")), filingDate)
+		signals = append(signals, Signal{
+			SignalID:       sigID,
+			Type:           SignalLeadershipDeparture,
+			Ticker:         ticker,
+			Entity:         person,
+			Severity:       sev,
+			Confidence:     conf,
+			Score:          0.6,
+			DetectedAt:     today,
+			FilingDate:     filingDate,
+			ValidThrough:   validThrough,
+			Interpretation: interp,
+			Metadata: map[string]string{
+				"role":           ev.Role,
+				"departure_type": depType,
+				"voluntary":      voluntaryStr,
+				"person":         person,
+			},
+		})
+
+		// CFO departure gets an elevated second signal.
+		if strings.Contains(strings.ToLower(ev.Role), "financial") || strings.Contains(strings.ToLower(ev.Role), "cfo") || strings.Contains(strings.ToLower(ev.Role), "accounting") {
+			cfID := fmt.Sprintf("cfo_departure_%s_%s", strings.ToLower(ticker), filingDate)
+			cfInterp := fmt.Sprintf("CFO/Principal Financial Officer departure at %s (%s, %s). CFO departures precede earnings restatements and guidance misses at elevated base rates. Monitor next earnings release closely.", ticker, depType, voluntaryStr)
+			signals = append(signals, Signal{
+				SignalID:       cfID,
+				Type:           SignalCFODeparture,
+				Ticker:         ticker,
+				Entity:         person,
+				Severity:       SeverityHigh,
+				Confidence:     0.82,
+				Score:          0.75,
+				DetectedAt:     today,
+				FilingDate:     filingDate,
+				ValidThrough:   validThrough,
+				Interpretation: cfInterp,
+				Metadata: map[string]string{
+					"role":           ev.Role,
+					"departure_type": depType,
+					"voluntary":      voluntaryStr,
+				},
+			})
+		}
+	}
+	return signals
 }
