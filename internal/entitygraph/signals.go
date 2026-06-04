@@ -45,6 +45,10 @@ const (
 	SignalDividendCut             SignalType = "dividend_cut"
 	SignalDividendRaise           SignalType = "dividend_raise"
 	SignalSpecialDividend         SignalType = "special_dividend"
+	SignalLateFiling              SignalType = "late_filing"
+	SignalBuybackAuthorization    SignalType = "buyback_authorization"
+	SignalBuybackSuspension       SignalType = "buyback_suspension"
+	SignalEPSFilingRevision       SignalType = "eps_filing_revision"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -74,6 +78,10 @@ var AllSignalTypes = []SignalType{
 	SignalDividendCut,
 	SignalDividendRaise,
 	SignalSpecialDividend,
+	SignalLateFiling,
+	SignalBuybackAuthorization,
+	SignalBuybackSuspension,
+	SignalEPSFilingRevision,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -690,9 +698,12 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalBoardDecayConcern:      0.15,
 		SignalInsiderSellCluster:      0.12,
 		SignalGovernanceDeterioration:  0.08,
-		SignalCFODeparture:             0.18,
-		SignalLeadershipDeparture:      0.10,
-		SignalDividendCut:              0.15,
+		SignalCFODeparture:          0.18,
+		SignalLeadershipDeparture:   0.10,
+		SignalDividendCut:           0.15,
+		SignalLateFiling:            0.20,
+		SignalEPSFilingRevision:     0.12,
+		SignalBuybackSuspension:     0.08,
 	}
 
 	score := 1.0

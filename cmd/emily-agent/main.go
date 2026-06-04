@@ -257,9 +257,11 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		"jon-agent":           {},
 		"form4-watcher":    {"-watchlist", "./config/watchlist.json", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/form4"},
 		"dividend-watcher": {"-discovery-store", "./var/prwatch", "-body-store", "./var/prwatch-body", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/dividends"},
+		"buyback-watcher":  {"-discovery-store", "./var/prwatch", "-body-store", "./var/prwatch-body", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/buybacks"},
+		"nt-watcher":       {"-watchlist", "./config/watchlist.json", "-graph-dir", "./var/entity-graph", "-out-dir", "./var/nt-filings"},
 	}
 
-	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|observation-watcher|signalapi|feedserver|jon-agent|form4-watcher|dividend-watcher"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
+	d.Register(ToolDef{Name: "fatbaby_start_process", Description: "Start a fatbaby pipeline process in the background.", Parameters: ToolParameters{Type: "object", Properties: map[string]ToolPropSchema{"process_name": {Type: "string", Description: "secwatch|processor|newssite|dashboard|prwatch|prwatch-body|entity-graph|eps-processor|eps-reconciler|schd13-watcher|form4-watcher|nt-watcher|observation-watcher|signalapi|feedserver|jon-agent|dividend-watcher|buyback-watcher"}, "extra_args": {Type: "string", Description: "optional extra CLI args"}}, Required: []string{"process_name"}}}, func(args map[string]any) (string, error) {
 		pn, _ := args["process_name"].(string)
 		ea, _ := args["extra_args"].(string)
 		def, ok := valid[pn]
@@ -396,6 +398,8 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			"cmd/jon-agent",
 			"cmd/form4-watcher",
 			"cmd/dividend-watcher",
+			"cmd/buyback-watcher",
+			"cmd/nt-watcher",
 		}
 		type ps struct {
 			Name    string `json:"name"`

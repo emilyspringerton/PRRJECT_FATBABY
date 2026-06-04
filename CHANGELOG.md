@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-04 — Buyback watcher, NT filing watcher, eps-reconciler signals
+
+### `cmd/buyback-watcher` + `internal/buyback`
+
+Classifies press release bodies as share repurchase announcements:
+- `authorization` / `completion` → `buyback_authorization` (low severity)
+- `suspension` / `termination` → `buyback_suspension` (medium severity — cash conservation signal)
+- Extracts authorized dollar amount (billion/million) and share count
+- Same prwatch-body event stream + ticker map pattern as dividend-watcher
+- Writes to `var/buybacks/buybacks.ndjson`; emits signals to entity-graph
+
+### `cmd/nt-watcher`
+
+Polls SEC EDGAR EFTS for NT 10-K and NT 10-Q (late filing notification) filings:
+- Same EFTS pattern as schd13-watcher
+- Classifies stated reason: `restatement`, `material_weakness`, `auditor_dispute`, `system_transition`, `additional_review`, `unknown`
+- High severity for restatement/material_weakness/auditor_dispute; medium for others
+- `late_filing` signal with -0.20 governance health penalty
+- Writes to `var/nt-filings/filings.ndjson`; deduplicates by accession
+- 180-day default lookback (NT filings are rare)
+
+### eps-reconciler → entity-graph signals
+
+Added `-graph-dir` flag and `scoreEPSRevision` function. When a `VerdictContradicts`
+case is found, emits `eps_filing_revision` signal to the entity-graph signal store.
+Signal includes extracted vs filed EPS, percentage difference, and direction (filed
+higher/lower). High severity when difference ≥20%. Previously EPS contradictions were
+only visible in oracle.ndjson — now they surface to Emily and Jon.
+
+### New signal types
+
+`late_filing`, `buyback_authorization`, `buyback_suspension`, `eps_filing_revision`
+added to `AllSignalTypes` and governance health penalty map.
+
+### Tests
+
+26 new tests (buyback: 11, nt-watcher: 8, eps-reconciler: 0 new but now builds clean).
+All passing.
+
 ## 2026-06-04 — Item 5.02 leadership parser + dividend-watcher
 
 ### Item 5.02 — Leadership departure / appointment (entitygraph/parser.go)

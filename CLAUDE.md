@@ -33,6 +33,8 @@ impact analysis), and streams them via SSE dashboard and a TCP feed server.
 | jon-agent | `go run ./cmd/jon-agent` | Jon Stockwell options strategist — divergence analysis across pipeline signals, surfaces options setups on :8084 |
 | form4-watcher | `go run ./cmd/form4-watcher` | Polls EDGAR for Form 4 insider transactions; emits insider_buy / insider_sell_cluster signals to entity-graph |
 | dividend-watcher | `go run ./cmd/dividend-watcher` | Reads prwatch-body press releases; classifies dividend cuts/raises/special dividends; emits signals |
+| buyback-watcher | `go run ./cmd/buyback-watcher` | Reads prwatch-body press releases; classifies buyback authorizations/suspensions; emits signals |
+| nt-watcher | `go run ./cmd/nt-watcher` | Polls EDGAR for NT 10-K/10-Q late filing notifications; classifies reason; emits late_filing signals |
 
 Data lands in `./var/<process-name>/`. Logs go to `./var/logs/<process-name>.log`.
 
