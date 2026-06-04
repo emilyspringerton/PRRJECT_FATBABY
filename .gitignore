@@ -21,6 +21,13 @@
 /observation-watcher
 /guidance-watcher
 /earnings-calendar
+/jon-agent
+/form4-watcher
+/dividend-watcher
+/eps-processor
+/eps-reconciler
+/schd13-watcher
+/prwatch-body
 
 # Local env / editor noise.
 .env
