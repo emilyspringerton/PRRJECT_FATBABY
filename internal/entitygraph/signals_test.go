@@ -1067,3 +1067,51 @@ func TestScorePeerGovernanceRank_HighSeverityLargeGap(t *testing.T) {
 	}
 	t.Error("expected signal for TSLA")
 }
+
+// ── Integration: board_decay_concern + health trend are wired ────────────────
+
+// TestScoreBoardDecayConcern_WiredIntegration verifies the function is callable
+// with a realistic combined signal slice matching what the entity-graph main loop produces.
+func TestScoreBoardDecayConcern_WiredIntegration(t *testing.T) {
+	r := DefaultRules()
+	r.MinBoardDecayCount = 2
+
+	today := "2026-06-05"
+	signals := []Signal{
+		{Type: SignalDirectorDecay, Ticker: "SCHW", Entity: "Director One", FilingDate: today, DetectedAt: today},
+		{Type: SignalDirectorDecay, Ticker: "SCHW", Entity: "Director Two", FilingDate: today, DetectedAt: today},
+		{Type: SignalDirectorFriction, Ticker: "SCHW", Entity: "Director One", FilingDate: today, DetectedAt: today},
+	}
+	sig := ScoreBoardDecayConcern("SCHW", signals, r)
+	if sig == nil {
+		t.Fatal("expected board_decay_concern signal with 2 decaying directors at threshold 2")
+	}
+	if sig.Type != SignalBoardDecayConcern {
+		t.Errorf("signal type = %s, want board_decay_concern", sig.Type)
+	}
+}
+
+// TestScoreGovernanceHealthTrend_WiredIntegration verifies the function produces
+// the correct signal type when called with realistic current/previous scores.
+func TestScoreGovernanceHealthTrend_WiredIntegration(t *testing.T) {
+	// Simulate a deterioration: previous 0.75, current 0.55 — delta 0.20, above threshold.
+	sig := ScoreGovernanceHealthTrend("SCHW", 0.55, 0.75, 0.10)
+	if sig == nil {
+		t.Fatal("expected governance_deteriorating signal for 0.20 drop")
+	}
+	if sig.Type != SignalGovernanceDeterioration {
+		t.Errorf("signal type = %s, want governance_deteriorating", sig.Type)
+	}
+	if sig.Ticker != "SCHW" {
+		t.Errorf("ticker = %s, want SCHW", sig.Ticker)
+	}
+
+	// Improvement: current 0.80, previous 0.65 — delta +0.15, above threshold.
+	sigUp := ScoreGovernanceHealthTrend("JPM", 0.80, 0.65, 0.10)
+	if sigUp == nil {
+		t.Fatal("expected governance_improving signal for 0.15 gain")
+	}
+	if sigUp.Type != SignalGovernanceImproving {
+		t.Errorf("signal type = %s, want governance_improving", sigUp.Type)
+	}
+}

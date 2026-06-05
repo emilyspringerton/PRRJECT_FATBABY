@@ -137,6 +137,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		logger.Printf("load historical signals err=%v", err)
 	}
 
+	// Load previous governance health snapshots for trend scoring (deteriorating/improving).
+	prevHealthHistory, err := entitygraph.LoadHealthHistory(cfg.graphDir)
+	if err != nil {
+		logger.Printf("load health history err=%v (non-fatal)", err)
+	}
+
 	var (
 		allSignals         []entitygraph.Signal
 		parseErrors        []entitygraph.ParseError
@@ -301,6 +307,16 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		allSignals = append(allSignals, tenureSigs...)
 	}
 
+	// board_decay_concern: fires when MinBoardDecayCount or more directors at a ticker
+	// have concurrent director_decay signals — a stronger activist predictor than any
+	// single director's decline. Must run after decay signals are collected.
+	for ticker := range collectTickers(allSignals) {
+		if sig := entitygraph.ScoreBoardDecayConcern(ticker, allSignals, rules); sig != nil {
+			logger.Printf("board_decay_concern ticker=%s score=%.3f severity=%s", ticker, sig.Score, sig.Severity)
+			allSignals = append(allSignals, *sig)
+		}
+	}
+
 	// Composite signals: combine current batch with historical for cross-filing detection.
 	combined := append(historicalSignals, allSignals...)
 
@@ -329,6 +345,29 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			logger.Printf("governance_health ticker=%s score=%.3f severity=%s", ticker, sig.Score, sig.Severity)
 			allSignals = append(allSignals, *sig)
 			healthScores[ticker] = sig.Score
+		}
+	}
+
+	// governance_health_trend: emit deteriorating/improving signals by comparing each
+	// ticker's new health score to its previous snapshot. Persist new snapshots after.
+	var newHealthSnapshots []entitygraph.HealthSnapshot
+	for ticker, score := range healthScores {
+		minDelta := rules.GovernanceHealthTrendMinDelta
+		if prev, ok := prevHealthHistory[ticker]; ok {
+			if sig := entitygraph.ScoreGovernanceHealthTrend(ticker, score, prev.Score, minDelta); sig != nil {
+				logger.Printf("governance_health_trend ticker=%s delta=%.3f severity=%s", ticker, sig.Score, sig.Severity)
+				allSignals = append(allSignals, *sig)
+			}
+		}
+		newHealthSnapshots = append(newHealthSnapshots, entitygraph.HealthSnapshot{
+			Ticker:     ticker,
+			Score:      score,
+			RecordedAt: time.Now().UTC().Format("2006-01-02"),
+		})
+	}
+	if len(newHealthSnapshots) > 0 {
+		if err := entitygraph.AppendHealthSnapshot(cfg.graphDir, newHealthSnapshots); err != nil {
+			logger.Printf("append health snapshots err=%v (non-fatal)", err)
 		}
 	}
 

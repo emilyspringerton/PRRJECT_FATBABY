@@ -107,6 +107,12 @@ type Rules struct {
 	// ScorePeerGovernanceRank fires a governance_peer_underperformer signal.
 	// Default 0.15 (15 points on the 0-100 scale).
 	PeerGovernanceUnderperformThreshold float64 `json:"peer_governance_underperform_threshold"`
+
+	// GovernanceHealthTrendMinDelta is the minimum absolute change in governance health
+	// score between batches to emit a governance_deteriorating or governance_improving
+	// signal. Default 0.10 (10 points). Set smaller to catch gradual drift; larger to
+	// suppress noise on volatile single-filing tickers.
+	GovernanceHealthTrendMinDelta float64 `json:"governance_health_trend_min_delta"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -132,6 +138,7 @@ func DefaultRules() Rules {
 		BoardDecayConcernWindowDays:         730,
 		LongTenureYearsThreshold:            12,
 		PeerGovernanceUnderperformThreshold: 0.15,
+		GovernanceHealthTrendMinDelta:       0.10,
 	}
 }
 
@@ -209,6 +216,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.PeerGovernanceUnderperformThreshold == 0 {
 		r.PeerGovernanceUnderperformThreshold = defaults.PeerGovernanceUnderperformThreshold
+	}
+	if r.GovernanceHealthTrendMinDelta == 0 {
+		r.GovernanceHealthTrendMinDelta = defaults.GovernanceHealthTrendMinDelta
 	}
 	return r
 }

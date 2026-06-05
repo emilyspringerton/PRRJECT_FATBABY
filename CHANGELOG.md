@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (2) — Wire board_decay_concern + governance_health_trend into main loop
+
+Both `ScoreBoardDecayConcern` and `ScoreGovernanceHealthTrend` existed in `internal/entitygraph`
+but were never called from `cmd/entity-graph/main.go`. Now wired:
+
+- **`ScoreBoardDecayConcern`**: called after `scoreDecayFromGraph` so concurrent director-decay
+  signals at the same ticker produce a composite `board_decay_concern` signal.
+- **`ScoreGovernanceHealthTrend`**: health history loaded at batch start from
+  `var/entity-graph/health_history.ndjson`; each new health score is compared to the previous
+  snapshot; delta ≥ `GovernanceHealthTrendMinDelta` (default 0.10) fires
+  `governance_deteriorating` or `governance_improving`; new snapshots appended after scoring.
+- New rule field `GovernanceHealthTrendMinDelta` (default 0.10, configurable in
+  `entity-graph-rules.json`).
+- 2 new integration tests. All 30 packages pass.
+
 ## 2026-06-05 — Director long-tenure signal + sector peer governance ranking
 
 ### `internal/entitygraph/signals.go` + `rules.go`
