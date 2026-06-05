@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (13) — abstention spike + board decay concern accuracy correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateAbstentionSpikeEscalation`: for each `abstention_spike` signal, checks
+whether `nomination_rejection` or `director_friction` follows at the same ticker
+within ValidThrough. EvidenceType: "nomination_rejection_or_director_friction". 4 tests.
+
+`CorrelateBoardDecayConcernDeterioration`: for each `board_decay_concern` signal,
+checks whether `director_friction`, `cfo_departure`, or `late_filing` follows within
+ValidThrough. EvidenceType: "director_friction_cfo_departure_or_late_filing". 4 tests.
+
+Both wired into entity-graph batch. Log line updated. All 37 test packages pass.
+
+Accuracy correlator coverage: 13 of 31 signal types.
+
 ## 2026-06-05 (12) — leadership departure + buyback suspension distress correlators
 
 Two new accuracy correlation functions in `accuracy.go`:
