@@ -200,6 +200,7 @@ When multiple divergences align on a single name, that is a setup worth surfacin
 - jon_log_setup — log a trade setup to the audit trail (structured output)
 - jon_read_setups — read logged setups from the audit trail
 - jon_publish_to_prime — surface a high-conviction setup to Emily Prime's integration layer
+- jon_accuracy_report — read live signal prediction accuracy (precision, confirmed/refuted/pending per type). Use to calibrate conviction: >0.70 precision = trust the signal; mostly pending = more caution.
 
 **Market Data** (requires API configuration):
 - jon_options_chain — fetch options chain for a ticker (requires MARKET_DATA_API_KEY)

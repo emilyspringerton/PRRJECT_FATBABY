@@ -415,6 +415,104 @@ func registerPipelineTools(d *ToolDispatcher, root string) {
 		}, "", "  ")
 		return string(b), nil
 	})
+
+	// Signal accuracy reports — calibrate conviction by signal type
+	d.Register(ToolDef{
+		Name:        "jon_accuracy_report",
+		Description: "Read live signal prediction accuracy from the entity-graph accuracy tracker. Returns precision (confirmed / resolved), confirmed/refuted/pending counts per signal type. Use to calibrate conviction: a signal type with high precision (>0.70) deserves higher conviction; a type with low precision or mostly pending records needs more caution.",
+		Parameters: ToolParameters{
+			Type: "object",
+			Properties: map[string]ToolPropSchema{
+				"signal_type": {Type: "string", Description: "Filter to a specific signal type (optional, e.g. 'activist_risk', 'director_decay')"},
+			},
+		},
+	}, func(args map[string]any) (string, error) {
+		accPath := filepath.Join(root, "var", "entity-graph", "accuracy.ndjson")
+		f, err := os.Open(accPath)
+		if os.IsNotExist(err) {
+			return `{"error":"accuracy.ndjson not found — entity-graph accuracy tracking has not run yet"}`, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("open accuracy: %w", err)
+		}
+		defer f.Close()
+
+		filterType := strings.TrimSpace(fmt.Sprintf("%v", args["signal_type"]))
+		if filterType == "<nil>" || filterType == "<NIL>" {
+			filterType = ""
+		}
+
+		type record struct {
+			SignalID     string  `json:"signal_id"`
+			Ticker       string  `json:"ticker"`
+			SignalType   string  `json:"signal_type"`
+			PredictedAt  string  `json:"predicted_at"`
+			ValidThrough string  `json:"valid_through"`
+			Outcome      string  `json:"outcome"`
+			EvidenceDate string  `json:"evidence_date,omitempty"`
+			EvidenceType string  `json:"evidence_type,omitempty"`
+			Notes        string  `json:"notes,omitempty"`
+		}
+		type report struct {
+			SignalType string  `json:"signal_type"`
+			Total      int     `json:"total"`
+			Confirmed  int     `json:"confirmed"`
+			Refuted    int     `json:"refuted"`
+			Pending    int     `json:"pending"`
+			Precision  float64 `json:"precision"`
+		}
+
+		byType := map[string]*report{}
+		var recentConfirmed []record
+
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var r record
+			if json.Unmarshal(sc.Bytes(), &r) != nil || r.SignalID == "" {
+				continue
+			}
+			if filterType != "" && r.SignalType != filterType {
+				continue
+			}
+			rpt, ok := byType[r.SignalType]
+			if !ok {
+				rpt = &report{SignalType: r.SignalType}
+				byType[r.SignalType] = rpt
+			}
+			rpt.Total++
+			switch r.Outcome {
+			case "confirmed":
+				rpt.Confirmed++
+				if len(recentConfirmed) < 5 {
+					recentConfirmed = append(recentConfirmed, r)
+				}
+			case "refuted":
+				rpt.Refuted++
+			default:
+				rpt.Pending++
+			}
+		}
+
+		var reports []report
+		for _, rpt := range byType {
+			if rpt.Confirmed+rpt.Refuted > 0 {
+				rpt.Precision = math.Round(float64(rpt.Confirmed)/float64(rpt.Confirmed+rpt.Refuted)*1000) / 1000
+			}
+			reports = append(reports, *rpt)
+		}
+		sort.Slice(reports, func(i, j int) bool {
+			return reports[i].Precision > reports[j].Precision
+		})
+
+		b, _ := json.MarshalIndent(map[string]any{
+			"accuracy_by_signal_type": reports,
+			"recent_confirmed":        recentConfirmed,
+			"total_signal_types":      len(reports),
+			"note":                    "precision = confirmed / (confirmed + refuted); pending records not yet resolved",
+		}, "", "  ")
+		return string(b), nil
+	})
 }
 
 // ── Setup audit log ───────────────────────────────────────────────────────────

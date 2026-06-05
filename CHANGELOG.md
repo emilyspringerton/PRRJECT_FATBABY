@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (7) — jon_accuracy_report tool
+
+New `jon_accuracy_report` tool in `tools.go`: reads `var/entity-graph/accuracy.ndjson`,
+computes precision (confirmed / resolved), confirmed/refuted/pending counts per signal
+type, returns sorted report. Allows Jon to calibrate conviction level against live
+accuracy data before surfacing setups. Added to jonSystemPrompt TOOLS AVAILABLE section.
+No new tests needed (pure file read + map aggregation, no business logic to unit test).
+
 ## 2026-06-05 (6) — CorrelateAuditorChangeFilingRisk accuracy tracker
 
 New accuracy correlation function: `CorrelateAuditorChangeFilingRisk` in `accuracy.go`.
