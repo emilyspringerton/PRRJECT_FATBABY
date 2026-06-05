@@ -57,7 +57,7 @@ func registerPipelineTools(d *ToolDispatcher, root string) {
 	// Governance signals from entity-graph
 	d.Register(ToolDef{
 		Name:        "jon_governance_signals",
-		Description: "Read governance signals from the entity-graph pipeline (director friction, board decay, activist risk, governance health index). Use to find structural divergences between governance risk and price.",
+		Description: "Read all 31 governance signal types from the entity-graph pipeline. Covers: activist risk, post-failure activist prediction, director friction/decay/tenure, CFO/leadership departure, dividend cut/raise/special, buyback authorization/suspension, late filing, insider buy/sell cluster, board decay concern, governance health index, health trend (deteriorating/improving), peer underperformance, and more. Use to find structural or catalyst divergences between governance risk and price.",
 		Parameters: ToolParameters{
 			Type: "object",
 			Properties: map[string]ToolPropSchema{

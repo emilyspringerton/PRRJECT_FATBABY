@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (4) — Jon agent full 31-signal analytical framework
+
+### Jon Stockwell agent: complete signal taxonomy + operating rules
+
+- **`jonSystemPrompt`**: added full `## SIGNAL TAXONOMY (31 types)` section documenting all
+  signals readable via `jon_governance_signals`, grouped by category (activist/entrenchment,
+  director quality, leadership/execution, capital allocation, governance health/trend, EPS).
+  Each signal entry includes interpretation notes and trading context.
+- **`jonSystemPrompt` OPERATING RULES**: added signal-specific guidance for 8 high-value signal
+  types — activist_risk/board_decay_concern (structural IV setups), post_failure_activist_prediction
+  (early-warning vol), cfo_departure (execution risk), dividend_cut (directional catalyst),
+  late_filing + auditor_change (restatement risk), governance_deteriorating (trend upgrade),
+  governance_peer_underperformer (relative trade), insider_sell_cluster (conviction pairing).
+- **`scanPrompt`**: updated priority signal types list to include post_failure_activist_prediction,
+  board_decay_concern, and governance_deteriorating alongside existing types.
+- **`jon_governance_signals` tool description**: expanded from 4 signal types to full 31-type
+  enumeration to accurately reflect what the tool returns.
+
 ## 2026-06-05 (3) — post_failure_activist_prediction + decay→departure accuracy tracking
 
 ### New signal: `post_failure_activist_prediction` (northstar Phase 4 item)
