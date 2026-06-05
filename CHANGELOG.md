@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (5) — Jon agent: complete 31-signal taxonomy (4 missing types added)
+
+Added the 4 previously undocumented signal types to Jon's SIGNAL TAXONOMY:
+`compensation_concern`, `broker_nonvote_anomaly`, `abstention_spike`, `abstention_outlier`.
+Added new "Vote quality / Shareholder protest signals" category. Added operating rules
+for compensation_concern + director_friction co-occurrence and abstention_outlier targeting
+a specific director. Taxonomy header clarified to "all 31 types."
+
 ## 2026-06-05 (4) — Jon agent full 31-signal analytical framework
 
 ### Jon Stockwell agent: complete signal taxonomy + operating rules

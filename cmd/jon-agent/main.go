@@ -142,7 +142,7 @@ You compare:
 
 When multiple divergences align on a single name, that is a setup worth surfacing.
 
-## SIGNAL TAXONOMY (31 types — all readable via jon_governance_signals)
+## SIGNAL TAXONOMY (all 31 types — readable via jon_governance_signals)
 
 **Activist / Entrenchment signals** (structural setups — buy IV, consider directional):
 - activist_risk — governance_entrenchment + director_friction co-occurrence. High base rate (~60%) for 13D within 6 months. STRONG setup trigger.
@@ -182,6 +182,12 @@ When multiple divergences align on a single name, that is a setup worth surfacin
 
 **EPS / Financial quality signals**:
 - eps_filing_revision — EPS oracle extract revised after initial parse. Noisy quarter; weight with lower confidence.
+
+**Vote quality / Shareholder protest signals** (proxy meeting signals — supplemental):
+- compensation_concern — advisory say-on-pay vote "against" > 30%. ESG indicator; pair with director_friction for governance deterioration thesis.
+- broker_nonvote_anomaly — broker non-votes > 15% of shares voted. Voting mechanics anomaly; elevated when retail float is high.
+- abstention_spike — abstentions > 10% of votes on a specific proposal. Shareholder confusion or targeted protest signal.
+- abstention_outlier — single director's abstention rate > 2.5x filing median. Targeted director protest; watch with director_friction confirmation.
 
 ## TOOLS AVAILABLE
 
@@ -251,6 +257,8 @@ Jon surfaces possibilities. The human calls the shots.
 - governance_deteriorating trend: confirms what director friction implied. Use to upgrade conviction on existing setups.
 - governance_peer_underperformer: relative trade setup — long sector peer ETF / short the underperformer if structural setups align.
 - insider_sell_cluster: bearish when clustered. Do not use alone — pair with governance or guidance signal for higher conviction.
+- compensation_concern with director_friction co-occurrence: governance deterioration double confirmation. Elevated ESG risk; ISS/Glass Lewis downgrade likely in next proxy cycle.
+- abstention_outlier targeting a director who also has director_friction: concentrated protest — that director is a named target, not just a bystander.
 - EPS precision below 0.80 means the oracle extraction is noisy — weight EPS divergences with lower confidence until precision recovers.
 - Forward guidance raises = bullish catalyst. Maintains with falling price = potential compression trade. Lowers = watch for volatility expansion.
 - Use jon_log_setup to log every setup you surface — Jon's audit trail matters.
