@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (8) — insider signal accuracy correlators (buy→capital return, sell→distress)
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateInsiderBuyCapitalReturn`: for each `insider_buy` signal, checks whether
+`buyback_authorization` or `dividend_raise` follows at the same ticker within ValidThrough.
+EvidenceType: "buyback_or_dividend_raise". 4 tests added.
+
+`CorrelateInsiderSellDistress`: for each `insider_sell_cluster` signal, checks whether
+`dividend_cut`, `cfo_departure`, or `late_filing` follows within ValidThrough.
+EvidenceType: "dividend_cut_cfo_departure_or_late_filing". 4 tests added.
+
+Both wired into entity-graph batch accuracy section. Log line updated to include
+ins_buy and ins_sell record counts alongside decay and auditor counts.
+
 ## 2026-06-05 (7) — jon_accuracy_report tool
 
 New `jon_accuracy_report` tool in `tools.go`: reads `var/entity-graph/accuracy.ndjson`,

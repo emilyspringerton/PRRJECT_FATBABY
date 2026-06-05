@@ -324,6 +324,124 @@ func CorrelateAuditorChangeFilingRisk(signals []Signal) []AccuracyRecord {
 	return records
 }
 
+// CorrelateInsiderBuyCapitalReturn checks whether insider_buy signals were followed
+// by a buyback_authorization or dividend_raise signal at the same ticker within the
+// insider_buy signal's ValidThrough window. An insider purchase followed by capital
+// return confirms the buy was directionally correct (management signaling confidence
+// in cash flow). Returns one AccuracyRecord per insider_buy signal in the input.
+func CorrelateInsiderBuyCapitalReturn(signals []Signal) []AccuracyRecord {
+	type event struct{ date string }
+	returnByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalBuybackAuthorization || s.Type == SignalDividendRaise {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			returnByTicker[s.Ticker] = append(returnByTicker[s.Ticker], event{date: d})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalInsiderBuy {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range returnByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("capital return event at %s on %s — within insider_buy window [%s, %s]",
+					s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("insider_buy window [%s, %s] expired for %s; no buyback or dividend_raise observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "buyback_or_dividend_raise",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// CorrelateInsiderSellDistress checks whether insider_sell_cluster signals were
+// followed by a dividend_cut, cfo_departure, or late_filing signal at the same
+// ticker within the insider_sell_cluster signal's ValidThrough window. An insider
+// sell cluster followed by a distress signal confirms the cluster was a leading
+// indicator. Returns one AccuracyRecord per insider_sell_cluster signal.
+func CorrelateInsiderSellDistress(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	distressByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalDividendCut || s.Type == SignalCFODeparture || s.Type == SignalLateFiling {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			distressByTicker[s.Ticker] = append(distressByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalInsiderSellCluster {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range distressByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("distress event (%s) at %s on %s — within insider_sell_cluster window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("insider_sell_cluster window [%s, %s] expired for %s; no distress signal observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "dividend_cut_cfo_departure_or_late_filing",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")

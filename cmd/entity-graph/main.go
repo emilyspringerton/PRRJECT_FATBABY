@@ -429,13 +429,22 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		auditorRiskRecords := entitygraph.CorrelateAuditorChangeFilingRisk(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, auditorRiskRecords...)
 
+		// Correlate insider_buy with subsequent buyback_authorization or dividend_raise.
+		insiderBuyRecords := entitygraph.CorrelateInsiderBuyCapitalReturn(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, insiderBuyRecords...)
+
+		// Correlate insider_sell_cluster with subsequent dividend_cut, cfo_departure, or late_filing.
+		insiderSellRecords := entitygraph.CorrelateInsiderSellDistress(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, insiderSellRecords...)
+
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay_departure=%d auditor_risk=%d)",
-				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords))
+			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d)",
+				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords),
+				len(insiderBuyRecords), len(insiderSellRecords))
 		}
 	}
 

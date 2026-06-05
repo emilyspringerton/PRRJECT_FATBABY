@@ -529,3 +529,159 @@ func TestCorrelateAuditorChangeFilingRisk_EventBeforeWindow(t *testing.T) {
 		t.Errorf("outcome = %s, want pending (event before window start should not confirm)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateInsiderBuyCapitalReturn ─────────────────────────────────────────
+
+func TestCorrelateInsiderBuyCapitalReturn_ConfirmedByBuyback(t *testing.T) {
+	buyAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	buybackAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "insider_buy_test", Type: SignalInsiderBuy, Ticker: "SCHW",
+			DetectedAt: buyAt, ValidThrough: validThru},
+		{Type: SignalBuybackAuthorization, Ticker: "SCHW",
+			DetectedAt: buybackAt, FilingDate: buybackAt},
+	}
+	records := CorrelateInsiderBuyCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceType != "buyback_or_dividend_raise" {
+		t.Errorf("evidence_type = %s, want buyback_or_dividend_raise", records[0].EvidenceType)
+	}
+}
+
+func TestCorrelateInsiderBuyCapitalReturn_ConfirmedByDividendRaise(t *testing.T) {
+	buyAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	raiseAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "insider_buy_div_test", Type: SignalInsiderBuy, Ticker: "JPM",
+			DetectedAt: buyAt, ValidThrough: validThru},
+		{Type: SignalDividendRaise, Ticker: "JPM",
+			DetectedAt: raiseAt, FilingDate: raiseAt},
+	}
+	records := CorrelateInsiderBuyCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateInsiderBuyCapitalReturn_Refuted(t *testing.T) {
+	buyAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{{SignalID: "insider_buy_expired", Type: SignalInsiderBuy, Ticker: "XYZ",
+		DetectedAt: buyAt, ValidThrough: validThru}}
+	records := CorrelateInsiderBuyCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateInsiderBuyCapitalReturn_WrongTickerIgnored(t *testing.T) {
+	buyAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	buybackAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "insider_buy_wrong_ticker", Type: SignalInsiderBuy, Ticker: "AAA",
+			DetectedAt: buyAt, ValidThrough: validThru},
+		{Type: SignalBuybackAuthorization, Ticker: "BBB", DetectedAt: buybackAt, FilingDate: buybackAt},
+	}
+	records := CorrelateInsiderBuyCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateInsiderSellDistress ─────────────────────────────────────────────
+
+func TestCorrelateInsiderSellDistress_ConfirmedByDividendCut(t *testing.T) {
+	sellAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "insider_sell_cluster_test", Type: SignalInsiderSellCluster, Ticker: "GE",
+			DetectedAt: sellAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "GE", DetectedAt: cutAt, FilingDate: cutAt},
+	}
+	records := CorrelateInsiderSellDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceType != "dividend_cut_cfo_departure_or_late_filing" {
+		t.Errorf("evidence_type = %s, want dividend_cut_cfo_departure_or_late_filing", records[0].EvidenceType)
+	}
+}
+
+func TestCorrelateInsiderSellDistress_ConfirmedByCFODeparture(t *testing.T) {
+	sellAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	deptAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "insider_sell_cfo_test", Type: SignalInsiderSellCluster, Ticker: "WFC",
+			DetectedAt: sellAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "WFC", DetectedAt: deptAt, FilingDate: deptAt},
+	}
+	records := CorrelateInsiderSellDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateInsiderSellDistress_Refuted(t *testing.T) {
+	sellAt := time.Now().UTC().AddDate(0, -15, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+
+	sigs := []Signal{{SignalID: "insider_sell_refuted", Type: SignalInsiderSellCluster, Ticker: "ABC",
+		DetectedAt: sellAt, ValidThrough: validThru}}
+	records := CorrelateInsiderSellDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateInsiderSellDistress_ConfirmedByLateFiling(t *testing.T) {
+	sellAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "insider_sell_late_test", Type: SignalInsiderSellCluster, Ticker: "MMM",
+			DetectedAt: sellAt, ValidThrough: validThru},
+		{Type: SignalLateFiling, Ticker: "MMM", DetectedAt: lateAt, FilingDate: lateAt},
+	}
+	records := CorrelateInsiderSellDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed (late filing = distress)", records[0].Outcome)
+	}
+}
