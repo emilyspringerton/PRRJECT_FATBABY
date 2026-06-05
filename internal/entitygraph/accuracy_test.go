@@ -241,3 +241,156 @@ func TestLoadHealthHistory_LastWriteWins(t *testing.T) {
 		t.Errorf("last-write-wins: want 0.35, got %.3f", hist["SCHW"].Score)
 	}
 }
+
+// ── CorrelateDecayDeparture tests ─────────────────────────────────────────────
+
+func TestCorrelateDecayDeparture_Confirmed(t *testing.T) {
+	decayAt := time.Now().UTC().AddDate(0, -6, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 6, 0).Format("2006-01-02")
+	departDate := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{
+			SignalID:     "decay_herringer_schw",
+			Type:         SignalDirectorDecay,
+			Ticker:       "SCHW",
+			Entity:       "Frank Herringer",
+			DetectedAt:   decayAt,
+			ValidThrough: validThru,
+		},
+		{
+			Type:       SignalLeadershipDeparture,
+			Ticker:     "SCHW",
+			Entity:     "Frank Herringer",
+			FilingDate: departDate,
+			DetectedAt: departDate,
+		},
+	}
+	records := CorrelateDecayDeparture(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 accuracy record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceType != "leadership_departure" {
+		t.Errorf("evidence_type = %s, want leadership_departure", records[0].EvidenceType)
+	}
+}
+
+func TestCorrelateDecayDeparture_Refuted(t *testing.T) {
+	decayAt := time.Now().UTC().AddDate(-2, 0, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(-1, 0, 0).Format("2006-01-02")
+
+	sigs := []Signal{{
+		SignalID:     "decay_old",
+		Type:         SignalDirectorDecay,
+		Ticker:       "GS",
+		Entity:       "Jane Smith",
+		DetectedAt:   decayAt,
+		ValidThrough: validThru,
+	}}
+	records := CorrelateDecayDeparture(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (window expired, no departure)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDecayDeparture_Pending(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+
+	sigs := []Signal{{
+		SignalID:     "decay_pending",
+		Type:         SignalDirectorDecay,
+		Ticker:       "MS",
+		Entity:       "Bob Jones",
+		DetectedAt:   today,
+		ValidThrough: validThru,
+	}}
+	records := CorrelateDecayDeparture(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (window open, no departure yet)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDecayDeparture_SkipsNonDecaySignals(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "AAPL", DetectedAt: today, ValidThrough: today},
+		{Type: SignalActivistRisk, Ticker: "AAPL", DetectedAt: today, ValidThrough: today},
+	}
+	records := CorrelateDecayDeparture(sigs)
+	if len(records) != 0 {
+		t.Errorf("expected 0 records for non-decay signals, got %d", len(records))
+	}
+}
+
+func TestCorrelateDecayDeparture_DepartureBeforeDecay_NotConfirmed(t *testing.T) {
+	decayAt := time.Now().UTC().Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	departBefore := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{
+			SignalID:     "decay_new",
+			Type:         SignalDirectorDecay,
+			Ticker:       "C",
+			Entity:       "Alice Chen",
+			DetectedAt:   decayAt,
+			ValidThrough: validThru,
+		},
+		{
+			Type:       SignalLeadershipDeparture,
+			Ticker:     "C",
+			Entity:     "Alice Chen",
+			FilingDate: departBefore, // before the decay signal
+			DetectedAt: departBefore,
+		},
+	}
+	records := CorrelateDecayDeparture(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome == GTConfirmed {
+		t.Error("departure before decay signal should not confirm prediction")
+	}
+}
+
+func TestCorrelateDecayDeparture_SubstringEntityMatch(t *testing.T) {
+	decayAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	departDate := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	// Decay uses canonical "herringer"; departure uses display "Frank C. Herringer" — should still match.
+	sigs := []Signal{
+		{
+			SignalID:     "decay_herringer",
+			Type:         SignalDirectorDecay,
+			Ticker:       "SCHW",
+			Entity:       "herringer",
+			DetectedAt:   decayAt,
+			ValidThrough: validThru,
+		},
+		{
+			Type:       SignalLeadershipDeparture,
+			Ticker:     "SCHW",
+			Entity:     "Frank C. Herringer",
+			FilingDate: departDate,
+			DetectedAt: departDate,
+		},
+	}
+	records := CorrelateDecayDeparture(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed (substring entity match)", records[0].Outcome)
+	}
+}

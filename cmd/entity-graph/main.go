@@ -329,6 +329,17 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		}
 	}
 
+	// post_failure_activist_prediction: fires when a recent governance_entrenchment
+	// exists for a ticker, even without concurrent friction. Earlier and lower-confidence
+	// than activist_risk; catches the window between a failed structural vote and the
+	// onset of director-level friction that activist pressure typically produces.
+	for ticker := range batchTickers {
+		if sig := entitygraph.ScorePostFailureActivistPrediction(ticker, combined, rules.PostFailureActivistWindowDays); sig != nil {
+			logger.Printf("post_failure_activist_prediction ticker=%s score=%.3f severity=%s", ticker, sig.Score, sig.Severity)
+			allSignals = append(allSignals, *sig)
+		}
+	}
+
 	// director_link: propagate friction scores to other tickers via shared directors.
 	linkSigs := entitygraph.ScoreDirectorLinks(graph, combined)
 	if len(linkSigs) > 0 {
@@ -403,16 +414,24 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		if err != nil {
 			logger.Printf("load schd13 filings err=%v (non-fatal)", err)
 		}
+		allHistorical, _ := entitygraph.LoadSignals(cfg.graphDir)
+		allForAccuracy := append(allHistorical, allSignals...)
+
+		var accuracyRecords []entitygraph.AccuracyRecord
 		if len(schd13Filings) > 0 {
-			allHistorical, _ := entitygraph.LoadSignals(cfg.graphDir)
-			accuracyRecords := entitygraph.CorrelateActivistRisk(append(allHistorical, allSignals...), schd13Filings)
-			if len(accuracyRecords) > 0 {
-				if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
-					logger.Printf("write accuracy records err=%v", err)
-				}
-				accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-				logger.Printf("accuracy records=%d reports=%d", len(accuracyRecords), len(accuracyReports))
+			accuracyRecords = append(accuracyRecords, entitygraph.CorrelateActivistRisk(allForAccuracy, schd13Filings)...)
+		}
+		// Correlate director_decay signals with subsequent leadership departures.
+		// Uses only the in-pipeline signals (allForAccuracy already includes historical).
+		decayRecords := entitygraph.CorrelateDecayDeparture(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, decayRecords...)
+
+		if len(accuracyRecords) > 0 {
+			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
+				logger.Printf("write accuracy records err=%v", err)
 			}
+			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
+			logger.Printf("accuracy records=%d reports=%d (decay_departure=%d)", len(accuracyRecords), len(accuracyReports), len(decayRecords))
 		}
 	}
 

@@ -57,6 +57,14 @@ const (
 	// score is significantly below its sector median — contextualises absolute
 	// scores against peer companies in the same industry.
 	SignalGovernancePeerUnderperformer SignalType = "governance_peer_underperformer"
+	// SignalPostFailureActivistPrediction fires when a governance_entrenchment signal
+	// has been observed within the configured window. A failed structural vote (e.g.
+	// declassification) is a lead indicator for activist 13D activity: management
+	// resistance to shareholder preferences attracts activist attention independently
+	// of director friction. Distinct from activist_risk, which requires concurrent
+	// friction — this fires on entrenchment alone as a forward prediction.
+	// Base rate per northstar: ~50% of failed structural votes precede a 13D within 6 months.
+	SignalPostFailureActivistPrediction SignalType = "post_failure_activist_prediction"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -92,6 +100,7 @@ var AllSignalTypes = []SignalType{
 	SignalEPSFilingRevision,
 	SignalDirectorLongTenure,
 	SignalGovernancePeerUnderperformer,
+	SignalPostFailureActivistPrediction,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -716,6 +725,7 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalBuybackSuspension:              0.08,
 		SignalDirectorLongTenure:             0.06,
 		SignalGovernancePeerUnderperformer:   0.10,
+		SignalPostFailureActivistPrediction:  0.12,
 	}
 
 	score := 1.0
@@ -1124,4 +1134,65 @@ func ScorePeerGovernanceRank(healthScores map[string]float64, sectorMap map[stri
 		}
 	}
 	return out
+}
+
+// ScorePostFailureActivistPrediction fires when a governance_entrenchment signal has been
+// observed for the ticker within windowDays. A failed structural vote (e.g. a board
+// declassification proposal blocked by a supermajority threshold) is a reliable lead
+// indicator for activist 13D activity: management's use of structural defenses against
+// clear shareholder intent attracts activist campaigns within 6 months ~50% of the time.
+//
+// This is distinct from ScoreCompositeActivistRisk, which requires concurrent director
+// friction. Post-failure fires on entrenchment alone — an earlier, lower-confidence
+// warning that complements the higher-confidence composite signal.
+func ScorePostFailureActivistPrediction(ticker string, allSignals []Signal, windowDays int) *Signal {
+	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
+
+	var (
+		hasEntrenchment bool
+		highSeverity    bool
+	)
+	for _, s := range allSignals {
+		if s.Ticker != ticker || s.Type != SignalGovernanceEntrenchment {
+			continue
+		}
+		inWindow := s.DetectedAt >= cutoff || (s.FilingDate != "" && s.FilingDate >= cutoff)
+		if !inWindow {
+			continue
+		}
+		hasEntrenchment = true
+		if s.Severity == SeverityHigh || s.Severity == SeverityCritical {
+			highSeverity = true
+		}
+	}
+	if !hasEntrenchment {
+		return nil
+	}
+
+	sev := SeverityMedium
+	conf := 0.65
+	score := 0.65
+	if highSeverity {
+		sev = SeverityHigh
+		conf = 0.72
+		score = 0.80
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	sixMonths := time.Now().UTC().AddDate(0, 6, 0).Format("2006-01-02")
+
+	return &Signal{
+		SignalID:     fmt.Sprintf("post_failure_activist_%s_%s", strings.ToLower(ticker), today),
+		Type:         SignalPostFailureActivistPrediction,
+		Ticker:       ticker,
+		Severity:     sev,
+		Confidence:   conf,
+		Score:        score,
+		DetectedAt:   today,
+		ValidThrough: sixMonths,
+		Interpretation: fmt.Sprintf(
+			"%s had a failed structural vote within %d days (governance_entrenchment). Failed declassification or supermajority-blocked proposals are lead indicators for activist 13D activity: ~50%% base rate within 6 months. Distinct from activist_risk (requires concurrent director friction) — this is an early-warning forward prediction on entrenchment alone.",
+			ticker, windowDays,
+		),
+	}
 }

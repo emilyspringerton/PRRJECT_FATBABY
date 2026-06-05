@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (3) — post_failure_activist_prediction + decay→departure accuracy tracking
+
+### New signal: `post_failure_activist_prediction` (northstar Phase 4 item)
+Per northstar: "every time a declassification vote fails, the following year has activist 13D
+activity within 6 months — add a new signal: Post-Failure Activist Prediction."
+
+- **`ScorePostFailureActivistPrediction(ticker, allSignals, windowDays)`**: fires when a
+  `governance_entrenchment` signal exists within `PostFailureActivistWindowDays` (default 45)
+  for the ticker. Lower-confidence early warning (0.65/0.72) with 6-month `ValidThrough` —
+  distinct from `activist_risk` which requires concurrent director friction.
+- Medium severity when triggering entrenchment is medium; high when high/critical.
+- Added to `AllSignalTypes`, governance health penalty map (−0.12), and wired into
+  `runBatch` after the activist_risk loop.
+- New rule field `PostFailureActivistWindowDays` (default 45, zero-value guarded).
+- 6 new tests in `signals_test.go`.
+
+### New accuracy tracking: director_decay → leadership_departure
+- **`CorrelateDecayDeparture(signals)`**: correlates `director_decay` signals with subsequent
+  `leadership_departure` or `cfo_departure` signals at the same ticker. Entity matching is
+  case-insensitive substring to handle canonical vs. display name variance.
+- Outcome logic identical to `CorrelateActivistRisk`: confirmed / refuted / pending.
+- Wired into the accuracy section of `runBatch` alongside activist risk correlation;
+  decay records logged separately (`decay_departure=N`).
+- 6 new tests in `accuracy_test.go`.
+
+Signal count: 31 types. All packages pass `go test ./...`.
+
 ## 2026-06-05 (2) — Wire board_decay_concern + governance_health_trend into main loop
 
 Both `ScoreBoardDecayConcern` and `ScoreGovernanceHealthTrend` existed in `internal/entitygraph`

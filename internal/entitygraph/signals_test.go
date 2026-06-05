@@ -1115,3 +1115,112 @@ func TestScoreGovernanceHealthTrend_WiredIntegration(t *testing.T) {
 		t.Errorf("signal type = %s, want governance_improving", sigUp.Type)
 	}
 }
+
+// ── ScorePostFailureActivistPrediction tests ──────────────────────────────────
+
+func TestScorePostFailureActivistPrediction_FiresOnRecentEntrenchment(t *testing.T) {
+	recent := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
+	sigs := []Signal{{
+		SignalID:  "entrench_schw",
+		Type:      SignalGovernanceEntrenchment,
+		Ticker:    "SCHW",
+		Severity:  SeverityMedium,
+		DetectedAt: recent,
+		FilingDate: recent,
+	}}
+	sig := ScorePostFailureActivistPrediction("SCHW", sigs, 45)
+	if sig == nil {
+		t.Fatal("expected post_failure_activist_prediction signal, got nil")
+	}
+	if sig.Type != SignalPostFailureActivistPrediction {
+		t.Errorf("type = %s, want post_failure_activist_prediction", sig.Type)
+	}
+	if sig.Ticker != "SCHW" {
+		t.Errorf("ticker = %s, want SCHW", sig.Ticker)
+	}
+	if sig.Severity != SeverityMedium {
+		t.Errorf("severity = %s, want medium (entrenchment was medium)", sig.Severity)
+	}
+}
+
+func TestScorePostFailureActivistPrediction_NoFireWithoutEntrenchment(t *testing.T) {
+	recent := time.Now().UTC().AddDate(0, 0, -5).Format("2006-01-02")
+	sigs := []Signal{{
+		Type:       SignalDirectorFriction,
+		Ticker:     "SCHW",
+		DetectedAt: recent,
+		FilingDate: recent,
+	}}
+	sig := ScorePostFailureActivistPrediction("SCHW", sigs, 45)
+	if sig != nil {
+		t.Error("expected nil when no governance_entrenchment signal exists")
+	}
+}
+
+func TestScorePostFailureActivistPrediction_NoFireOutsideWindow(t *testing.T) {
+	old := time.Now().UTC().AddDate(0, 0, -90).Format("2006-01-02")
+	sigs := []Signal{{
+		Type:       SignalGovernanceEntrenchment,
+		Ticker:     "SCHW",
+		DetectedAt: old,
+		FilingDate: old,
+	}}
+	// Window is 45 days; signal is 90 days old — should not fire.
+	sig := ScorePostFailureActivistPrediction("SCHW", sigs, 45)
+	if sig != nil {
+		t.Error("expected nil when entrenchment signal is outside the window")
+	}
+}
+
+func TestScorePostFailureActivistPrediction_HighSeverityOnHighEntrenchment(t *testing.T) {
+	recent := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	sigs := []Signal{{
+		Type:       SignalGovernanceEntrenchment,
+		Ticker:     "GS",
+		Severity:   SeverityHigh,
+		DetectedAt: recent,
+		FilingDate: recent,
+	}}
+	sig := ScorePostFailureActivistPrediction("GS", sigs, 45)
+	if sig == nil {
+		t.Fatal("expected signal for high-severity entrenchment")
+	}
+	if sig.Severity != SeverityHigh {
+		t.Errorf("severity = %s, want high (entrenchment was high)", sig.Severity)
+	}
+	if sig.Confidence < 0.70 {
+		t.Errorf("confidence = %.3f, want >= 0.70 for high-severity case", sig.Confidence)
+	}
+}
+
+func TestScorePostFailureActivistPrediction_WrongTickerIgnored(t *testing.T) {
+	recent := time.Now().UTC().AddDate(0, 0, -5).Format("2006-01-02")
+	sigs := []Signal{{
+		Type:       SignalGovernanceEntrenchment,
+		Ticker:     "MS",
+		DetectedAt: recent,
+		FilingDate: recent,
+	}}
+	sig := ScorePostFailureActivistPrediction("SCHW", sigs, 45)
+	if sig != nil {
+		t.Error("expected nil when entrenchment is for a different ticker")
+	}
+}
+
+func TestScorePostFailureActivistPrediction_ValidThroughSixMonths(t *testing.T) {
+	recent := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	sigs := []Signal{{
+		Type:       SignalGovernanceEntrenchment,
+		Ticker:     "JPM",
+		DetectedAt: recent,
+		FilingDate: recent,
+	}}
+	sig := ScorePostFailureActivistPrediction("JPM", sigs, 45)
+	if sig == nil {
+		t.Fatal("expected signal")
+	}
+	expected := time.Now().UTC().AddDate(0, 6, 0).Format("2006-01-02")
+	if sig.ValidThrough != expected {
+		t.Errorf("valid_through = %s, want %s (6 months)", sig.ValidThrough, expected)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -180,6 +181,83 @@ func WriteSchd13Filings(dir string, filings []Schd13Filing) error {
 		}
 		return nil
 	})
+}
+
+// CorrelateDecayDeparture checks whether director_decay signals were validated by a
+// subsequent leadership departure at the same company. For each director_decay signal
+// it searches for a matching leadership_departure or cfo_departure signal at the same
+// ticker with a filing date inside [PredictedAt, ValidThrough].
+//
+// Entity matching is name-substring based to handle canonical vs display name variance
+// (e.g. "Frank Herringer" vs "frank-c-herringer"). Returns one AccuracyRecord per
+// director_decay signal in the input.
+func CorrelateDecayDeparture(signals []Signal) []AccuracyRecord {
+	type departure struct {
+		entity string
+		date   string
+	}
+	departuresByTicker := map[string][]departure{}
+	for _, s := range signals {
+		if s.Type == SignalLeadershipDeparture || s.Type == SignalCFODeparture {
+			departuresByTicker[s.Ticker] = append(departuresByTicker[s.Ticker], departure{
+				entity: strings.ToLower(s.Entity),
+				date:   s.FilingDate,
+			})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalDirectorDecay {
+			continue
+		}
+
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		entityLower := strings.ToLower(s.Entity)
+		for _, dep := range departuresByTicker[s.Ticker] {
+			if entityLower == "" || dep.entity == "" {
+				continue
+			}
+			entityMatch := entityLower == dep.entity ||
+				strings.Contains(dep.entity, entityLower) ||
+				strings.Contains(entityLower, dep.entity)
+			if !entityMatch {
+				continue
+			}
+			if dep.date >= s.DetectedAt && dep.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = dep.date
+				notes = fmt.Sprintf("leadership_departure for %s at %s on %s — within director_decay window [%s, %s]",
+					s.Entity, s.Ticker, dep.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("director_decay window [%s, %s] expired for %s at %s; no matching departure",
+				s.DetectedAt, s.ValidThrough, s.Entity, s.Ticker)
+		}
+
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "leadership_departure",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
 }
 
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.

@@ -113,6 +113,12 @@ type Rules struct {
 	// signal. Default 0.10 (10 points). Set smaller to catch gradual drift; larger to
 	// suppress noise on volatile single-filing tickers.
 	GovernanceHealthTrendMinDelta float64 `json:"governance_health_trend_min_delta"`
+
+	// PostFailureActivistWindowDays is the lookback window (in days) used by
+	// ScorePostFailureActivistPrediction when searching for recent governance_entrenchment
+	// signals. A failed structural vote within this window triggers the prediction.
+	// Default 45 days (roughly one proxy season filing cycle).
+	PostFailureActivistWindowDays int `json:"post_failure_activist_window_days"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -139,6 +145,7 @@ func DefaultRules() Rules {
 		LongTenureYearsThreshold:            12,
 		PeerGovernanceUnderperformThreshold: 0.15,
 		GovernanceHealthTrendMinDelta:       0.10,
+		PostFailureActivistWindowDays:       45,
 	}
 }
 
@@ -219,6 +226,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.GovernanceHealthTrendMinDelta == 0 {
 		r.GovernanceHealthTrendMinDelta = defaults.GovernanceHealthTrendMinDelta
+	}
+	if r.PostFailureActivistWindowDays == 0 {
+		r.PostFailureActivistWindowDays = defaults.PostFailureActivistWindowDays
 	}
 	return r
 }
