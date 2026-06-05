@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (12) — leadership departure + buyback suspension distress correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateLeadershipDepartureDistress`: for each `leadership_departure` signal, checks
+whether `dividend_cut`, `late_filing`, or `cfo_departure` follows at the same ticker
+within ValidThrough. EvidenceType: "dividend_cut_late_filing_or_cfo_departure". 4 tests.
+
+`CorrelateBuybackSuspensionDistress`: for each `buyback_suspension` signal, checks
+whether `dividend_cut`, `late_filing`, or `cfo_departure` follows within ValidThrough.
+EvidenceType: "dividend_cut_late_filing_or_cfo_departure". 4 tests.
+
+Both wired into entity-graph batch accuracy section. Log line updated to include
+lead and bb_susp record counts. All 37 test packages pass.
+
+Accuracy correlator coverage: 11 of 31 signal types.
+
 ## 2026-06-05 (11) — dividend cut + late filing distress cascade correlators
 
 Two new accuracy correlation functions in `accuracy.go`:

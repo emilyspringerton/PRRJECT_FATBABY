@@ -1008,3 +1008,155 @@ func TestCorrelateLateFilingDistress_WrongTickerIgnored(t *testing.T) {
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateLeadershipDepartureDistress ──────────────────────────────────────
+
+func TestCorrelateLeadershipDepartureDistress_ConfirmedByDividendCut(t *testing.T) {
+	depAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "lead_dep_test", Type: SignalLeadershipDeparture, Ticker: "DIS",
+			DetectedAt: depAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "DIS", DetectedAt: cutAt},
+	}
+	records := CorrelateLeadershipDepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateLeadershipDepartureDistress_ConfirmedByCFODeparture(t *testing.T) {
+	depAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cfoAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "lead_dep_cfo_test", Type: SignalLeadershipDeparture, Ticker: "INTC",
+			DetectedAt: depAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "INTC", DetectedAt: cfoAt},
+	}
+	records := CorrelateLeadershipDepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateLeadershipDepartureDistress_Refuted(t *testing.T) {
+	depAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "lead_dep_refuted", Type: SignalLeadershipDeparture, Ticker: "NFLX",
+			DetectedAt: depAt, ValidThrough: validThru},
+	}
+	records := CorrelateLeadershipDepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateLeadershipDepartureDistress_WrongTickerIgnored(t *testing.T) {
+	depAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "lead_dep_wrong", Type: SignalLeadershipDeparture, Ticker: "META",
+			DetectedAt: depAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "SNAP", DetectedAt: cutAt},
+	}
+	records := CorrelateLeadershipDepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateBuybackSuspensionDistress ────────────────────────────────────────
+
+func TestCorrelateBuybackSuspensionDistress_ConfirmedByDividendCut(t *testing.T) {
+	suspAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_susp_cut_test", Type: SignalBuybackSuspension, Ticker: "BA",
+			DetectedAt: suspAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "BA", DetectedAt: cutAt},
+	}
+	records := CorrelateBuybackSuspensionDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBuybackSuspensionDistress_ConfirmedByLateFiling(t *testing.T) {
+	suspAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_susp_late_test", Type: SignalBuybackSuspension, Ticker: "GM",
+			DetectedAt: suspAt, ValidThrough: validThru},
+		{Type: SignalLateFiling, Ticker: "GM", DetectedAt: lateAt},
+	}
+	records := CorrelateBuybackSuspensionDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBuybackSuspensionDistress_Refuted(t *testing.T) {
+	suspAt := time.Now().UTC().AddDate(0, -13, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_susp_refuted", Type: SignalBuybackSuspension, Ticker: "FDX",
+			DetectedAt: suspAt, ValidThrough: validThru},
+	}
+	records := CorrelateBuybackSuspensionDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBuybackSuspensionDistress_WrongTickerIgnored(t *testing.T) {
+	suspAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_susp_wrong", Type: SignalBuybackSuspension, Ticker: "UPS",
+			DetectedAt: suspAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "FDX", DetectedAt: cutAt},
+	}
+	records := CorrelateBuybackSuspensionDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
