@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (9) — jon_signal_scan tool
+
+New `jon_signal_scan` tool in `tools.go`: reads `var/entity-graph/signals.ndjson`,
+builds composite setup score per ticker. Scoring: critical=3, high=2, medium=1, other=0.5
+base; +0.5 recency bonus for signals within 30 days; combo bonuses for key pairs
+(activist_risk+director_friction +4, cfo_departure+dividend_cut +5,
+insider_sell_cluster+late_filing +3, compensation_concern+director_friction +3).
+Signals older than 90 days excluded. Returns top N tickers sorted by score with
+key signals and combo annotations. Added to jonSystemPrompt TOOLS AVAILABLE section.
+
 ## 2026-06-05 (8) — insider signal accuracy correlators (buy→capital return, sell→distress)
 
 Two new accuracy correlation functions in `accuracy.go`:
