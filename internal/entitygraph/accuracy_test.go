@@ -1312,3 +1312,155 @@ func TestCorrelateBoardDecayConcernDeterioration_WrongTickerIgnored(t *testing.T
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateDividendRaiseCapitalCluster ──────────────────────────────────────
+
+func TestCorrelateDividendRaiseCapitalCluster_ConfirmedByBuyback(t *testing.T) {
+	raiseAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	bbAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "div_raise_bb_test", Type: SignalDividendRaise, Ticker: "AAPL",
+			DetectedAt: raiseAt, ValidThrough: validThru},
+		{Type: SignalBuybackAuthorization, Ticker: "AAPL", DetectedAt: bbAt},
+	}
+	records := CorrelateDividendRaiseCapitalCluster(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDividendRaiseCapitalCluster_ConfirmedByInsiderBuy(t *testing.T) {
+	raiseAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	buyAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "div_raise_ins_test", Type: SignalDividendRaise, Ticker: "MSFT",
+			DetectedAt: raiseAt, ValidThrough: validThru},
+		{Type: SignalInsiderBuy, Ticker: "MSFT", DetectedAt: buyAt},
+	}
+	records := CorrelateDividendRaiseCapitalCluster(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDividendRaiseCapitalCluster_Refuted(t *testing.T) {
+	raiseAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "div_raise_refuted", Type: SignalDividendRaise, Ticker: "PG",
+			DetectedAt: raiseAt, ValidThrough: validThru},
+	}
+	records := CorrelateDividendRaiseCapitalCluster(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDividendRaiseCapitalCluster_WrongTickerIgnored(t *testing.T) {
+	raiseAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	bbAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "div_raise_wrong", Type: SignalDividendRaise, Ticker: "KO",
+			DetectedAt: raiseAt, ValidThrough: validThru},
+		{Type: SignalBuybackAuthorization, Ticker: "PEP", DetectedAt: bbAt},
+	}
+	records := CorrelateDividendRaiseCapitalCluster(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateGovernanceDeterioratingDistress ──────────────────────────────────
+
+func TestCorrelateGovernanceDeterioratingDistress_ConfirmedByCFODeparture(t *testing.T) {
+	detAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cfoAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_det_cfo_test", Type: SignalGovernanceDeterioration, Ticker: "GE",
+			DetectedAt: detAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "GE", DetectedAt: cfoAt},
+	}
+	records := CorrelateGovernanceDeterioratingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceDeterioratingDistress_ConfirmedByDirectorFriction(t *testing.T) {
+	detAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	fricAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_det_fric_test", Type: SignalGovernanceDeterioration, Ticker: "F",
+			DetectedAt: detAt, ValidThrough: validThru},
+		{Type: SignalDirectorFriction, Ticker: "F", DetectedAt: fricAt},
+	}
+	records := CorrelateGovernanceDeterioratingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceDeterioratingDistress_Refuted(t *testing.T) {
+	detAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_det_refuted", Type: SignalGovernanceDeterioration, Ticker: "MMM",
+			DetectedAt: detAt, ValidThrough: validThru},
+	}
+	records := CorrelateGovernanceDeterioratingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceDeterioratingDistress_WrongTickerIgnored(t *testing.T) {
+	detAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cfoAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_det_wrong", Type: SignalGovernanceDeterioration, Ticker: "IBM",
+			DetectedAt: detAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "HPQ", DetectedAt: cfoAt},
+	}
+	records := CorrelateGovernanceDeterioratingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

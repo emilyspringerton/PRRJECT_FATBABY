@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (14) — dividend raise capital cluster + governance deteriorating correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateDividendRaiseCapitalCluster`: for each `dividend_raise` signal, checks
+whether `buyback_authorization` or `insider_buy` follows at the same ticker within
+ValidThrough. Management confidence signals cluster together. EvidenceType:
+"buyback_authorization_or_insider_buy". 4 tests.
+
+`CorrelateGovernanceDeterioratingDistress`: for each `governance_deteriorating` signal,
+checks whether `cfo_departure`, `director_friction`, or `late_filing` follows within
+ValidThrough. Validates the composite scoring model against concrete events.
+EvidenceType: "cfo_departure_director_friction_or_late_filing". 4 tests.
+
+Both wired into entity-graph batch. Log line updated. All 37 test packages pass.
+
+Accuracy correlator coverage: 15 of 31 signal types.
+
 ## 2026-06-05 (13) — abstention spike + board decay concern accuracy correlators
 
 Two new accuracy correlation functions in `accuracy.go`:
