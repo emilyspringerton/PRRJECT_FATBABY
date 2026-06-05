@@ -11,6 +11,7 @@
       ],
       "enabled": true,
       "poll_priority": 1,
+      "sector": "technology",
       "notes": "core megacap coverage"
     },
     {
@@ -24,6 +25,7 @@
       ],
       "enabled": true,
       "poll_priority": 1,
+      "sector": "technology",
       "notes": "core megacap coverage"
     },
     {
@@ -37,6 +39,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "technology",
       "notes": "core semiconductor coverage"
     },
     {
@@ -50,6 +53,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -63,6 +67,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -76,6 +81,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "technology",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -89,6 +95,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "technology",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -102,6 +109,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -115,6 +123,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -128,6 +137,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "technology",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -141,6 +151,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "technology",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -154,6 +165,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -167,6 +179,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -180,6 +193,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -193,6 +207,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -206,6 +221,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -219,6 +235,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "healthcare",
       "notes": "user-added watchlist coverage"
     },
     {
@@ -232,6 +249,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance"
     },
     {
@@ -245,6 +263,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance"
     },
     {
@@ -258,6 +277,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "Phase 3 entity-graph expansion: major bank board governance"
     },
     {
@@ -271,6 +291,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "financial",
       "notes": "Phase 3 entity-graph expansion: brokerage peer for SCHW director-link analysis"
     },
     {
@@ -284,6 +305,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "financial",
       "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
     },
     {
@@ -297,6 +319,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "financial",
       "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
     },
     {
@@ -310,6 +333,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "financial",
       "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
     },
     {
@@ -323,6 +347,7 @@
       ],
       "enabled": true,
       "poll_priority": 1,
+      "sector": "technology",
       "notes": "S&P 100 expansion: megacap tech / consumer"
     },
     {
@@ -336,6 +361,7 @@
       ],
       "enabled": true,
       "poll_priority": 1,
+      "sector": "technology",
       "notes": "S&P 100 expansion: megacap tech / social"
     },
     {
@@ -349,6 +375,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "consumer_discretionary",
       "notes": "S&P 100 expansion: EV / high governance volatility"
     },
     {
@@ -362,6 +389,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "communication_services",
       "notes": "S&P 100 expansion: streaming media"
     },
     {
@@ -375,6 +403,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "healthcare",
       "notes": "S&P 100 expansion: large-cap pharma / healthcare"
     },
     {
@@ -388,6 +417,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "healthcare",
       "notes": "S&P 100 expansion: large-cap pharma"
     },
     {
@@ -401,6 +431,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "healthcare",
       "notes": "S&P 100 expansion: large-cap pharma / governance watch"
     },
     {
@@ -414,6 +445,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "energy",
       "notes": "S&P 100 expansion: major integrated oil"
     },
     {
@@ -427,6 +459,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "energy",
       "notes": "S&P 100 expansion: major integrated oil"
     },
     {
@@ -440,6 +473,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "consumer_staples",
       "notes": "S&P 100 expansion: consumer staples / retail"
     },
     {
@@ -453,6 +487,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "consumer_discretionary",
       "notes": "S&P 100 expansion: consumer discretionary / home improvement"
     },
     {
@@ -466,6 +501,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "consumer_staples",
       "notes": "S&P 100 expansion: consumer staples / warehouse retail"
     },
     {
@@ -479,6 +515,7 @@
       ],
       "enabled": true,
       "poll_priority": 2,
+      "sector": "industrial",
       "notes": "S&P 100 expansion: aerospace / high governance event frequency"
     },
     {
@@ -492,6 +529,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "healthcare",
       "notes": "S&P 100 expansion: managed care — CIK needs EDGAR verification before enabling"
     },
     {
@@ -505,6 +543,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "healthcare",
       "notes": "S&P 100 expansion: large-cap pharma — CIK needs EDGAR verification before enabling"
     },
     {
@@ -518,6 +557,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "consumer_staples",
       "notes": "S&P 100 expansion: retail — CIK needs EDGAR verification before enabling"
     },
     {
@@ -531,6 +571,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "consumer_discretionary",
       "notes": "S&P 100 expansion: home improvement — CIK needs EDGAR verification before enabling"
     },
     {
@@ -544,6 +585,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "industrial",
       "notes": "S&P 100 expansion: industrials — CIK needs EDGAR verification before enabling"
     },
     {
@@ -557,6 +599,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "industrial",
       "notes": "S&P 100 expansion: aerospace/defense — CIK needs EDGAR verification before enabling"
     },
     {
@@ -570,6 +613,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "industrial",
       "notes": "S&P 100 expansion: aerospace/industrials — CIK needs EDGAR verification before enabling"
     },
     {
@@ -583,6 +627,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "communication_services",
       "notes": "S&P 100 expansion: telecom — CIK needs EDGAR verification before enabling"
     },
     {
@@ -596,6 +641,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "communication_services",
       "notes": "S&P 100 expansion: telecom — CIK needs EDGAR verification before enabling"
     },
     {
@@ -609,6 +655,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "communication_services",
       "notes": "S&P 100 expansion: media/telecom — CIK needs EDGAR verification before enabling"
     },
     {
@@ -622,6 +669,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "communication_services",
       "notes": "S&P 100 expansion: media/entertainment — CIK needs EDGAR verification before enabling"
     },
     {
@@ -635,6 +683,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "utilities",
       "notes": "S&P 100 expansion: utilities — CIK needs EDGAR verification before enabling"
     },
     {
@@ -648,6 +697,7 @@
       ],
       "enabled": false,
       "poll_priority": 3,
+      "sector": "energy",
       "notes": "S&P 100 expansion: E&P energy — CIK needs EDGAR verification before enabling"
     }
   ]

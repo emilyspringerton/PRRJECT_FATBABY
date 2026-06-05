@@ -1,0 +1,26 @@
+{
+  "observation_summary": "RSI cycle 2026-06-05 — director long-tenure signal + sector peer governance ranking",
+  "observation_timestamp": "2026-06-04T10:00:00Z",
+  "run_started_at": "2026-06-05T00:00:00Z",
+  "run_completed_at": "2026-06-05T00:20:00Z",
+  "source_repo": "prrject-fatbaby",
+  "apple_type": "improvement",
+  "files_changed": [
+    "internal/entitygraph/signals.go",
+    "internal/entitygraph/signals_test.go",
+    "internal/entitygraph/rules.go",
+    "secwatch/watchlist.go",
+    "config/watchlist.json",
+    "cmd/entity-graph/main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Two new signal types added to the entity graph. (1) director_long_tenure: ScoreLongTenure scans the in-memory graph for directors whose FirstAppearance at a ticker is >LongTenureYearsThreshold years ago (default 12, configurable). Per ISS/Glass Lewis governance standards, long-tenured directors (>12 years) may lack independence from management. Medium severity for 12-14 years, high for 15+. Added as -0.06 penalty to governance_health_index. (2) governance_peer_underperformer: ScorePeerGovernanceRank compares each ticker's health score to its sector median; fires when a ticker is >PeerGovernanceUnderperformThreshold (default 0.15) below peers. Medium severity for gap 0.15-0.24, high for >=0.25. Added as -0.10 penalty to governance_health_index. Both wired into cmd/entity-graph/main.go. Watchlist sector annotations added for all 50 tickers (GICS-style sectors). 10 new tests all pass. Full suite: 30 packages pass go test ./...",
+  "signals_added": [
+    "director_long_tenure",
+    "governance_peer_underperformer"
+  ],
+  "new_tests": 10,
+  "git_commit_hash": "",
+  "exit_status": "success",
+  "notes": "Sector peer comparison provides the context that was previously missing from governance health scores — a 0.70 score is very different when the sector median is 0.85 vs 0.60. Long-tenure signal closes the ISS/Glass Lewis proxy advisory gap in the signal taxonomy. Both signals are config-driven thresholds that Claude Code can tune in entity-graph-rules.json."
+}

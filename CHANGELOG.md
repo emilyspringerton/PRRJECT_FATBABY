@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 — Director long-tenure signal + sector peer governance ranking
+
+### `internal/entitygraph/signals.go` + `rules.go`
+
+Two new signal types added to the entity graph RSI cycle:
+
+**`director_long_tenure`** — fires when a director's board tenure at a single company exceeds
+`LongTenureYearsThreshold` (default 12 years, configurable via `entity-graph-rules.json`).
+Per ISS/Glass Lewis standards, long-tenured directors raise independence concerns; proxy advisors
+increasingly vote against them. Severity: medium (12–14 years), high (15+ years). Added as a
+0.06 penalty in the `governance_health_index` composite.
+
+**`governance_peer_underperformer`** — fires when a ticker's governance health score is more than
+`PeerGovernanceUnderperformThreshold` (default 0.15) below its sector median. Contextualises
+absolute health scores against the peer cohort (e.g., SCHW vs. other financial sector tickers).
+Severity: medium (gap 0.15–0.24), high (gap ≥ 0.25). Added as a 0.10 penalty in the health
+composite. Sector comparisons require ≥2 peers with the same sector label.
+
+### `config/watchlist.json`
+
+All 50 entries annotated with `sector` field (GICS-style: `technology`, `financial`, `healthcare`,
+`energy`, `industrial`, `consumer_staples`, `consumer_discretionary`, `communication_services`,
+`utilities`). Used by `ScorePeerGovernanceRank` to group tickers for peer comparison.
+
+### `secwatch/watchlist.go`
+
+Added `Sector string` field to `WatchEntry` (JSON: `"sector"`, omitempty). Backwards-compatible —
+existing entries without the field get empty string and are silently skipped by peer scoring.
+
+### `cmd/entity-graph/main.go`
+
+- Added `--watchlist` flag (default `config/watchlist.json`) to load sector mappings for peer scoring.
+- `ScoreLongTenure` called after graph load (alongside `scoreDecayFromGraph`).
+- `ScorePeerGovernanceRank` called after all health scores are computed for the batch.
+
+### Tests
+
+10 new tests: 5 for `ScoreLongTenure` (fire/no-fire/high-severity/empty-graph/custom-threshold),
+5 for `ScorePeerGovernanceRank` (below-median/above-median/single-peer-skip/no-sector-skip/high-severity).
+All 30 packages pass `go test ./...`.
+
 ## 2026-06-04 — Buyback watcher, NT filing watcher, eps-reconciler signals
 
 ### `cmd/buyback-watcher` + `internal/buyback`

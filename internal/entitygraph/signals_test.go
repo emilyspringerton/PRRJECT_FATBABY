@@ -867,3 +867,203 @@ func TestScoreGovernanceHealthTrend_HighSeverityDrop(t *testing.T) {
 		t.Errorf("want high severity for large drop, got %s", sig.Severity)
 	}
 }
+
+// ── ScoreLongTenure ──────────────────────────────────────────────────────────
+
+func TestScoreLongTenure_FiringAboveThreshold(t *testing.T) {
+	g := NewGraph()
+	// Simulate a director who first appeared in 2008 — >12 years ago.
+	app := FilingAppearance{
+		Ticker:      "SCHW",
+		FilingDate:  "2008-05-01",
+		ApprovalPct: 0.92,
+	}
+	g.UpsertPerson("Long-Tenured Director", NodeDirector, app)
+
+	r := DefaultRules()
+	sigs := ScoreLongTenure(g, r)
+	if len(sigs) == 0 {
+		t.Fatal("expected director_long_tenure signal, got none")
+	}
+	for _, s := range sigs {
+		if s.Type != SignalDirectorLongTenure {
+			t.Errorf("unexpected signal type %s", s.Type)
+		}
+		if s.Ticker != "SCHW" {
+			t.Errorf("unexpected ticker %s", s.Ticker)
+		}
+	}
+}
+
+func TestScoreLongTenure_NoFireBelowThreshold(t *testing.T) {
+	g := NewGraph()
+	// Director first appeared recently — below the 12-year threshold.
+	app := FilingAppearance{
+		Ticker:      "AAPL",
+		FilingDate:  "2022-06-01",
+		ApprovalPct: 0.97,
+	}
+	g.UpsertPerson("New Director", NodeDirector, app)
+
+	r := DefaultRules()
+	sigs := ScoreLongTenure(g, r)
+	for _, s := range sigs {
+		if s.Ticker == "AAPL" && s.Entity == "New Director" {
+			t.Error("expected no long_tenure signal for recently-added director")
+		}
+	}
+}
+
+func TestScoreLongTenure_HighSeverityAt15Years(t *testing.T) {
+	g := NewGraph()
+	app := FilingAppearance{
+		Ticker:      "JPM",
+		FilingDate:  "2008-01-01",
+		ApprovalPct: 0.95,
+	}
+	g.UpsertPerson("Very Long Director", NodeDirector, app)
+
+	r := DefaultRules()
+	sigs := ScoreLongTenure(g, r)
+	found := false
+	for _, s := range sigs {
+		if s.Ticker == "JPM" {
+			found = true
+			if s.Severity != SeverityHigh {
+				t.Errorf("director with 17+ years should be high severity, got %s", s.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected signal for very long tenured director at JPM")
+	}
+}
+
+func TestScoreLongTenure_EmptyGraph(t *testing.T) {
+	g := NewGraph()
+	sigs := ScoreLongTenure(g, DefaultRules())
+	if len(sigs) != 0 {
+		t.Errorf("expected 0 signals for empty graph, got %d", len(sigs))
+	}
+}
+
+func TestScoreLongTenure_CustomThreshold(t *testing.T) {
+	g := NewGraph()
+	// Director from 2020 — 5+ years ago but under default 12.
+	app := FilingAppearance{
+		Ticker:      "MSFT",
+		FilingDate:  "2018-01-01",
+		ApprovalPct: 0.93,
+	}
+	g.UpsertPerson("Mid-Tenure Director", NodeDirector, app)
+
+	r := DefaultRules()
+	r.LongTenureYearsThreshold = 5 // lower threshold should now fire
+	sigs := ScoreLongTenure(g, r)
+	found := false
+	for _, s := range sigs {
+		if s.Ticker == "MSFT" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected long_tenure signal with custom 5-year threshold")
+	}
+}
+
+// ── ScorePeerGovernanceRank ──────────────────────────────────────────────────
+
+func TestScorePeerGovernanceRank_FiringBelow(t *testing.T) {
+	// SCHW at 0.40, others in financial sector at 0.80 — gap 0.40, above 0.15 threshold.
+	scores := map[string]float64{
+		"SCHW": 0.40,
+		"BAC":  0.80,
+		"JPM":  0.82,
+		"WFC":  0.78,
+	}
+	sectors := map[string]string{
+		"SCHW": "financial",
+		"BAC":  "financial",
+		"JPM":  "financial",
+		"WFC":  "financial",
+	}
+	r := DefaultRules()
+	sigs := ScorePeerGovernanceRank(scores, sectors, r)
+	found := false
+	for _, s := range sigs {
+		if s.Ticker == "SCHW" && s.Type == SignalGovernancePeerUnderperformer {
+			found = true
+			if s.Score <= 0 {
+				t.Error("gap score should be positive")
+			}
+		}
+	}
+	if !found {
+		t.Error("expected governance_peer_underperformer signal for SCHW")
+	}
+}
+
+func TestScorePeerGovernanceRank_NoFireAbove(t *testing.T) {
+	// All tickers near the median — no underperformer should fire.
+	scores := map[string]float64{
+		"JPM": 0.78,
+		"BAC": 0.80,
+		"GS":  0.79,
+	}
+	sectors := map[string]string{
+		"JPM": "financial",
+		"BAC": "financial",
+		"GS":  "financial",
+	}
+	sigs := ScorePeerGovernanceRank(scores, sectors, DefaultRules())
+	if len(sigs) != 0 {
+		t.Errorf("expected no signals when all peers near median, got %d", len(sigs))
+	}
+}
+
+func TestScorePeerGovernanceRank_SinglePeerSkipped(t *testing.T) {
+	// Only one ticker in the sector — no comparison possible.
+	scores := map[string]float64{"NEE": 0.45}
+	sectors := map[string]string{"NEE": "utilities"}
+	sigs := ScorePeerGovernanceRank(scores, sectors, DefaultRules())
+	if len(sigs) != 0 {
+		t.Errorf("expected no signals for single-peer sector, got %d", len(sigs))
+	}
+}
+
+func TestScorePeerGovernanceRank_NoSectorSkipped(t *testing.T) {
+	// Tickers without sector assignment should be skipped entirely.
+	scores := map[string]float64{
+		"AAPL": 0.30,
+		"MSFT": 0.90,
+	}
+	sectors := map[string]string{} // no sector info
+	sigs := ScorePeerGovernanceRank(scores, sectors, DefaultRules())
+	if len(sigs) != 0 {
+		t.Errorf("expected no signals when sector map empty, got %d", len(sigs))
+	}
+}
+
+func TestScorePeerGovernanceRank_HighSeverityLargeGap(t *testing.T) {
+	// Gap >= 0.25 should be high severity.
+	scores := map[string]float64{
+		"TSLA": 0.20,
+		"HD":   0.80,
+		"COST": 0.82,
+	}
+	sectors := map[string]string{
+		"TSLA": "consumer_discretionary",
+		"HD":   "consumer_discretionary",
+		"COST": "consumer_discretionary",
+	}
+	sigs := ScorePeerGovernanceRank(scores, sectors, DefaultRules())
+	for _, s := range sigs {
+		if s.Ticker == "TSLA" {
+			if s.Severity != SeverityHigh {
+				t.Errorf("gap of ~0.61 should be high severity, got %s", s.Severity)
+			}
+			return
+		}
+	}
+	t.Error("expected signal for TSLA")
+}

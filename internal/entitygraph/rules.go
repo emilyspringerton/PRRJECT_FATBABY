@@ -96,6 +96,17 @@ type Rules struct {
 	// ScoreBoardDecayConcern when counting concurrent director_decay signals.
 	// Default 730 (2 proxy seasons).
 	BoardDecayConcernWindowDays int `json:"board_decay_concern_window_days"`
+
+	// LongTenureYearsThreshold is the number of consecutive years a director must
+	// have served at a single company before ScoreLongTenure fires. ISS/Glass Lewis
+	// typically flag tenure >12 years as an independence concern. Default 12.
+	LongTenureYearsThreshold int `json:"long_tenure_years_threshold"`
+
+	// PeerGovernanceUnderperformThreshold is the minimum gap (as a fraction of the
+	// 0-1 health index) between a ticker's score and its sector median before
+	// ScorePeerGovernanceRank fires a governance_peer_underperformer signal.
+	// Default 0.15 (15 points on the 0-100 scale).
+	PeerGovernanceUnderperformThreshold float64 `json:"peer_governance_underperform_threshold"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -117,8 +128,10 @@ func DefaultRules() Rules {
 		AccelerationDecayPPThreshold:  4.0,
 		AbstentionOutlierMultiplier:   2.5,
 		CompVoteKeywords:              []string{"compensation", "executive", "say-on-pay", "remuneration", "advisory vote on pay"},
-		MinBoardDecayCount:            3,
-		BoardDecayConcernWindowDays:   730,
+		MinBoardDecayCount:                  3,
+		BoardDecayConcernWindowDays:         730,
+		LongTenureYearsThreshold:            12,
+		PeerGovernanceUnderperformThreshold: 0.15,
 	}
 }
 
@@ -190,6 +203,12 @@ func LoadRules(path string) Rules {
 	}
 	if r.BoardDecayConcernWindowDays == 0 {
 		r.BoardDecayConcernWindowDays = defaults.BoardDecayConcernWindowDays
+	}
+	if r.LongTenureYearsThreshold == 0 {
+		r.LongTenureYearsThreshold = defaults.LongTenureYearsThreshold
+	}
+	if r.PeerGovernanceUnderperformThreshold == 0 {
+		r.PeerGovernanceUnderperformThreshold = defaults.PeerGovernanceUnderperformThreshold
 	}
 	return r
 }

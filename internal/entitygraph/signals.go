@@ -49,6 +49,14 @@ const (
 	SignalBuybackAuthorization    SignalType = "buyback_authorization"
 	SignalBuybackSuspension       SignalType = "buyback_suspension"
 	SignalEPSFilingRevision       SignalType = "eps_filing_revision"
+	// SignalDirectorLongTenure fires when a director's tenure at one company
+	// exceeds the configured threshold (default 12 years). Per ISS/Glass Lewis
+	// standards, long-tenured directors may lack independence from management.
+	SignalDirectorLongTenure SignalType = "director_long_tenure"
+	// SignalGovernancePeerUnderperformer fires when a ticker's governance health
+	// score is significantly below its sector median — contextualises absolute
+	// scores against peer companies in the same industry.
+	SignalGovernancePeerUnderperformer SignalType = "governance_peer_underperformer"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -82,6 +90,8 @@ var AllSignalTypes = []SignalType{
 	SignalBuybackAuthorization,
 	SignalBuybackSuspension,
 	SignalEPSFilingRevision,
+	SignalDirectorLongTenure,
+	SignalGovernancePeerUnderperformer,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
@@ -703,7 +713,9 @@ func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *
 		SignalDividendCut:           0.15,
 		SignalLateFiling:            0.20,
 		SignalEPSFilingRevision:     0.12,
-		SignalBuybackSuspension:     0.08,
+		SignalBuybackSuspension:              0.08,
+		SignalDirectorLongTenure:             0.06,
+		SignalGovernancePeerUnderperformer:   0.10,
 	}
 
 	score := 1.0
@@ -951,4 +963,165 @@ func ScoreLeadershipChange(result Item502Result, ticker, filingDate string) []Si
 		}
 	}
 	return signals
+}
+
+// ScoreLongTenure emits a director_long_tenure signal for every director in the
+// graph whose tenure at a single company exceeds r.LongTenureYearsThreshold
+// (default 12 years). Long-tenured directors may lack independence per ISS/Glass
+// Lewis standards, which proxy advisors penalise in vote recommendations.
+//
+// Tenure is calculated from the node's FirstAppearance at each ticker (earliest
+// FilingAppearance.FilingDate) to today. Returns one signal per director-ticker
+// pair that breaches the threshold.
+func ScoreLongTenure(graph *Graph, r Rules) []Signal {
+	threshold := r.LongTenureYearsThreshold
+	if threshold <= 0 {
+		threshold = 12
+	}
+	today := time.Now().UTC()
+	todayStr := today.Format("2006-01-02")
+	nextYear := today.AddDate(1, 0, 0).Format("2006-01-02")
+
+	var out []Signal
+	for _, node := range graph.Nodes {
+		// Find the earliest filing date per ticker for this node.
+		firstByTicker := map[string]string{}
+		for _, f := range node.Filings {
+			if f.Ticker == "" || f.FilingDate == "" {
+				continue
+			}
+			if existing, ok := firstByTicker[f.Ticker]; !ok || f.FilingDate < existing {
+				firstByTicker[f.Ticker] = f.FilingDate
+			}
+		}
+		for ticker, firstDate := range firstByTicker {
+			t, err := time.Parse("2006-01-02", firstDate)
+			if err != nil {
+				continue
+			}
+			years := today.Sub(t).Hours() / (24 * 365.25)
+			if years < float64(threshold) {
+				continue
+			}
+			yearsInt := int(years)
+			sev := SeverityMedium
+			conf := 0.70
+			if yearsInt >= 15 {
+				sev = SeverityHigh
+				conf = 0.78
+			}
+			out = append(out, Signal{
+				SignalID:     fmt.Sprintf("director_long_tenure_%s_%s", Canonicalize(node.Name), strings.ToLower(ticker)),
+				Type:         SignalDirectorLongTenure,
+				Ticker:       ticker,
+				Entity:       node.Name,
+				Severity:     sev,
+				Confidence:   conf,
+				Score:        years / 20.0, // normalised: 20 years = 1.0
+				DetectedAt:   todayStr,
+				ValidThrough: nextYear,
+				Interpretation: fmt.Sprintf(
+					"Director %s has served on the %s board for approximately %d years (since %s). Directors with >%d-year tenure may lack independence per ISS/Glass Lewis standards; proxy advisors increasingly vote against long-tenured directors.",
+					node.Name, ticker, yearsInt, firstDate, threshold,
+				),
+				Metadata: map[string]string{
+					"first_appearance": firstDate,
+					"tenure_years":     fmt.Sprintf("%d", yearsInt),
+					"threshold_years":  fmt.Sprintf("%d", threshold),
+				},
+			})
+		}
+	}
+	return out
+}
+
+// ScorePeerGovernanceRank compares each ticker's governance health score against
+// the median score of all tickers in the same sector. A ticker whose score falls
+// more than r.PeerGovernanceUnderperformThreshold (default 0.15) below its sector
+// median emits a governance_peer_underperformer signal.
+//
+// healthScores maps ticker → most-recent governance_health_index score.
+// sectorMap maps ticker → sector string (e.g. "financial", "technology").
+//
+// Tickers with no sector assignment are skipped. Sectors with fewer than 2 peers
+// are skipped (no meaningful comparison possible).
+func ScorePeerGovernanceRank(healthScores map[string]float64, sectorMap map[string]string, r Rules) []Signal {
+	threshold := r.PeerGovernanceUnderperformThreshold
+	if threshold <= 0 {
+		threshold = 0.15
+	}
+
+	// Group scores by sector.
+	bySector := map[string][]struct {
+		ticker string
+		score  float64
+	}{}
+	for ticker, score := range healthScores {
+		sector := sectorMap[ticker]
+		if sector == "" {
+			continue
+		}
+		bySector[sector] = append(bySector[sector], struct {
+			ticker string
+			score  float64
+		}{ticker, score})
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	var out []Signal
+
+	for sector, peers := range bySector {
+		if len(peers) < 2 {
+			continue
+		}
+		// Compute sector median.
+		scores := make([]float64, len(peers))
+		for i, p := range peers {
+			scores[i] = p.score
+		}
+		sort.Float64s(scores)
+		var median float64
+		n := len(scores)
+		if n%2 == 0 {
+			median = (scores[n/2-1] + scores[n/2]) / 2
+		} else {
+			median = scores[n/2]
+		}
+
+		for _, p := range peers {
+			gap := median - p.score
+			if gap < threshold {
+				continue
+			}
+			sev := SeverityMedium
+			conf := 0.65
+			if gap >= 0.25 {
+				sev = SeverityHigh
+				conf = 0.73
+			}
+			out = append(out, Signal{
+				SignalID:     fmt.Sprintf("governance_peer_underperformer_%s_%s", strings.ToLower(p.ticker), today),
+				Type:         SignalGovernancePeerUnderperformer,
+				Ticker:       p.ticker,
+				Severity:     sev,
+				Confidence:   conf,
+				Score:        gap,
+				DetectedAt:   today,
+				ValidThrough: nextYear,
+				Interpretation: fmt.Sprintf(
+					"%s governance health score %.2f is %.2f below the %s sector median (%.2f across %d peers). Sector-relative underperformance amplifies activist targeting risk.",
+					p.ticker, p.score, gap, sector, median, len(peers),
+				),
+				Metadata: map[string]string{
+					"sector":         sector,
+					"ticker_score":   fmt.Sprintf("%.3f", p.score),
+					"sector_median":  fmt.Sprintf("%.3f", median),
+					"gap":            fmt.Sprintf("%.3f", gap),
+					"peer_count":     fmt.Sprintf("%d", len(peers)),
+				},
+			})
+		}
+	}
+	return out
 }

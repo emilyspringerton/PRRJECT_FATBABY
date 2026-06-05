@@ -20,6 +20,9 @@ type WatchEntry struct {
 	Enabled      bool     `json:"enabled"`
 	PollPrio     int      `json:"poll_priority,omitempty"`
 	Notes        string   `json:"notes,omitempty"`
+	// Sector is a coarse GICS-style grouping used for peer governance comparison.
+	// E.g. "technology", "financial", "healthcare", "energy", "industrial", etc.
+	Sector string `json:"sector,omitempty"`
 }
 
 func LoadWatchlist(path string) (Watchlist, error) {

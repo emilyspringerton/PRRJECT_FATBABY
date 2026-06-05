@@ -38,6 +38,7 @@ func main() {
 	schd13Dir := flag.String("schd13-dir", filepath.Join("var", "schd13"), "directory containing schd13-watcher filings.ndjson for accuracy tracking")
 	obsDir := flag.String("obs-dir", filepath.Join("var", "emily-observations"), "observation output directory")
 	rulesPath := flag.String("rules", filepath.Join("config", "entity-graph-rules.json"), "signal scoring rules (hot-reloaded each batch)")
+	watchlistPath := flag.String("watchlist", filepath.Join("config", "watchlist.json"), "watchlist JSON for sector peer comparison")
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "how often to poll the event store")
 	batchSize := flag.Int("batch-size", 256, "max events to read per poll")
 	cursorPath := flag.String("cursor", filepath.Join("var", "entity-graph", ".cursor"), "file storing last-processed sequence number")
@@ -65,13 +66,14 @@ func main() {
 
 	for {
 		cursor = runBatch(ctx, store, logger, runConfig{
-			graphDir:   *graphDir,
-			schd13Dir:  *schd13Dir,
-			obsDir:     *obsDir,
-			rulesPath:  *rulesPath,
-			cursorPath: *cursorPath,
-			batchSize:  *batchSize,
-			cursor:     cursor,
+			graphDir:     *graphDir,
+			schd13Dir:    *schd13Dir,
+			obsDir:       *obsDir,
+			rulesPath:    *rulesPath,
+			watchlistPath: *watchlistPath,
+			cursorPath:   *cursorPath,
+			batchSize:    *batchSize,
+			cursor:       cursor,
 		})
 
 		if *oneShot {
@@ -89,13 +91,14 @@ func main() {
 }
 
 type runConfig struct {
-	graphDir   string
-	schd13Dir  string
-	obsDir     string
-	rulesPath  string
-	cursorPath string
-	batchSize  int
-	cursor     uint64
+	graphDir     string
+	schd13Dir    string
+	obsDir       string
+	rulesPath    string
+	watchlistPath string
+	cursorPath   string
+	batchSize    int
+	cursor       uint64
 }
 
 func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logger, cfg runConfig) uint64 {
@@ -290,6 +293,14 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	decaySigs := scoreDecayFromGraph(graph, rules, logger)
 	allSignals = append(allSignals, decaySigs...)
 
+	// Director long-tenure: flag directors whose board service exceeds the ISS/Glass Lewis
+	// independence threshold. Runs against the full graph (not just this batch).
+	tenureSigs := entitygraph.ScoreLongTenure(graph, rules)
+	if len(tenureSigs) > 0 {
+		logger.Printf("director_long_tenure signals=%d", len(tenureSigs))
+		allSignals = append(allSignals, tenureSigs...)
+	}
+
 	// Composite signals: combine current batch with historical for cross-filing detection.
 	combined := append(historicalSignals, allSignals...)
 
@@ -312,10 +323,30 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	// governance_health_index: composite health score per ticker.
 	// Re-compute combined to include director_link signals before scoring.
 	combined = append(combined, linkSigs...)
+	healthScores := map[string]float64{}
 	for ticker := range batchTickers {
 		if sig := entitygraph.ScoreGovernanceHealth(ticker, combined, rules.GovernanceHealthWindowDays); sig != nil {
 			logger.Printf("governance_health ticker=%s score=%.3f severity=%s", ticker, sig.Score, sig.Severity)
 			allSignals = append(allSignals, *sig)
+			healthScores[ticker] = sig.Score
+		}
+	}
+
+	// Peer governance rank: compare each ticker's health score to its sector median.
+	// Load sector map from watchlist; skip gracefully if unavailable.
+	if len(healthScores) >= 2 && cfg.watchlistPath != "" {
+		if wl, wErr := secwatch.LoadWatchlist(cfg.watchlistPath); wErr == nil {
+			sectorMap := make(map[string]string, len(wl.Entries))
+			for _, e := range wl.Entries {
+				sectorMap[e.Ticker] = e.Sector
+			}
+			peerSigs := entitygraph.ScorePeerGovernanceRank(healthScores, sectorMap, rules)
+			if len(peerSigs) > 0 {
+				logger.Printf("governance_peer_underperformer signals=%d", len(peerSigs))
+				allSignals = append(allSignals, peerSigs...)
+			}
+		} else {
+			logger.Printf("load watchlist for peer scoring err=%v (non-fatal)", wErr)
 		}
 	}
 
