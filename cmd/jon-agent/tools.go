@@ -513,6 +513,153 @@ func registerPipelineTools(d *ToolDispatcher, root string) {
 		}, "", "  ")
 		return string(b), nil
 	})
+
+	// Ranked ticker scan — composite setup score per ticker
+	d.Register(ToolDef{
+		Name:        "jon_signal_scan",
+		Description: "Ranked ticker scan: reads entity-graph signals, builds composite setup score per ticker (importance-weighted signal count + recency bonus + key combo bonuses). Returns top N tickers sorted by setup quality with key signals. Use to find the strongest current setups across the watchlist.",
+		Parameters: ToolParameters{
+			Type: "object",
+			Properties: map[string]ToolPropSchema{
+				"top_n":     {Type: "integer", Description: "Number of top tickers to return (default 10, max 50)"},
+				"min_score": {Type: "number", Description: "Minimum composite score to include (default 0)"},
+			},
+		},
+	}, func(args map[string]any) (string, error) {
+		sigPath := filepath.Join(root, "var", "entity-graph", "signals.ndjson")
+		f, err := os.Open(sigPath)
+		if os.IsNotExist(err) {
+			return `{"error":"signals.ndjson not found — entity-graph has not run yet"}`, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("open signals: %w", err)
+		}
+		defer f.Close()
+
+		topN := 10
+		if v, ok := args["top_n"]; ok {
+			if n, ok := v.(float64); ok && n > 0 && n <= 50 {
+				topN = int(n)
+			}
+		}
+		minScore := 0.0
+		if v, ok := args["min_score"]; ok {
+			if s, ok := v.(float64); ok {
+				minScore = s
+			}
+		}
+
+		now := time.Now().UTC()
+		cutoff90 := now.AddDate(0, -3, 0).Format("2006-01-02")
+		cutoff30 := now.AddDate(0, -1, 0).Format("2006-01-02")
+
+		type sigRec struct {
+			Ticker     string `json:"ticker"`
+			Type       string `json:"signal_type"`
+			Importance string `json:"importance"`
+			DetectedAt string `json:"detected_at"`
+		}
+		type tickerState struct {
+			signals     []sigRec
+			signalTypes map[string]bool
+		}
+
+		byTicker := map[string]*tickerState{}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var r sigRec
+			if json.Unmarshal(sc.Bytes(), &r) != nil || r.Ticker == "" {
+				continue
+			}
+			if r.DetectedAt != "" && r.DetectedAt < cutoff90 {
+				continue
+			}
+			st, ok := byTicker[r.Ticker]
+			if !ok {
+				st = &tickerState{signalTypes: map[string]bool{}}
+				byTicker[r.Ticker] = st
+			}
+			st.signals = append(st.signals, r)
+			st.signalTypes[r.Type] = true
+		}
+
+		type tickerSummary struct {
+			Ticker       string   `json:"ticker"`
+			Score        float64  `json:"score"`
+			KeySignals   []string `json:"key_signals"`
+			TotalSignals int      `json:"total_signals"`
+		}
+
+		var summaries []tickerSummary
+		for ticker, st := range byTicker {
+			score := 0.0
+			var keySignals []string
+
+			for _, s := range st.signals {
+				switch s.Importance {
+				case "critical":
+					score += 3.0
+				case "high":
+					score += 2.0
+				case "medium":
+					score += 1.0
+				default:
+					score += 0.5
+				}
+				if s.DetectedAt >= cutoff30 {
+					score += 0.5
+				}
+			}
+
+			if st.signalTypes["activist_risk"] && st.signalTypes["director_friction"] {
+				score += 4.0
+				keySignals = append(keySignals, "COMBO:activist_risk+director_friction")
+			}
+			if st.signalTypes["cfo_departure"] && st.signalTypes["dividend_cut"] {
+				score += 5.0
+				keySignals = append(keySignals, "COMBO:cfo_departure+dividend_cut")
+			}
+			if st.signalTypes["insider_sell_cluster"] && st.signalTypes["late_filing"] {
+				score += 3.0
+				keySignals = append(keySignals, "COMBO:insider_sell_cluster+late_filing")
+			}
+			if st.signalTypes["compensation_concern"] && st.signalTypes["director_friction"] {
+				score += 3.0
+				keySignals = append(keySignals, "COMBO:compensation_concern+director_friction")
+			}
+
+			for _, n := range []string{"activist_risk", "cfo_departure", "dividend_cut", "late_filing", "auditor_change", "insider_sell_cluster", "director_friction"} {
+				if st.signalTypes[n] {
+					keySignals = append(keySignals, n)
+				}
+			}
+
+			if score < minScore {
+				continue
+			}
+			summaries = append(summaries, tickerSummary{
+				Ticker:       ticker,
+				Score:        math.Round(score*10) / 10,
+				KeySignals:   keySignals,
+				TotalSignals: len(st.signals),
+			})
+		}
+
+		sort.Slice(summaries, func(i, j int) bool {
+			return summaries[i].Score > summaries[j].Score
+		})
+		if len(summaries) > topN {
+			summaries = summaries[:topN]
+		}
+
+		b, _ := json.MarshalIndent(map[string]any{
+			"top_tickers":           summaries,
+			"total_tickers_scanned": len(byTicker),
+			"note":                  "score = importance-weighted signals + recency bonus (last 30d) + combo bonuses; signals older than 90d excluded",
+		}, "", "  ")
+		return string(b), nil
+	})
 }
 
 // ── Setup audit log ───────────────────────────────────────────────────────────

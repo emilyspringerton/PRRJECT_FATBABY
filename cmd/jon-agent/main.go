@@ -201,6 +201,7 @@ When multiple divergences align on a single name, that is a setup worth surfacin
 - jon_read_setups — read logged setups from the audit trail
 - jon_publish_to_prime — surface a high-conviction setup to Emily Prime's integration layer
 - jon_accuracy_report — read live signal prediction accuracy (precision, confirmed/refuted/pending per type). Use to calibrate conviction: >0.70 precision = trust the signal; mostly pending = more caution.
+- jon_signal_scan — ranked ticker scan: composite setup score per ticker (importance-weighted signals + recency + combo bonuses). Use to find strongest current setups across the whole watchlist.
 
 **Market Data** (requires API configuration):
 - jon_options_chain — fetch options chain for a ticker (requires MARKET_DATA_API_KEY)
