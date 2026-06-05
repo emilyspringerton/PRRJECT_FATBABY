@@ -422,16 +422,20 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			accuracyRecords = append(accuracyRecords, entitygraph.CorrelateActivistRisk(allForAccuracy, schd13Filings)...)
 		}
 		// Correlate director_decay signals with subsequent leadership departures.
-		// Uses only the in-pipeline signals (allForAccuracy already includes historical).
 		decayRecords := entitygraph.CorrelateDecayDeparture(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, decayRecords...)
+
+		// Correlate auditor_change signals with subsequent late_filing or eps_filing_revision.
+		auditorRiskRecords := entitygraph.CorrelateAuditorChangeFilingRisk(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, auditorRiskRecords...)
 
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay_departure=%d)", len(accuracyRecords), len(accuracyReports), len(decayRecords))
+			logger.Printf("accuracy records=%d reports=%d (decay_departure=%d auditor_risk=%d)",
+				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords))
 		}
 	}
 

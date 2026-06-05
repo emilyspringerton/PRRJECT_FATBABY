@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (6) — CorrelateAuditorChangeFilingRisk accuracy tracker
+
+New accuracy correlation function: `CorrelateAuditorChangeFilingRisk` in `accuracy.go`.
+For each `auditor_change` signal, checks whether a `late_filing` or `eps_filing_revision`
+signal appears for the same ticker within the auditor_change's ValidThrough window.
+Confirms the restatement-risk thesis Jon uses for late_filing + auditor_change co-occurrence
+setups. Wired into entity-graph batch accuracy section alongside `CorrelateDecayDeparture`.
+6 tests in `accuracy_test.go`. EvidenceType: "late_filing_or_eps_revision".
+
 ## 2026-06-05 (5) — Jon agent: complete 31-signal taxonomy (4 missing types added)
 
 Added the 4 previously undocumented signal types to Jon's SIGNAL TAXONOMY:

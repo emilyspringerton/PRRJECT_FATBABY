@@ -394,3 +394,138 @@ func TestCorrelateDecayDeparture_SubstringEntityMatch(t *testing.T) {
 		t.Errorf("outcome = %s, want confirmed (substring entity match)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateAuditorChangeFilingRisk ─────────────────────────────────────────
+
+func TestCorrelateAuditorChangeFilingRisk_ConfirmedByLateFiling(t *testing.T) {
+	auditorAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{
+			SignalID: "auditor_change_schw_test", Type: SignalAuditorChange, Ticker: "SCHW",
+			DetectedAt: auditorAt, ValidThrough: validThru, FilingDate: auditorAt,
+		},
+		{
+			Type: SignalLateFiling, Ticker: "SCHW",
+			FilingDate: lateAt, DetectedAt: lateAt,
+		},
+	}
+	records := CorrelateAuditorChangeFilingRisk(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceType != "late_filing_or_eps_revision" {
+		t.Errorf("evidence_type = %s, want late_filing_or_eps_revision", records[0].EvidenceType)
+	}
+}
+
+func TestCorrelateAuditorChangeFilingRisk_ConfirmedByEPSRevision(t *testing.T) {
+	auditorAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	revAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{
+			SignalID: "auditor_change_mmm_test", Type: SignalAuditorChange, Ticker: "MMM",
+			DetectedAt: auditorAt, ValidThrough: validThru,
+		},
+		{
+			Type: SignalEPSFilingRevision, Ticker: "MMM",
+			DetectedAt: revAt,
+		},
+	}
+	records := CorrelateAuditorChangeFilingRisk(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAuditorChangeFilingRisk_Refuted(t *testing.T) {
+	auditorAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02") // expired
+
+	sigs := []Signal{{
+		SignalID: "auditor_change_expired", Type: SignalAuditorChange, Ticker: "XYZ",
+		DetectedAt: auditorAt, ValidThrough: validThru,
+	}}
+	records := CorrelateAuditorChangeFilingRisk(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (window expired)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAuditorChangeFilingRisk_Pending(t *testing.T) {
+	auditorAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 11, 0).Format("2006-01-02")
+
+	sigs := []Signal{{
+		SignalID: "auditor_change_pending", Type: SignalAuditorChange, Ticker: "AAPL",
+		DetectedAt: auditorAt, ValidThrough: validThru,
+	}}
+	records := CorrelateAuditorChangeFilingRisk(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAuditorChangeFilingRisk_WrongTickerIgnored(t *testing.T) {
+	auditorAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{
+			SignalID: "auditor_change_foo", Type: SignalAuditorChange, Ticker: "FOO",
+			DetectedAt: auditorAt, ValidThrough: validThru,
+		},
+		{
+			Type: SignalLateFiling, Ticker: "BAR", // different ticker
+			FilingDate: lateAt, DetectedAt: lateAt,
+		},
+	}
+	records := CorrelateAuditorChangeFilingRisk(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker late filing should not confirm)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAuditorChangeFilingRisk_EventBeforeWindow(t *testing.T) {
+	auditorAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02") // before auditor change
+
+	sigs := []Signal{
+		{
+			SignalID: "auditor_change_late_before", Type: SignalAuditorChange, Ticker: "MSFT",
+			DetectedAt: auditorAt, ValidThrough: validThru,
+		},
+		{
+			Type: SignalLateFiling, Ticker: "MSFT",
+			FilingDate: lateAt, DetectedAt: lateAt,
+		},
+	}
+	records := CorrelateAuditorChangeFilingRisk(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (event before window start should not confirm)", records[0].Outcome)
+	}
+}

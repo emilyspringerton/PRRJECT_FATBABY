@@ -260,6 +260,70 @@ func CorrelateDecayDeparture(signals []Signal) []AccuracyRecord {
 	return records
 }
 
+// CorrelateAuditorChangeFilingRisk checks whether auditor_change signals were
+// followed by a late_filing or eps_filing_revision signal at the same ticker
+// within the auditor_change signal's ValidThrough window. An auditor change
+// followed by a late filing or EPS revision confirms the restatement-risk
+// thesis that Jon uses when auditor_change and late_filing co-occur.
+//
+// Returns one AccuracyRecord per auditor_change signal in the input.
+func CorrelateAuditorChangeFilingRisk(signals []Signal) []AccuracyRecord {
+	type filingEvent struct{ date string }
+	riskByTicker := map[string][]filingEvent{}
+	for _, s := range signals {
+		if s.Type == SignalLateFiling || s.Type == SignalEPSFilingRevision {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			riskByTicker[s.Ticker] = append(riskByTicker[s.Ticker], filingEvent{date: d})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalAuditorChange {
+			continue
+		}
+
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range riskByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("filing risk event at %s on %s — within auditor_change window [%s, %s]",
+					s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("auditor_change window [%s, %s] expired for %s; no late_filing or eps_revision observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "late_filing_or_eps_revision",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")
