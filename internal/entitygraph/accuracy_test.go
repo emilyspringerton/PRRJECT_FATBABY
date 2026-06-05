@@ -685,3 +685,174 @@ func TestCorrelateInsiderSellDistress_ConfirmedByLateFiling(t *testing.T) {
 		t.Errorf("outcome = %s, want confirmed (late filing = distress)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateCFODepartureDistress ─────────────────────────────────────────────
+
+func TestCorrelateCFODepartureDistress_ConfirmedByDividendCut(t *testing.T) {
+	cfoAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "cfo_dep_test", Type: SignalCFODeparture, Ticker: "XOM",
+			DetectedAt: cfoAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "XOM", DetectedAt: cutAt},
+	}
+	records := CorrelateCFODepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateCFODepartureDistress_ConfirmedByLateFiling(t *testing.T) {
+	cfoAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "cfo_dep_late_test", Type: SignalCFODeparture, Ticker: "MRK",
+			DetectedAt: cfoAt, ValidThrough: validThru},
+		{Type: SignalLateFiling, Ticker: "MRK", DetectedAt: lateAt},
+	}
+	records := CorrelateCFODepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateCFODepartureDistress_Refuted(t *testing.T) {
+	cfoAt := time.Now().UTC().AddDate(0, -13, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "cfo_dep_refuted", Type: SignalCFODeparture, Ticker: "CAT",
+			DetectedAt: cfoAt, ValidThrough: validThru},
+	}
+	records := CorrelateCFODepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (window expired)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateCFODepartureDistress_WrongTickerIgnored(t *testing.T) {
+	cfoAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "cfo_dep_wrong", Type: SignalCFODeparture, Ticker: "AAPL",
+			DetectedAt: cfoAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "MSFT", DetectedAt: cutAt},
+	}
+	records := CorrelateCFODepartureDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (different ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateDirectorFrictionEscalation ──────────────────────────────────────
+
+func TestCorrelateDirectorFrictionEscalation_ConfirmedByCompensationConcern(t *testing.T) {
+	frictionAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	compAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "dir_fric_comp_test", Type: SignalDirectorFriction, Ticker: "GS",
+			DetectedAt: frictionAt, ValidThrough: validThru},
+		{Type: SignalCompensationConcern, Ticker: "GS", DetectedAt: compAt},
+	}
+	records := CorrelateDirectorFrictionEscalation(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDirectorFrictionEscalation_ConfirmedByAbstentionSpike(t *testing.T) {
+	frictionAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	abstAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "dir_fric_abst_test", Type: SignalDirectorFriction, Ticker: "JPM",
+			DetectedAt: frictionAt, ValidThrough: validThru},
+		{Type: SignalAbstentionSpike, Ticker: "JPM", DetectedAt: abstAt},
+	}
+	records := CorrelateDirectorFrictionEscalation(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDirectorFrictionEscalation_ConfirmedByNominationRejection(t *testing.T) {
+	frictionAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	nomAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "dir_fric_nom_test", Type: SignalDirectorFriction, Ticker: "WFC",
+			DetectedAt: frictionAt, ValidThrough: validThru},
+		{Type: SignalNominationRejection, Ticker: "WFC", DetectedAt: nomAt},
+	}
+	records := CorrelateDirectorFrictionEscalation(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDirectorFrictionEscalation_Refuted(t *testing.T) {
+	frictionAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "dir_fric_refuted", Type: SignalDirectorFriction, Ticker: "BAC",
+			DetectedAt: frictionAt, ValidThrough: validThru},
+	}
+	records := CorrelateDirectorFrictionEscalation(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDirectorFrictionEscalation_WrongTickerIgnored(t *testing.T) {
+	frictionAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	compAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "dir_fric_wrong", Type: SignalDirectorFriction, Ticker: "IBM",
+			DetectedAt: frictionAt, ValidThrough: validThru},
+		{Type: SignalCompensationConcern, Ticker: "ORCL", DetectedAt: compAt},
+	}
+	records := CorrelateDirectorFrictionEscalation(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (different ticker)", records[0].Outcome)
+	}
+}

@@ -437,14 +437,22 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		insiderSellRecords := entitygraph.CorrelateInsiderSellDistress(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, insiderSellRecords...)
 
+		// Correlate cfo_departure with subsequent dividend_cut, late_filing, or eps_filing_revision.
+		cfoDeparturRecords := entitygraph.CorrelateCFODepartureDistress(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, cfoDeparturRecords...)
+
+		// Correlate director_friction with subsequent compensation_concern, abstention, or nomination_rejection.
+		dirFrictionRecords := entitygraph.CorrelateDirectorFrictionEscalation(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, dirFrictionRecords...)
+
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d)",
+			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d)",
 				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords),
-				len(insiderBuyRecords), len(insiderSellRecords))
+				len(insiderBuyRecords), len(insiderSellRecords), len(cfoDeparturRecords), len(dirFrictionRecords))
 		}
 	}
 

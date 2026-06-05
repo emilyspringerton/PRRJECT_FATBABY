@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (10) — CFO departure + director friction accuracy correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateCFODepartureDistress`: for each `cfo_departure` signal, checks whether
+`dividend_cut`, `late_filing`, or `eps_filing_revision` follows at the same ticker
+within ValidThrough. EvidenceType: "dividend_cut_late_filing_or_eps_revision". 4 tests.
+
+`CorrelateDirectorFrictionEscalation`: for each `director_friction` signal, checks
+whether `compensation_concern`, `abstention_spike`, `abstention_outlier`, or
+`nomination_rejection` follows within ValidThrough. EvidenceType:
+"compensation_concern_abstention_or_nomination_rejection". 6 tests.
+
+Both wired into entity-graph batch accuracy section. Log line updated to include
+cfo and dir_fric record counts. All tests pass.
+
 ## 2026-06-05 (9) — jon_signal_scan tool
 
 New `jon_signal_scan` tool in `tools.go`: reads `var/entity-graph/signals.ndjson`,
