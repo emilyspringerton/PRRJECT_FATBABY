@@ -856,3 +856,155 @@ func TestCorrelateDirectorFrictionEscalation_WrongTickerIgnored(t *testing.T) {
 		t.Errorf("outcome = %s, want pending (different ticker)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateDividendCutDeterioration ─────────────────────────────────────────
+
+func TestCorrelateDividendCutDeterioration_ConfirmedByCFODeparture(t *testing.T) {
+	cutAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cfoAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "divcut_cfo_test", Type: SignalDividendCut, Ticker: "GE",
+			DetectedAt: cutAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "GE", DetectedAt: cfoAt},
+	}
+	records := CorrelateDividendCutDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDividendCutDeterioration_ConfirmedByLateFiling(t *testing.T) {
+	cutAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	lateAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "divcut_late_test", Type: SignalDividendCut, Ticker: "F",
+			DetectedAt: cutAt, ValidThrough: validThru},
+		{Type: SignalLateFiling, Ticker: "F", DetectedAt: lateAt},
+	}
+	records := CorrelateDividendCutDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDividendCutDeterioration_Refuted(t *testing.T) {
+	cutAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "divcut_refuted", Type: SignalDividendCut, Ticker: "T",
+			DetectedAt: cutAt, ValidThrough: validThru},
+	}
+	records := CorrelateDividendCutDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDividendCutDeterioration_WrongTickerIgnored(t *testing.T) {
+	cutAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cfoAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "divcut_wrong", Type: SignalDividendCut, Ticker: "VZ",
+			DetectedAt: cutAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "T", DetectedAt: cfoAt},
+	}
+	records := CorrelateDividendCutDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateLateFilingDistress ───────────────────────────────────────────────
+
+func TestCorrelateLateFilingDistress_ConfirmedByDividendCut(t *testing.T) {
+	lateAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "late_divcut_test", Type: SignalLateFiling, Ticker: "CVS",
+			DetectedAt: lateAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "CVS", DetectedAt: cutAt},
+	}
+	records := CorrelateLateFilingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateLateFilingDistress_ConfirmedByCFODeparture(t *testing.T) {
+	lateAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cfoAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "late_cfo_test", Type: SignalLateFiling, Ticker: "WBA",
+			DetectedAt: lateAt, ValidThrough: validThru},
+		{Type: SignalCFODeparture, Ticker: "WBA", DetectedAt: cfoAt},
+	}
+	records := CorrelateLateFilingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateLateFilingDistress_Refuted(t *testing.T) {
+	lateAt := time.Now().UTC().AddDate(0, -13, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "late_refuted", Type: SignalLateFiling, Ticker: "KHC",
+			DetectedAt: lateAt, ValidThrough: validThru},
+	}
+	records := CorrelateLateFilingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateLateFilingDistress_WrongTickerIgnored(t *testing.T) {
+	lateAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	cutAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "late_wrong", Type: SignalLateFiling, Ticker: "M",
+			DetectedAt: lateAt, ValidThrough: validThru},
+		{Type: SignalDividendCut, Ticker: "JWN", DetectedAt: cutAt},
+	}
+	records := CorrelateLateFilingDistress(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

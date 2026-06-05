@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-05 (11) — dividend cut + late filing distress cascade correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateDividendCutDeterioration`: for each `dividend_cut` signal, checks whether
+`cfo_departure`, `late_filing`, or `eps_filing_revision` follows at the same ticker
+within ValidThrough. EvidenceType: "cfo_departure_late_filing_or_eps_revision". 4 tests.
+
+`CorrelateLateFilingDistress`: for each `late_filing` signal, checks whether
+`cfo_departure`, `dividend_cut`, or `eps_filing_revision` follows within ValidThrough.
+EvidenceType: "cfo_departure_dividend_cut_or_eps_revision". 4 tests.
+
+Both wired into entity-graph batch accuracy section. Log line updated to include
+div_cut and late record counts. All tests pass.
+
+Accuracy correlator coverage now spans 9 of 31 signal types: activist_risk,
+director_decay, auditor_change, insider_buy, insider_sell_cluster, cfo_departure,
+director_friction, dividend_cut, late_filing.
+
 ## 2026-06-05 (10) — CFO departure + director friction accuracy correlators
 
 Two new accuracy correlation functions in `accuracy.go`:
