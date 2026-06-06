@@ -1464,3 +1464,155 @@ func TestCorrelateGovernanceDeterioratingDistress_WrongTickerIgnored(t *testing.
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateGovernanceImprovingCapitalReturn ─────────────────────────────────
+
+func TestCorrelateGovernanceImprovingCapitalReturn_ConfirmedByDividendRaise(t *testing.T) {
+	impAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	raiseAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_imp_raise_test", Type: SignalGovernanceImproving, Ticker: "AMGN",
+			DetectedAt: impAt, ValidThrough: validThru},
+		{Type: SignalDividendRaise, Ticker: "AMGN", DetectedAt: raiseAt},
+	}
+	records := CorrelateGovernanceImprovingCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceImprovingCapitalReturn_ConfirmedByBuyback(t *testing.T) {
+	impAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	bbAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_imp_bb_test", Type: SignalGovernanceImproving, Ticker: "UNH",
+			DetectedAt: impAt, ValidThrough: validThru},
+		{Type: SignalBuybackAuthorization, Ticker: "UNH", DetectedAt: bbAt},
+	}
+	records := CorrelateGovernanceImprovingCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceImprovingCapitalReturn_Refuted(t *testing.T) {
+	impAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_imp_refuted", Type: SignalGovernanceImproving, Ticker: "CVX",
+			DetectedAt: impAt, ValidThrough: validThru},
+	}
+	records := CorrelateGovernanceImprovingCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceImprovingCapitalReturn_WrongTickerIgnored(t *testing.T) {
+	impAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	raiseAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "gov_imp_wrong", Type: SignalGovernanceImproving, Ticker: "XOM",
+			DetectedAt: impAt, ValidThrough: validThru},
+		{Type: SignalDividendRaise, Ticker: "CVX", DetectedAt: raiseAt},
+	}
+	records := CorrelateGovernanceImprovingCapitalReturn(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateGovernanceEntrenchmentVoteQuality ────────────────────────────────
+
+func TestCorrelateGovernanceEntrenchmentVoteQuality_ConfirmedByCompensationConcern(t *testing.T) {
+	entAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	compAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "entr_comp_test", Type: SignalGovernanceEntrenchment, Ticker: "MO",
+			DetectedAt: entAt, ValidThrough: validThru},
+		{Type: SignalCompensationConcern, Ticker: "MO", DetectedAt: compAt},
+	}
+	records := CorrelateGovernanceEntrenchmentVoteQuality(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceEntrenchmentVoteQuality_ConfirmedByAbstentionSpike(t *testing.T) {
+	entAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	abstAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "entr_abst_test", Type: SignalGovernanceEntrenchment, Ticker: "PM",
+			DetectedAt: entAt, ValidThrough: validThru},
+		{Type: SignalAbstentionSpike, Ticker: "PM", DetectedAt: abstAt},
+	}
+	records := CorrelateGovernanceEntrenchmentVoteQuality(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceEntrenchmentVoteQuality_Refuted(t *testing.T) {
+	entAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "entr_refuted", Type: SignalGovernanceEntrenchment, Ticker: "RAD",
+			DetectedAt: entAt, ValidThrough: validThru},
+	}
+	records := CorrelateGovernanceEntrenchmentVoteQuality(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernanceEntrenchmentVoteQuality_WrongTickerIgnored(t *testing.T) {
+	entAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	compAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "entr_wrong", Type: SignalGovernanceEntrenchment, Ticker: "LMT",
+			DetectedAt: entAt, ValidThrough: validThru},
+		{Type: SignalCompensationConcern, Ticker: "RTX", DetectedAt: compAt},
+	}
+	records := CorrelateGovernanceEntrenchmentVoteQuality(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

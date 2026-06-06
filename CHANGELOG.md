@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (15) — governance improving + governance entrenchment accuracy correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateGovernanceImprovingCapitalReturn`: for each `governance_improving` signal,
+checks whether `dividend_raise` or `buyback_authorization` follows at the same ticker
+within ValidThrough. Validates the composite scoring model on the positive side.
+EvidenceType: "dividend_raise_or_buyback_authorization". 4 tests.
+
+`CorrelateGovernanceEntrenchmentVoteQuality`: for each `governance_entrenchment` signal,
+checks whether `compensation_concern` or `abstention_spike` follows within ValidThrough.
+EvidenceType: "compensation_concern_or_abstention_spike". 4 tests.
+
+Both wired into entity-graph batch. Log line updated. All 37 test packages pass.
+
+Accuracy correlator coverage: 17 of 31 signal types.
+
 ## 2026-06-05 (14) — dividend raise capital cluster + governance deteriorating correlators
 
 Two new accuracy correlation functions in `accuracy.go`:
