@@ -2220,3 +2220,157 @@ func TestCorrelateNominationRejectionFriction_WrongTickerIgnored(t *testing.T) {
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+func TestCorrelateHighTrustDirectorStability_Confirmed(t *testing.T) {
+	htAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	govAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "ht_1", Type: SignalHighTrustDirector, Ticker: "ITW",
+			DetectedAt: htAt, ValidThrough: validThru},
+		{Type: SignalGovernanceImproving, Ticker: "ITW", DetectedAt: govAt},
+	}
+	records := CorrelateHighTrustDirectorStability(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceDate != govAt {
+		t.Errorf("evidence date = %s, want %s", records[0].EvidenceDate, govAt)
+	}
+}
+
+func TestCorrelateHighTrustDirectorStability_Refuted(t *testing.T) {
+	htAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "ht_2", Type: SignalHighTrustDirector, Ticker: "ITW",
+			DetectedAt: htAt, ValidThrough: validThru},
+	}
+	records := CorrelateHighTrustDirectorStability(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (expired window)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateHighTrustDirectorStability_ConfirmedBuyback(t *testing.T) {
+	htAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	bbAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "ht_3", Type: SignalHighTrustDirector, Ticker: "ROK",
+			DetectedAt: htAt, ValidThrough: validThru},
+		{Type: SignalBuybackAuthorization, Ticker: "ROK", DetectedAt: bbAt},
+	}
+	records := CorrelateHighTrustDirectorStability(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed (buyback_authorization)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateHighTrustDirectorStability_WrongTickerIgnored(t *testing.T) {
+	htAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	govAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "ht_wrong", Type: SignalHighTrustDirector, Ticker: "ITW",
+			DetectedAt: htAt, ValidThrough: validThru},
+		{Type: SignalGovernanceImproving, Ticker: "ROK", DetectedAt: govAt},
+	}
+	records := CorrelateHighTrustDirectorStability(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateFamilyControlEntrenchment_Confirmed(t *testing.T) {
+	famAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	entrAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "fam_1", Type: SignalFamilyControl, Ticker: "GOOG",
+			DetectedAt: famAt, ValidThrough: validThru},
+		{Type: SignalGovernanceEntrenchment, Ticker: "GOOG", DetectedAt: entrAt},
+	}
+	records := CorrelateFamilyControlEntrenchment(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceDate != entrAt {
+		t.Errorf("evidence date = %s, want %s", records[0].EvidenceDate, entrAt)
+	}
+}
+
+func TestCorrelateFamilyControlEntrenchment_Refuted(t *testing.T) {
+	famAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "fam_2", Type: SignalFamilyControl, Ticker: "GOOG",
+			DetectedAt: famAt, ValidThrough: validThru},
+	}
+	records := CorrelateFamilyControlEntrenchment(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (expired window)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateFamilyControlEntrenchment_ConfirmedCompConcern(t *testing.T) {
+	famAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	compAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "fam_3", Type: SignalFamilyControl, Ticker: "META",
+			DetectedAt: famAt, ValidThrough: validThru},
+		{Type: SignalCompensationConcern, Ticker: "META", DetectedAt: compAt},
+	}
+	records := CorrelateFamilyControlEntrenchment(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed (compensation_concern)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateFamilyControlEntrenchment_WrongTickerIgnored(t *testing.T) {
+	famAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	entrAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "fam_wrong", Type: SignalFamilyControl, Ticker: "GOOG",
+			DetectedAt: famAt, ValidThrough: validThru},
+		{Type: SignalGovernanceEntrenchment, Ticker: "META", DetectedAt: entrAt},
+	}
+	records := CorrelateFamilyControlEntrenchment(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

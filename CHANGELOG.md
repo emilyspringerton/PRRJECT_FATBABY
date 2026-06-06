@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (20) — high_trust_director + family_control correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateHighTrustDirectorStability`: for each `high_trust_director` signal, checks
+whether `governance_improving` or `buyback_authorization` follows at the same ticker
+within ValidThrough. A high-trust director appointment signals board quality improvement;
+a subsequent governance upgrade or capital return confirms the appointment translated into
+durable posture change. EvidenceType: "governance_improving_or_buyback_authorization". 4 tests.
+
+`CorrelateFamilyControlEntrenchment`: for each `family_control` signal, checks whether
+`governance_entrenchment` or `compensation_concern` follows at the same ticker within
+ValidThrough. Family control of a public company is a structural predictor of entrenchment;
+a subsequent entrenchment flag or pay-practice concern confirms governance drag.
+EvidenceType: "governance_entrenchment_or_compensation_concern". 4 tests.
+
+Both wired into entity-graph batch. Log line updated with hi_trust + fam_ctrl counters.
+All 37 test packages pass. Accuracy correlator coverage: 27 of 31 signal types.
+
 ## 2026-06-06 (19) — compensation concern + nomination rejection correlators
 
 Two new accuracy correlation functions in `accuracy.go`:
