@@ -501,18 +501,26 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		brokerNonVoteRecords := entitygraph.CorrelateBrokerNonVoteAnomalyDirectorFriction(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, brokerNonVoteRecords...)
 
+		// Correlate special_dividend with subsequent buyback_authorization or insider_buy.
+		specDivRecords := entitygraph.CorrelateSpecialDividendCapitalReturn(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, specDivRecords...)
+
+		// Correlate eps_filing_revision with subsequent cfo_departure, dividend_cut, or late_filing.
+		epsRevRecords := entitygraph.CorrelateEPSFilingRevisionDistress(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, epsRevRecords...)
+
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d bb_auth=%d broker=%d)",
+			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d bb_auth=%d broker=%d spec_div=%d eps_rev=%d)",
 				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords),
 				len(insiderBuyRecords), len(insiderSellRecords), len(cfoDeparturRecords), len(dirFrictionRecords),
 				len(divCutRecords), len(lateFilingRecords), len(leadershipDepRecords), len(buybackSuspRecords),
 				len(abstentionSpikeRecords), len(boardDecayRecords), len(divRaiseRecords), len(govDetRecords),
 				len(govImpRecords), len(govEntrRecords), len(abstOutlierRecords), len(postFailureRecords),
-				len(bbAuthRecords), len(brokerNonVoteRecords))
+				len(bbAuthRecords), len(brokerNonVoteRecords), len(specDivRecords), len(epsRevRecords))
 		}
 	}
 

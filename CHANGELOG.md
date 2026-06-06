@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (18) — special dividend + EPS filing revision correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateSpecialDividendCapitalReturn`: for each `special_dividend` signal, checks whether
+`buyback_authorization` or `insider_buy` follows at the same ticker within ValidThrough.
+A special dividend signals excess cash confidence; a subsequent capital return confirms
+sustained posture. EvidenceType: "buyback_authorization_or_insider_buy". 4 tests.
+
+`CorrelateEPSFilingRevisionDistress`: for each `eps_filing_revision` signal, checks whether
+`cfo_departure`, `dividend_cut`, or `late_filing` follows at the same ticker within
+ValidThrough. An EPS restatement is a leading marker of financial control breakdown;
+a subsequent departure or dividend action confirms the deterioration cascade.
+EvidenceType: "cfo_departure_dividend_cut_or_late_filing". 4 tests.
+
+Both wired into entity-graph batch. Log line updated with spec_div and eps_rev counters.
+All 37 test packages pass. Accuracy correlator coverage: 23 of 31 signal types.
+
 ## 2026-06-06 (17) — buyback authorization + broker nonvote anomaly correlators
 
 Two new accuracy correlation functions in `accuracy.go`:

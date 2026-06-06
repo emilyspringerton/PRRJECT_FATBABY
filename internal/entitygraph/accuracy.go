@@ -1393,6 +1393,126 @@ func CorrelateBrokerNonVoteAnomalyDirectorFriction(signals []Signal) []AccuracyR
 	return records
 }
 
+// CorrelateSpecialDividendCapitalReturn checks whether special_dividend signals were
+// followed by a buyback_authorization or insider_buy at the same ticker within the
+// special_dividend signal's ValidThrough window. A special dividend signals management
+// confidence in excess cash; a subsequent buyback authorization or insider purchase
+// confirms the capital-return posture was sustained. Returns one AccuracyRecord per
+// special_dividend signal.
+func CorrelateSpecialDividendCapitalReturn(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	capitalByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalBuybackAuthorization || s.Type == SignalInsiderBuy {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			capitalByTicker[s.Ticker] = append(capitalByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalSpecialDividend {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range capitalByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("capital return signal (%s) at %s on %s — within special_dividend window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("special_dividend window [%s, %s] expired for %s; no capital return cluster observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "buyback_authorization_or_insider_buy",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// CorrelateEPSFilingRevisionDistress checks whether eps_filing_revision signals were
+// followed by a cfo_departure, dividend_cut, or late_filing at the same ticker within
+// the eps_filing_revision signal's ValidThrough window. An EPS revision — a restatement
+// or material correction — is an early marker of financial control breakdown; a
+// subsequent departure or dividend action confirms the deterioration cascade.
+// Returns one AccuracyRecord per eps_filing_revision signal.
+func CorrelateEPSFilingRevisionDistress(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	distressByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalCFODeparture || s.Type == SignalDividendCut || s.Type == SignalLateFiling {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			distressByTicker[s.Ticker] = append(distressByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalEPSFilingRevision {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range distressByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("distress signal (%s) at %s on %s — within eps_filing_revision window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("eps_filing_revision window [%s, %s] expired for %s; no further distress signal observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "cfo_departure_dividend_cut_or_late_filing",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")
