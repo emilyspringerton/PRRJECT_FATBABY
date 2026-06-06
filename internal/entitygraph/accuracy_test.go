@@ -2374,3 +2374,157 @@ func TestCorrelateFamilyControlEntrenchment_WrongTickerIgnored(t *testing.T) {
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+func TestCorrelateDirectorLinkContagion_Confirmed(t *testing.T) {
+	linkAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	fricAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "link_1", Type: SignalDirectorLink, Ticker: "VFC",
+			DetectedAt: linkAt, ValidThrough: validThru},
+		{Type: SignalDirectorFriction, Ticker: "VFC", DetectedAt: fricAt},
+	}
+	records := CorrelateDirectorLinkContagion(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceDate != fricAt {
+		t.Errorf("evidence date = %s, want %s", records[0].EvidenceDate, fricAt)
+	}
+}
+
+func TestCorrelateDirectorLinkContagion_Refuted(t *testing.T) {
+	linkAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "link_2", Type: SignalDirectorLink, Ticker: "VFC",
+			DetectedAt: linkAt, ValidThrough: validThru},
+	}
+	records := CorrelateDirectorLinkContagion(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (expired window)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDirectorLinkContagion_ConfirmedAbstentionSpike(t *testing.T) {
+	linkAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	abstAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "link_3", Type: SignalDirectorLink, Ticker: "PVH",
+			DetectedAt: linkAt, ValidThrough: validThru},
+		{Type: SignalAbstentionSpike, Ticker: "PVH", DetectedAt: abstAt},
+	}
+	records := CorrelateDirectorLinkContagion(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed (abstention_spike)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateDirectorLinkContagion_WrongTickerIgnored(t *testing.T) {
+	linkAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	fricAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "link_wrong", Type: SignalDirectorLink, Ticker: "VFC",
+			DetectedAt: linkAt, ValidThrough: validThru},
+		{Type: SignalDirectorFriction, Ticker: "PVH", DetectedAt: fricAt},
+	}
+	records := CorrelateDirectorLinkContagion(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernancePeerUnderperformerDeterioration_Confirmed(t *testing.T) {
+	peerAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	detAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "peer_1", Type: SignalGovernancePeerUnderperformer, Ticker: "GT",
+			DetectedAt: peerAt, ValidThrough: validThru},
+		{Type: SignalGovernanceDeterioration, Ticker: "GT", DetectedAt: detAt},
+	}
+	records := CorrelateGovernancePeerUnderperformerDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+	if records[0].EvidenceDate != detAt {
+		t.Errorf("evidence date = %s, want %s", records[0].EvidenceDate, detAt)
+	}
+}
+
+func TestCorrelateGovernancePeerUnderperformerDeterioration_Refuted(t *testing.T) {
+	peerAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "peer_2", Type: SignalGovernancePeerUnderperformer, Ticker: "GT",
+			DetectedAt: peerAt, ValidThrough: validThru},
+	}
+	records := CorrelateGovernancePeerUnderperformerDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted (expired window)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernancePeerUnderperformerDeterioration_ConfirmedBoardDecay(t *testing.T) {
+	peerAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	decayAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "peer_3", Type: SignalGovernancePeerUnderperformer, Ticker: "LEA",
+			DetectedAt: peerAt, ValidThrough: validThru},
+		{Type: SignalBoardDecayConcern, Ticker: "LEA", DetectedAt: decayAt},
+	}
+	records := CorrelateGovernancePeerUnderperformerDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed (board_decay_concern)", records[0].Outcome)
+	}
+}
+
+func TestCorrelateGovernancePeerUnderperformerDeterioration_WrongTickerIgnored(t *testing.T) {
+	peerAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	detAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "peer_wrong", Type: SignalGovernancePeerUnderperformer, Ticker: "GT",
+			DetectedAt: peerAt, ValidThrough: validThru},
+		{Type: SignalGovernanceDeterioration, Ticker: "LEA", DetectedAt: detAt},
+	}
+	records := CorrelateGovernancePeerUnderperformerDeterioration(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (21) — director_link + governance_peer_underperformer correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateDirectorLinkContagion`: for each `director_link` signal, checks whether
+`director_friction` or `abstention_spike` follows at the same ticker within ValidThrough.
+A shared-director link between a company under governance stress and the target is a
+contagion vector; friction or abstention at the linked company confirms stress propagated
+through the shared seat. EvidenceType: "director_friction_or_abstention_spike". 4 tests.
+
+`CorrelateGovernancePeerUnderperformerDeterioration`: for each `governance_peer_underperformer`
+signal, checks whether `governance_deteriorating` or `board_decay_concern` follows at the
+same ticker within ValidThrough. Peer underperformance is a leading, not lagging, indicator;
+subsequent governance decline confirms. EvidenceType: "governance_deteriorating_or_board_decay_concern". 4 tests.
+
+Both wired into entity-graph batch. Log line updated with dir_link + peer_under counters.
+All 37 test packages pass. Accuracy correlator coverage: 29 of 31 signal types.
+Two remaining: governance_health_index, director_long_tenure.
+
 ## 2026-06-06 (20) — high_trust_director + family_control correlators
 
 Two new accuracy correlation functions in `accuracy.go`:

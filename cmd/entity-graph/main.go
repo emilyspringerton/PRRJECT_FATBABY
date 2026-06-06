@@ -525,19 +525,28 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		familyCtrlRecords := entitygraph.CorrelateFamilyControlEntrenchment(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, familyCtrlRecords...)
 
+		// Correlate director_link with subsequent director_friction or abstention_spike.
+		dirLinkRecords := entitygraph.CorrelateDirectorLinkContagion(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, dirLinkRecords...)
+
+		// Correlate governance_peer_underperformer with subsequent governance_deteriorating or board_decay_concern.
+		peerUnderRecords := entitygraph.CorrelateGovernancePeerUnderperformerDeterioration(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, peerUnderRecords...)
+
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d bb_auth=%d broker=%d spec_div=%d eps_rev=%d comp=%d nom_rej=%d hi_trust=%d fam_ctrl=%d)",
+			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d bb_auth=%d broker=%d spec_div=%d eps_rev=%d comp=%d nom_rej=%d hi_trust=%d fam_ctrl=%d dir_link=%d peer_under=%d)",
 				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords),
 				len(insiderBuyRecords), len(insiderSellRecords), len(cfoDeparturRecords), len(dirFrictionRecords),
 				len(divCutRecords), len(lateFilingRecords), len(leadershipDepRecords), len(buybackSuspRecords),
 				len(abstentionSpikeRecords), len(boardDecayRecords), len(divRaiseRecords), len(govDetRecords),
 				len(govImpRecords), len(govEntrRecords), len(abstOutlierRecords), len(postFailureRecords),
 				len(bbAuthRecords), len(brokerNonVoteRecords), len(specDivRecords), len(epsRevRecords),
-				len(compConcernRecords), len(nomRejRecords), len(highTrustRecords), len(familyCtrlRecords))
+				len(compConcernRecords), len(nomRejRecords), len(highTrustRecords), len(familyCtrlRecords),
+				len(dirLinkRecords), len(peerUnderRecords))
 		}
 	}
 
