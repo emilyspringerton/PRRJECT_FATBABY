@@ -1874,6 +1874,126 @@ func CorrelateGovernancePeerUnderperformerDeterioration(signals []Signal) []Accu
 	return records
 }
 
+// CorrelateGovernanceHealthIndexStability checks whether governance_health_index signals
+// were followed by a governance_improving or buyback_authorization at the same ticker
+// within the signal's ValidThrough window. A composite governance health score is a
+// forward indicator of board quality; a subsequent governance improvement or capital
+// return action confirms the index was tracking real structural change rather than
+// surface-level compliance. Returns one AccuracyRecord per governance_health_index signal.
+func CorrelateGovernanceHealthIndexStability(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	stabilityByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalGovernanceImproving || s.Type == SignalBuybackAuthorization {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			stabilityByTicker[s.Ticker] = append(stabilityByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalGovernanceHealth {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range stabilityByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("stability signal (%s) at %s on %s — within governance_health_index window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("governance_health_index window [%s, %s] expired for %s; no governance improvement or capital return observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "governance_improving_or_buyback_authorization",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// CorrelateDirectorLongTenureEntrenchment checks whether director_long_tenure signals
+// were followed by a governance_entrenchment or compensation_concern at the same ticker
+// within the signal's ValidThrough window. Directors who have served significantly longer
+// than their peers are a structural entrenchment risk; a subsequent entrenchment flag or
+// pay-practice concern confirms that tenure has translated into governance drag.
+// Returns one AccuracyRecord per director_long_tenure signal.
+func CorrelateDirectorLongTenureEntrenchment(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	entrenchByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalGovernanceEntrenchment || s.Type == SignalCompensationConcern {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			entrenchByTicker[s.Ticker] = append(entrenchByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalDirectorLongTenure {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range entrenchByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("entrenchment signal (%s) at %s on %s — within director_long_tenure window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("director_long_tenure window [%s, %s] expired for %s; no entrenchment or compensation concern observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "governance_entrenchment_or_compensation_concern",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")

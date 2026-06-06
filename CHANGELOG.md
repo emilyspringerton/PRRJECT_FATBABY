@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (22) — governance_health_index + director_long_tenure correlators — FULL COVERAGE
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateGovernanceHealthIndexStability`: for each `governance_health_index` signal,
+checks whether `governance_improving` or `buyback_authorization` follows at the same
+ticker within ValidThrough. A composite governance health score is a forward indicator
+of board quality; a subsequent governance upgrade or capital return confirms the index
+was tracking real structural change. EvidenceType: "governance_improving_or_buyback_authorization". 4 tests.
+
+`CorrelateDirectorLongTenureEntrenchment`: for each `director_long_tenure` signal, checks
+whether `governance_entrenchment` or `compensation_concern` follows at the same ticker
+within ValidThrough. Long-tenured directors are a structural entrenchment risk; a
+subsequent flag or pay-practice concern confirms tenure has translated into governance
+drag. EvidenceType: "governance_entrenchment_or_compensation_concern". 4 tests.
+
+Both wired into entity-graph batch. Log line updated with gov_health + long_tenure counters.
+All 37 test packages pass.
+
+ACCURACY CORRELATOR COVERAGE: 31 of 31 signal types. ALL SIGNAL TYPES NOW COVERED.
+
 ## 2026-06-06 (21) — director_link + governance_peer_underperformer correlators
 
 Two new accuracy correlation functions in `accuracy.go`:
