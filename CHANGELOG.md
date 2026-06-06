@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (16) — abstention outlier + post-failure activist prediction correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateAbstentionOutlierNominationRejection`: for each `abstention_outlier` signal,
+checks whether `nomination_rejection` follows at the same ticker within ValidThrough.
+EvidenceType: "nomination_rejection". 4 tests.
+
+`CorrelatePostFailureActivistPrediction`: for each `post_failure_activist_prediction`
+signal, checks whether `activist_risk` follows at the same ticker within ValidThrough.
+EvidenceType: "activist_risk". 4 tests.
+
+Both wired into entity-graph batch. Log line updated. All 37 test packages pass.
+
+Accuracy correlator coverage: 19 of 31 signal types.
+
 ## 2026-06-06 (15) — governance improving + governance entrenchment accuracy correlators
 
 Two new accuracy correlation functions in `accuracy.go`:

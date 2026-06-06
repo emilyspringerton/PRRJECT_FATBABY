@@ -1155,6 +1155,125 @@ func CorrelateGovernanceEntrenchmentVoteQuality(signals []Signal) []AccuracyReco
 	return records
 }
 
+// CorrelateAbstentionOutlierNominationRejection checks whether abstention_outlier
+// signals were followed by a nomination_rejection at the same ticker within the
+// abstention_outlier signal's ValidThrough window. An outlier abstention pattern
+// targeting a specific director is an early signal of organized shareholder opposition;
+// a subsequent nomination rejection confirms it materialized. Returns one AccuracyRecord
+// per abstention_outlier signal.
+func CorrelateAbstentionOutlierNominationRejection(signals []Signal) []AccuracyRecord {
+	type event struct{ date string }
+	rejectionByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalNominationRejection {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			rejectionByTicker[s.Ticker] = append(rejectionByTicker[s.Ticker], event{date: d})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalAbstentionOutlier {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range rejectionByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("nomination_rejection at %s on %s — within abstention_outlier window [%s, %s]",
+					s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("abstention_outlier window [%s, %s] expired for %s; no nomination_rejection observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "nomination_rejection",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// CorrelatePostFailureActivistPrediction checks whether post_failure_activist_prediction
+// signals were followed by an activist_risk signal at the same ticker within the
+// prediction signal's ValidThrough window. A post-failure activist prediction is the
+// pipeline's forward model for re-engagement; a subsequent activist_risk signal confirms
+// the model was correct. Returns one AccuracyRecord per post_failure_activist_prediction signal.
+func CorrelatePostFailureActivistPrediction(signals []Signal) []AccuracyRecord {
+	type event struct{ date string }
+	activistByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalActivistRisk {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			activistByTicker[s.Ticker] = append(activistByTicker[s.Ticker], event{date: d})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalPostFailureActivistPrediction {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range activistByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("activist_risk confirmed at %s on %s — within post_failure_activist_prediction window [%s, %s]",
+					s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("post_failure_activist_prediction window [%s, %s] expired for %s; no activist_risk observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "activist_risk",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")

@@ -1616,3 +1616,151 @@ func TestCorrelateGovernanceEntrenchmentVoteQuality_WrongTickerIgnored(t *testin
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateAbstentionOutlierNominationRejection ─────────────────────────────
+
+func TestCorrelateAbstentionOutlierNominationRejection_Confirmed(t *testing.T) {
+	outlierAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	rejAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "abst_out_nom_test", Type: SignalAbstentionOutlier, Ticker: "DUK",
+			DetectedAt: outlierAt, ValidThrough: validThru},
+		{Type: SignalNominationRejection, Ticker: "DUK", DetectedAt: rejAt},
+	}
+	records := CorrelateAbstentionOutlierNominationRejection(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAbstentionOutlierNominationRejection_Refuted(t *testing.T) {
+	outlierAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "abst_out_refuted", Type: SignalAbstentionOutlier, Ticker: "SO",
+			DetectedAt: outlierAt, ValidThrough: validThru},
+	}
+	records := CorrelateAbstentionOutlierNominationRejection(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAbstentionOutlierNominationRejection_Pending(t *testing.T) {
+	outlierAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 11, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "abst_out_pending", Type: SignalAbstentionOutlier, Ticker: "NEE",
+			DetectedAt: outlierAt, ValidThrough: validThru},
+	}
+	records := CorrelateAbstentionOutlierNominationRejection(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending", records[0].Outcome)
+	}
+}
+
+func TestCorrelateAbstentionOutlierNominationRejection_WrongTickerIgnored(t *testing.T) {
+	outlierAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	rejAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "abst_out_wrong", Type: SignalAbstentionOutlier, Ticker: "AEP",
+			DetectedAt: outlierAt, ValidThrough: validThru},
+		{Type: SignalNominationRejection, Ticker: "PPL", DetectedAt: rejAt},
+	}
+	records := CorrelateAbstentionOutlierNominationRejection(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelatePostFailureActivistPrediction ────────────────────────────────────
+
+func TestCorrelatePostFailureActivistPrediction_Confirmed(t *testing.T) {
+	predAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	actAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "pf_act_pred_test", Type: SignalPostFailureActivistPrediction, Ticker: "NRG",
+			DetectedAt: predAt, ValidThrough: validThru},
+		{Type: SignalActivistRisk, Ticker: "NRG", DetectedAt: actAt},
+	}
+	records := CorrelatePostFailureActivistPrediction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelatePostFailureActivistPrediction_Refuted(t *testing.T) {
+	predAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "pf_act_pred_refuted", Type: SignalPostFailureActivistPrediction, Ticker: "EIX",
+			DetectedAt: predAt, ValidThrough: validThru},
+	}
+	records := CorrelatePostFailureActivistPrediction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelatePostFailureActivistPrediction_Pending(t *testing.T) {
+	predAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 11, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "pf_act_pred_pending", Type: SignalPostFailureActivistPrediction, Ticker: "PCG",
+			DetectedAt: predAt, ValidThrough: validThru},
+	}
+	records := CorrelatePostFailureActivistPrediction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending", records[0].Outcome)
+	}
+}
+
+func TestCorrelatePostFailureActivistPrediction_WrongTickerIgnored(t *testing.T) {
+	predAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	actAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "pf_act_pred_wrong", Type: SignalPostFailureActivistPrediction, Ticker: "AES",
+			DetectedAt: predAt, ValidThrough: validThru},
+		{Type: SignalActivistRisk, Ticker: "CMS", DetectedAt: actAt},
+	}
+	records := CorrelatePostFailureActivistPrediction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

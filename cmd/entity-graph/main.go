@@ -485,17 +485,25 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		govEntrRecords := entitygraph.CorrelateGovernanceEntrenchmentVoteQuality(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, govEntrRecords...)
 
+		// Correlate abstention_outlier with subsequent nomination_rejection.
+		abstOutlierRecords := entitygraph.CorrelateAbstentionOutlierNominationRejection(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, abstOutlierRecords...)
+
+		// Correlate post_failure_activist_prediction with subsequent activist_risk.
+		postFailureRecords := entitygraph.CorrelatePostFailureActivistPrediction(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, postFailureRecords...)
+
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d)",
+			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d)",
 				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords),
 				len(insiderBuyRecords), len(insiderSellRecords), len(cfoDeparturRecords), len(dirFrictionRecords),
 				len(divCutRecords), len(lateFilingRecords), len(leadershipDepRecords), len(buybackSuspRecords),
 				len(abstentionSpikeRecords), len(boardDecayRecords), len(divRaiseRecords), len(govDetRecords),
-				len(govImpRecords), len(govEntrRecords))
+				len(govImpRecords), len(govEntrRecords), len(abstOutlierRecords), len(postFailureRecords))
 		}
 	}
 
