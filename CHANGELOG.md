@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (19) — compensation concern + nomination rejection correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateCompensationConcernEscalation`: for each `compensation_concern` signal, checks
+whether `abstention_spike` or `nomination_rejection` follows at the same ticker within
+ValidThrough. A pay-practice objection from ISS/Glass Lewis is a leading governance signal;
+shareholder pushback at the next vote confirms materiality.
+EvidenceType: "abstention_spike_or_nomination_rejection". 4 tests.
+
+`CorrelateNominationRejectionFriction`: for each `nomination_rejection` signal, checks
+whether `director_friction` or `abstention_spike` follows at the same ticker within
+ValidThrough. A failed nomination is often the first visible symptom of structural board
+friction; subsequent friction or abstention confirms it was not isolated.
+EvidenceType: "director_friction_or_abstention_spike". 4 tests.
+
+Both wired into entity-graph batch. Log line updated with comp + nom_rej counters.
+All 37 test packages pass. Accuracy correlator coverage: 25 of 31 signal types.
+
 ## 2026-06-06 (18) — special dividend + EPS filing revision correlators
 
 Two new accuracy correlation functions in `accuracy.go`:

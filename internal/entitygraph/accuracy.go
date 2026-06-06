@@ -1513,6 +1513,126 @@ func CorrelateEPSFilingRevisionDistress(signals []Signal) []AccuracyRecord {
 	return records
 }
 
+// CorrelateCompensationConcernEscalation checks whether compensation_concern signals were
+// followed by an abstention_spike or nomination_rejection at the same ticker within the
+// compensation_concern signal's ValidThrough window. A compensation concern flag —
+// typically an ISS or Glass Lewis objection to pay practices — is a leading governance
+// signal; shareholder pushback at the next vote confirms that the concern was material.
+// Returns one AccuracyRecord per compensation_concern signal.
+func CorrelateCompensationConcernEscalation(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	pushbackByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalAbstentionSpike || s.Type == SignalNominationRejection {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			pushbackByTicker[s.Ticker] = append(pushbackByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalCompensationConcern {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range pushbackByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("shareholder pushback (%s) at %s on %s — within compensation_concern window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("compensation_concern window [%s, %s] expired for %s; no shareholder pushback observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "abstention_spike_or_nomination_rejection",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// CorrelateNominationRejectionFriction checks whether nomination_rejection signals were
+// followed by a director_friction or abstention_spike at the same ticker within the
+// nomination_rejection signal's ValidThrough window. A failed director nomination is
+// often the first visible symptom of deeper board friction; a subsequent friction or
+// abstention pattern at the same ticker confirms it was structural rather than isolated.
+// Returns one AccuracyRecord per nomination_rejection signal.
+func CorrelateNominationRejectionFriction(signals []Signal) []AccuracyRecord {
+	type event struct{ date, kind string }
+	frictionByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalDirectorFriction || s.Type == SignalAbstentionSpike {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			frictionByTicker[s.Ticker] = append(frictionByTicker[s.Ticker], event{date: d, kind: string(s.Type)})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalNominationRejection {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range frictionByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("friction signal (%s) at %s on %s — within nomination_rejection window [%s, %s]",
+					ev.kind, s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("nomination_rejection window [%s, %s] expired for %s; no structural friction signal observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "director_friction_or_abstention_spike",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")
