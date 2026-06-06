@@ -1764,3 +1764,151 @@ func TestCorrelatePostFailureActivistPrediction_WrongTickerIgnored(t *testing.T)
 		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
 	}
 }
+
+// ── CorrelateBuybackAuthorizationInsiderBuy ───────────────────────────────────
+
+func TestCorrelateBuybackAuthorizationInsiderBuy_Confirmed(t *testing.T) {
+	bbAt := time.Now().UTC().AddDate(0, -3, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 9, 0).Format("2006-01-02")
+	buyAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_auth_ins_test", Type: SignalBuybackAuthorization, Ticker: "GOOG",
+			DetectedAt: bbAt, ValidThrough: validThru},
+		{Type: SignalInsiderBuy, Ticker: "GOOG", DetectedAt: buyAt},
+	}
+	records := CorrelateBuybackAuthorizationInsiderBuy(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBuybackAuthorizationInsiderBuy_Refuted(t *testing.T) {
+	bbAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_auth_refuted", Type: SignalBuybackAuthorization, Ticker: "META",
+			DetectedAt: bbAt, ValidThrough: validThru},
+	}
+	records := CorrelateBuybackAuthorizationInsiderBuy(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBuybackAuthorizationInsiderBuy_Pending(t *testing.T) {
+	bbAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 11, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_auth_pending", Type: SignalBuybackAuthorization, Ticker: "AMZN",
+			DetectedAt: bbAt, ValidThrough: validThru},
+	}
+	records := CorrelateBuybackAuthorizationInsiderBuy(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBuybackAuthorizationInsiderBuy_WrongTickerIgnored(t *testing.T) {
+	bbAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	buyAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "bb_auth_wrong", Type: SignalBuybackAuthorization, Ticker: "NVDA",
+			DetectedAt: bbAt, ValidThrough: validThru},
+		{Type: SignalInsiderBuy, Ticker: "AMD", DetectedAt: buyAt},
+	}
+	records := CorrelateBuybackAuthorizationInsiderBuy(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}
+
+// ── CorrelateBrokerNonVoteAnomalyDirectorFriction ─────────────────────────────
+
+func TestCorrelateBrokerNonVoteAnomalyDirectorFriction_Confirmed(t *testing.T) {
+	nonVoteAt := time.Now().UTC().AddDate(0, -4, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 8, 0).Format("2006-01-02")
+	fricAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "broker_fric_test", Type: SignalBrokerNonVoteAnomaly, Ticker: "SLB",
+			DetectedAt: nonVoteAt, ValidThrough: validThru},
+		{Type: SignalDirectorFriction, Ticker: "SLB", DetectedAt: fricAt},
+	}
+	records := CorrelateBrokerNonVoteAnomalyDirectorFriction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTConfirmed {
+		t.Errorf("outcome = %s, want confirmed", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBrokerNonVoteAnomalyDirectorFriction_Refuted(t *testing.T) {
+	nonVoteAt := time.Now().UTC().AddDate(0, -14, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "broker_refuted", Type: SignalBrokerNonVoteAnomaly, Ticker: "HAL",
+			DetectedAt: nonVoteAt, ValidThrough: validThru},
+	}
+	records := CorrelateBrokerNonVoteAnomalyDirectorFriction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTRefuted {
+		t.Errorf("outcome = %s, want refuted", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBrokerNonVoteAnomalyDirectorFriction_Pending(t *testing.T) {
+	nonVoteAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 11, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "broker_pending", Type: SignalBrokerNonVoteAnomaly, Ticker: "BKR",
+			DetectedAt: nonVoteAt, ValidThrough: validThru},
+	}
+	records := CorrelateBrokerNonVoteAnomalyDirectorFriction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending", records[0].Outcome)
+	}
+}
+
+func TestCorrelateBrokerNonVoteAnomalyDirectorFriction_WrongTickerIgnored(t *testing.T) {
+	nonVoteAt := time.Now().UTC().AddDate(0, -2, 0).Format("2006-01-02")
+	validThru := time.Now().UTC().AddDate(0, 10, 0).Format("2006-01-02")
+	fricAt := time.Now().UTC().AddDate(0, -1, 0).Format("2006-01-02")
+
+	sigs := []Signal{
+		{SignalID: "broker_wrong", Type: SignalBrokerNonVoteAnomaly, Ticker: "MRO",
+			DetectedAt: nonVoteAt, ValidThrough: validThru},
+		{Type: SignalDirectorFriction, Ticker: "OXY", DetectedAt: fricAt},
+	}
+	records := CorrelateBrokerNonVoteAnomalyDirectorFriction(sigs)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Outcome != GTPending {
+		t.Errorf("outcome = %s, want pending (wrong ticker)", records[0].Outcome)
+	}
+}

@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-06 (17) — buyback authorization + broker nonvote anomaly correlators
+
+Two new accuracy correlation functions in `accuracy.go`:
+
+`CorrelateBuybackAuthorizationInsiderBuy`: for each `buyback_authorization` signal,
+checks whether `insider_buy` follows at the same ticker within ValidThrough. Double
+management confidence signal. EvidenceType: "insider_buy". 4 tests.
+
+`CorrelateBrokerNonVoteAnomalyDirectorFriction`: for each `broker_nonvote_anomaly`
+signal, checks whether `director_friction` follows at the same ticker within ValidThrough.
+EvidenceType: "director_friction". 4 tests.
+
+Both wired into entity-graph batch. Log line updated. All 37 test packages pass.
+
+Accuracy correlator coverage: 21 of 31 signal types.
+
 ## 2026-06-06 (16) — abstention outlier + post-failure activist prediction correlators
 
 Two new accuracy correlation functions in `accuracy.go`:

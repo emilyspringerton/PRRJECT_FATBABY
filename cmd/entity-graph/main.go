@@ -493,17 +493,26 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		postFailureRecords := entitygraph.CorrelatePostFailureActivistPrediction(allForAccuracy)
 		accuracyRecords = append(accuracyRecords, postFailureRecords...)
 
+		// Correlate buyback_authorization with subsequent insider_buy (double confidence signal).
+		bbAuthRecords := entitygraph.CorrelateBuybackAuthorizationInsiderBuy(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, bbAuthRecords...)
+
+		// Correlate broker_nonvote_anomaly with subsequent director_friction.
+		brokerNonVoteRecords := entitygraph.CorrelateBrokerNonVoteAnomalyDirectorFriction(allForAccuracy)
+		accuracyRecords = append(accuracyRecords, brokerNonVoteRecords...)
+
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
-			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d)",
+			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d bb_auth=%d broker=%d)",
 				len(accuracyRecords), len(accuracyReports), len(decayRecords), len(auditorRiskRecords),
 				len(insiderBuyRecords), len(insiderSellRecords), len(cfoDeparturRecords), len(dirFrictionRecords),
 				len(divCutRecords), len(lateFilingRecords), len(leadershipDepRecords), len(buybackSuspRecords),
 				len(abstentionSpikeRecords), len(boardDecayRecords), len(divRaiseRecords), len(govDetRecords),
-				len(govImpRecords), len(govEntrRecords), len(abstOutlierRecords), len(postFailureRecords))
+				len(govImpRecords), len(govEntrRecords), len(abstOutlierRecords), len(postFailureRecords),
+				len(bbAuthRecords), len(brokerNonVoteRecords))
 		}
 	}
 

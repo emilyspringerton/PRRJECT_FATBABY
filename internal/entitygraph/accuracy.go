@@ -1274,6 +1274,125 @@ func CorrelatePostFailureActivistPrediction(signals []Signal) []AccuracyRecord {
 	return records
 }
 
+// CorrelateBuybackAuthorizationInsiderBuy checks whether buyback_authorization signals
+// were followed by an insider_buy at the same ticker within the buyback_authorization
+// signal's ValidThrough window. When management announces a buyback and insiders then
+// also purchase personally, the double signal confirms genuine management confidence
+// rather than financial engineering. Returns one AccuracyRecord per buyback_authorization signal.
+func CorrelateBuybackAuthorizationInsiderBuy(signals []Signal) []AccuracyRecord {
+	type event struct{ date string }
+	insiderByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalInsiderBuy {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			insiderByTicker[s.Ticker] = append(insiderByTicker[s.Ticker], event{date: d})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalBuybackAuthorization {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range insiderByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("insider_buy at %s on %s — within buyback_authorization window [%s, %s]",
+					s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("buyback_authorization window [%s, %s] expired for %s; no insider_buy observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "insider_buy",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
+// CorrelateBrokerNonVoteAnomalyDirectorFriction checks whether broker_nonvote_anomaly
+// signals were followed by a director_friction signal at the same ticker within the
+// broker_nonvote_anomaly signal's ValidThrough window. Anomalous broker non-vote patterns
+// — where votes are withheld rather than cast — are an early institutional signal of
+// board dissatisfaction; subsequent director friction confirms it. Returns one AccuracyRecord
+// per broker_nonvote_anomaly signal.
+func CorrelateBrokerNonVoteAnomalyDirectorFriction(signals []Signal) []AccuracyRecord {
+	type event struct{ date string }
+	frictionByTicker := map[string][]event{}
+	for _, s := range signals {
+		if s.Type == SignalDirectorFriction {
+			d := s.FilingDate
+			if d == "" {
+				d = s.DetectedAt
+			}
+			frictionByTicker[s.Ticker] = append(frictionByTicker[s.Ticker], event{date: d})
+		}
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	var records []AccuracyRecord
+
+	for _, s := range signals {
+		if s.Type != SignalBrokerNonVoteAnomaly {
+			continue
+		}
+		outcome := GTPending
+		evidenceDate := ""
+		notes := ""
+
+		for _, ev := range frictionByTicker[s.Ticker] {
+			if ev.date >= s.DetectedAt && ev.date <= s.ValidThrough {
+				outcome = GTConfirmed
+				evidenceDate = ev.date
+				notes = fmt.Sprintf("director_friction at %s on %s — within broker_nonvote_anomaly window [%s, %s]",
+					s.Ticker, ev.date, s.DetectedAt, s.ValidThrough)
+				break
+			}
+		}
+		if outcome == GTPending && today > s.ValidThrough {
+			outcome = GTRefuted
+			notes = fmt.Sprintf("broker_nonvote_anomaly window [%s, %s] expired for %s; no director_friction observed",
+				s.DetectedAt, s.ValidThrough, s.Ticker)
+		}
+		records = append(records, AccuracyRecord{
+			SignalID:     s.SignalID,
+			Ticker:       s.Ticker,
+			SignalType:   s.Type,
+			PredictedAt:  s.DetectedAt,
+			ValidThrough: s.ValidThrough,
+			Outcome:      outcome,
+			EvidenceDate: evidenceDate,
+			EvidenceType: "director_friction",
+			Notes:        notes,
+			RecordedAt:   today,
+		})
+	}
+	return records
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")
