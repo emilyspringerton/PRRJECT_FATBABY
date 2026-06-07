@@ -1224,3 +1224,94 @@ func TestScorePostFailureActivistPrediction_ValidThroughSixMonths(t *testing.T) 
 		t.Errorf("valid_through = %s, want %s (6 months)", sig.ValidThrough, expected)
 	}
 }
+
+// ── DefaultGovernanceHealthPenalties + ScoreGovernanceHealthWithPenalties ────
+
+// TestDefaultGovernanceHealthPenalties_ContainsExpectedKeys verifies that the default
+// penalty map covers all major adverse signal types.
+func TestDefaultGovernanceHealthPenalties_ContainsExpectedKeys(t *testing.T) {
+	p := DefaultGovernanceHealthPenalties()
+	required := []SignalType{
+		SignalNominationRejection,
+		SignalGovernanceEntrenchment,
+		SignalActivistRisk,
+		SignalDirectorFriction,
+		SignalCFODeparture,
+		SignalDirectorLongTenure,
+		SignalPostFailureActivistPrediction,
+	}
+	for _, st := range required {
+		if _, ok := p[st]; !ok {
+			t.Errorf("DefaultGovernanceHealthPenalties missing key %s", st)
+		}
+	}
+}
+
+// TestScoreGovernanceHealthWithPenalties_NilPenaltiesFallsBackToDefault verifies
+// that passing nil penalties produces the same result as calling ScoreGovernanceHealth
+// directly (backward-compatibility guarantee).
+func TestScoreGovernanceHealthWithPenalties_NilPenaltiesFallsBackToDefault(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "X", DetectedAt: today, Score: 0.80},
+	}
+	baseline := ScoreGovernanceHealth("X", sigs, 365)
+	explicit := ScoreGovernanceHealthWithPenalties("X", sigs, 365, nil)
+	if baseline == nil || explicit == nil {
+		t.Fatal("expected signals from both calls")
+	}
+	if baseline.Score != explicit.Score {
+		t.Errorf("nil-penalties score %.4f != ScoreGovernanceHealth score %.4f", explicit.Score, baseline.Score)
+	}
+}
+
+// TestScoreGovernanceHealthWithPenalties_ReducedPenaltyRaisesScore verifies that
+// reducing a signal type's penalty weight produces a higher composite score.
+func TestScoreGovernanceHealthWithPenalties_ReducedPenaltyRaisesScore(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "Y", DetectedAt: today, Score: 0.80},
+	}
+	// Baseline: full friction penalty = 0.20 → score 0.80
+	baseline := ScoreGovernanceHealth("Y", sigs, 365)
+	if baseline == nil {
+		t.Fatal("expected baseline signal")
+	}
+
+	// Reduced penalty: friction = 0.10 → score 0.90
+	reduced := make(map[SignalType]float64)
+	for k, v := range DefaultGovernanceHealthPenalties() {
+		reduced[k] = v
+	}
+	reduced[SignalDirectorFriction] = 0.10
+	adjusted := ScoreGovernanceHealthWithPenalties("Y", sigs, 365, reduced)
+	if adjusted == nil {
+		t.Fatal("expected adjusted signal")
+	}
+	if adjusted.Score <= baseline.Score {
+		t.Errorf("reduced penalty should yield higher score: adjusted=%.4f baseline=%.4f", adjusted.Score, baseline.Score)
+	}
+}
+
+// TestScoreGovernanceHealthWithPenalties_ZeroPenaltyIgnoresSignal verifies that a
+// zero penalty for a signal type means it contributes nothing to the health score
+// (score stays at 1.0 when only zero-penalty adverse signals are present).
+func TestScoreGovernanceHealthWithPenalties_ZeroPenaltyIgnoresSignal(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "Z", DetectedAt: today, Score: 0.80},
+	}
+	zeroed := make(map[SignalType]float64)
+	for k, v := range DefaultGovernanceHealthPenalties() {
+		zeroed[k] = v
+	}
+	zeroed[SignalDirectorFriction] = 0.0
+	sig := ScoreGovernanceHealthWithPenalties("Z", sigs, 365, zeroed)
+	if sig == nil {
+		t.Fatal("expected signal even with zero penalty (signal still counted for signalCount)")
+	}
+	// score = 1.0 (no penalty applied), no trust bonus
+	if sig.Score < 0.99 {
+		t.Errorf("zero-penalty friction should not reduce health score, got %.4f", sig.Score)
+	}
+}

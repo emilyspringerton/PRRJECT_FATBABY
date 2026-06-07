@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -87,7 +88,7 @@ func BuildObservation(
 		}
 	}
 
-	gaps := detectGaps(signals, nodeCount, byType, proposalsProcessed)
+	gaps := detectGaps(signals, nodeCount, byType, proposalsProcessed, accuracyReports)
 
 	status := "ok"
 	if len(parseErrors) > 0 || len(gaps) > 0 {
@@ -111,13 +112,13 @@ func BuildObservation(
 	}
 
 	if len(parseErrors) > 0 || len(gaps) > 0 {
-		obs.RequestForClaude = buildRefinementRequest(len(parseErrors), len(gaps), nodeCount, len(signals), len(highSev), proposalsProcessed, gaps)
+		obs.RequestForClaude = buildRefinementRequest(len(parseErrors), len(gaps), nodeCount, len(signals), len(highSev), proposalsProcessed, gaps, accuracyReports)
 	}
 
 	return obs
 }
 
-func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highSevCount, proposalsProcessed int, gaps []string) string {
+func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highSevCount, proposalsProcessed int, gaps []string, accuracyReports []AccuracyReport) string {
 	base := fmt.Sprintf(
 		"Entity-graph run completed with %d parse errors and %d gaps identified. "+
 			"Directors: %d, Proposals parsed: %d, Signals: %d (%d high/critical). ",
@@ -130,6 +131,21 @@ func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highS
 	for _, g := range gaps {
 		base += "Gap: " + g + ". "
 	}
+	// RSI: include low-precision signal types so Claude can recommend recalibration.
+	var lowPrecision []string
+	for _, r := range accuracyReports {
+		resolved := r.Confirmed + r.Refuted
+		if resolved >= 5 && r.Precision < 0.40 {
+			lowPrecision = append(lowPrecision, fmt.Sprintf("%s (precision=%.0f%%, n=%d resolved)", r.SignalType, r.Precision*100, resolved))
+		}
+	}
+	if len(lowPrecision) > 0 {
+		sort.Strings(lowPrecision)
+		base += fmt.Sprintf("RSI RECALIBRATION NEEDED: %d signal type(s) have <40%% precision with sufficient resolved outcomes: %v. "+
+			"Consider raising thresholds, shortening ValidThrough windows, or removing weak signals from the governance health model. "+
+			"Penalty weights have been automatically halved (AccuracyAdjustedPenalties) but threshold-level changes require updating config/entity-graph-rules.json. ",
+			len(lowPrecision), lowPrecision)
+	}
 	base += "Refine thresholds in config/entity-graph-rules.json or parser patterns in internal/entitygraph/parser.go as appropriate."
 	return base
 }
@@ -137,13 +153,22 @@ func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highS
 // detectGaps inspects parsing completeness and returns gap descriptions for actual
 // pipeline failures. Signal absences (no friction, no entrenchment, no family control)
 // are not gaps — they are expected outcomes for well-governed companies.
-func detectGaps(signals []Signal, nodeCount int, byType map[string]int, proposalsProcessed int) []string {
+// accuracyReports (optional) drives RSI gap reporting: signal types with poor empirical
+// precision are flagged so the observation-watcher/Claude can recommend recalibration.
+func detectGaps(signals []Signal, nodeCount int, byType map[string]int, proposalsProcessed int, accuracyReports []AccuracyReport) []string {
 	var gaps []string
 	if nodeCount == 0 {
 		gaps = append(gaps, "No directors extracted — Item 5.07 parsing may have failed for this filing")
 	}
 	if nodeCount > 0 && proposalsProcessed == 0 {
 		gaps = append(gaps, "0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go")
+	}
+	// RSI: flag signal types with low empirical precision.
+	for _, r := range accuracyReports {
+		resolved := r.Confirmed + r.Refuted
+		if resolved >= 5 && r.Precision < 0.40 {
+			gaps = append(gaps, fmt.Sprintf("low-precision signal '%s': %.0f%% confirmed across %d resolved predictions — consider threshold recalibration", r.SignalType, r.Precision*100, resolved))
+		}
 	}
 	return gaps
 }

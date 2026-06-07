@@ -685,6 +685,40 @@ func isCompVote(desc string, r Rules) bool {
 	return false
 }
 
+// DefaultGovernanceHealthPenalties returns the canonical penalty map used by
+// ScoreGovernanceHealth. Each entry defines how much a signal type subtracts
+// from the composite health score [0.0, 1.0]. Expose as a named function so
+// callers can obtain the base map, calibrate it via AccuracyAdjustedPenalties,
+// and pass the result to ScoreGovernanceHealthWithPenalties.
+func DefaultGovernanceHealthPenalties() map[SignalType]float64 {
+	return map[SignalType]float64{
+		SignalNominationRejection:           0.40,
+		SignalGovernanceEntrenchment:        0.30,
+		SignalActivistRisk:                  0.25,
+		SignalAuditorChange:                 0.20,
+		SignalDirectorFriction:              0.20,
+		SignalCompensationConcern:           0.15,
+		SignalDirectorDecay:                 0.10,
+		SignalFamilyControl:                 0.10,
+		SignalDirectorLink:                  0.10,
+		SignalBrokerNonVoteAnomaly:          0.05,
+		SignalAbstentionSpike:               0.05,
+		SignalAbstentionOutlier:             0.05,
+		SignalBoardDecayConcern:             0.15,
+		SignalInsiderSellCluster:            0.12,
+		SignalGovernanceDeterioration:       0.08,
+		SignalCFODeparture:                  0.18,
+		SignalLeadershipDeparture:           0.10,
+		SignalDividendCut:                   0.15,
+		SignalLateFiling:                    0.20,
+		SignalEPSFilingRevision:             0.12,
+		SignalBuybackSuspension:             0.08,
+		SignalDirectorLongTenure:            0.06,
+		SignalGovernancePeerUnderperformer:  0.10,
+		SignalPostFailureActivistPrediction: 0.12,
+	}
+}
+
 // ScoreGovernanceHealth computes a composite governance health index for a ticker
 // based on all signals within the trailing windowDays. Score ranges [0.0, 1.0]:
 // 1.0 = excellent governance (all high-trust, no adverse signals),
@@ -698,35 +732,23 @@ func isCompVote(desc string, r Rules) bool {
 // Window matching uses FilingDate when present; falls back to DetectedAt when
 // FilingDate is empty. This prevents backfilled historical signals (old FilingDate,
 // recent DetectedAt) from polluting the current governance window.
+//
+// For RSI-calibrated scoring, use ScoreGovernanceHealthWithPenalties with
+// AccuracyAdjustedPenalties to scale weights by historical signal precision.
 func ScoreGovernanceHealth(ticker string, allSignals []Signal, windowDays int) *Signal {
-	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
+	return ScoreGovernanceHealthWithPenalties(ticker, allSignals, windowDays, nil)
+}
 
-	penalties := map[SignalType]float64{
-		SignalNominationRejection:    0.40,
-		SignalGovernanceEntrenchment: 0.30,
-		SignalActivistRisk:           0.25,
-		SignalAuditorChange:          0.20,
-		SignalDirectorFriction:       0.20,
-		SignalCompensationConcern:    0.15,
-		SignalDirectorDecay:          0.10,
-		SignalFamilyControl:          0.10,
-		SignalDirectorLink:           0.10,
-		SignalBrokerNonVoteAnomaly:   0.05,
-		SignalAbstentionSpike:        0.05,
-		SignalAbstentionOutlier:      0.05,
-		SignalBoardDecayConcern:      0.15,
-		SignalInsiderSellCluster:      0.12,
-		SignalGovernanceDeterioration:  0.08,
-		SignalCFODeparture:          0.18,
-		SignalLeadershipDeparture:   0.10,
-		SignalDividendCut:           0.15,
-		SignalLateFiling:            0.20,
-		SignalEPSFilingRevision:     0.12,
-		SignalBuybackSuspension:              0.08,
-		SignalDirectorLongTenure:             0.06,
-		SignalGovernancePeerUnderperformer:   0.10,
-		SignalPostFailureActivistPrediction:  0.12,
+// ScoreGovernanceHealthWithPenalties is the parameterised form of ScoreGovernanceHealth
+// that accepts an explicit penalty map. Pass the result of AccuracyAdjustedPenalties
+// to enable RSI feedback: signals with poor empirical precision contribute less to the
+// composite health score than their base weight. When penalties is nil, the function
+// falls back to DefaultGovernanceHealthPenalties.
+func ScoreGovernanceHealthWithPenalties(ticker string, allSignals []Signal, windowDays int, penalties map[SignalType]float64) *Signal {
+	if penalties == nil {
+		penalties = DefaultGovernanceHealthPenalties()
 	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format("2006-01-02")
 
 	score := 1.0
 	trustBonus := 0.0

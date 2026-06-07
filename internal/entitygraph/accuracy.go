@@ -1994,6 +1994,52 @@ func CorrelateDirectorLongTenureEntrenchment(signals []Signal) []AccuracyRecord 
 	return records
 }
 
+// AccuracyAdjustedPenalties returns a copy of base with penalty weights scaled down
+// for signal types that have accumulated enough resolved predictions with low empirical
+// precision. This is the RSI feedback mechanism: signals that prove to be poor
+// predictors in practice contribute less to the composite governance health score.
+//
+// minResolved is the minimum number of resolved (confirmed + refuted) predictions
+// required before a signal type's weight is adjusted. When fewer outcomes are
+// available the base weight is kept unchanged — not enough data to calibrate.
+//
+// Scaling rules:
+//   - precision >= 0.60, or resolved < minResolved: 1.0× (full weight)
+//   - precision >= 0.40:                             0.75×
+//   - precision <  0.40:                             0.50×
+//
+// The 0.50 floor (rather than zeroing) preserves some signal contribution for cases
+// where low precision may reflect long prediction lags (many still-pending outcomes)
+// rather than genuinely poor signal quality.
+func AccuracyAdjustedPenalties(base map[SignalType]float64, reports []AccuracyReport, minResolved int) map[SignalType]float64 {
+	if minResolved <= 0 {
+		minResolved = 5
+	}
+	out := make(map[SignalType]float64, len(base))
+	for k, v := range base {
+		out[k] = v
+	}
+	for _, r := range reports {
+		penalty, ok := out[r.SignalType]
+		if !ok {
+			continue
+		}
+		resolved := r.Confirmed + r.Refuted
+		if resolved < minResolved {
+			continue
+		}
+		switch {
+		case r.Precision >= 0.60:
+			// full weight — reliable signal, no change
+		case r.Precision >= 0.40:
+			out[r.SignalType] = penalty * 0.75
+		default:
+			out[r.SignalType] = penalty * 0.50
+		}
+	}
+	return out
+}
+
 // LoadAccuracyRecords reads all AccuracyRecord entries from <dir>/accuracy.ndjson.
 func LoadAccuracyRecords(dir string) ([]AccuracyRecord, error) {
 	path := filepath.Join(dir, "accuracy.ndjson")

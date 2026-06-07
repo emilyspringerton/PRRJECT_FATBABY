@@ -119,6 +119,12 @@ type Rules struct {
 	// signals. A failed structural vote within this window triggers the prediction.
 	// Default 45 days (roughly one proxy season filing cycle).
 	PostFailureActivistWindowDays int `json:"post_failure_activist_window_days"`
+
+	// MinResolvedForCalibration is the minimum number of resolved (confirmed + refuted)
+	// accuracy predictions required before AccuracyAdjustedPenalties will scale a signal
+	// type's governance health penalty. Fewer outcomes = insufficient data; the base
+	// weight is preserved unchanged. Default 5.
+	MinResolvedForCalibration int `json:"min_resolved_for_calibration"`
 }
 
 // DefaultRules returns the baseline thresholds defined in the northstar spec.
@@ -146,6 +152,7 @@ func DefaultRules() Rules {
 		PeerGovernanceUnderperformThreshold: 0.15,
 		GovernanceHealthTrendMinDelta:       0.10,
 		PostFailureActivistWindowDays:       45,
+		MinResolvedForCalibration:           5,
 	}
 }
 
@@ -229,6 +236,9 @@ func LoadRules(path string) Rules {
 	}
 	if r.PostFailureActivistWindowDays == 0 {
 		r.PostFailureActivistWindowDays = defaults.PostFailureActivistWindowDays
+	}
+	if r.MinResolvedForCalibration == 0 {
+		r.MinResolvedForCalibration = defaults.MinResolvedForCalibration
 	}
 	return r
 }

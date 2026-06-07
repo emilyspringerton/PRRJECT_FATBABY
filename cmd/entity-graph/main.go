@@ -143,6 +143,21 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		logger.Printf("load health history err=%v (non-fatal)", err)
 	}
 
+	// RSI: load historical accuracy records to calibrate governance health penalty weights.
+	// AccuracyAdjustedPenalties scales down weights for signal types whose empirical
+	// precision is below the configured threshold, closing the RSI feedback loop.
+	prevAccuracyRecords, _ := entitygraph.LoadAccuracyRecords(cfg.graphDir)
+	prevAccuracyReports := entitygraph.BuildAccuracyReports(prevAccuracyRecords)
+	healthPenalties := entitygraph.AccuracyAdjustedPenalties(
+		entitygraph.DefaultGovernanceHealthPenalties(),
+		prevAccuracyReports,
+		rules.MinResolvedForCalibration,
+	)
+	if len(prevAccuracyRecords) > 0 {
+		logger.Printf("rsi_calibration loaded accuracy_records=%d reports=%d calibrated_penalties=%d",
+			len(prevAccuracyRecords), len(prevAccuracyReports), len(healthPenalties))
+	}
+
 	var (
 		allSignals         []entitygraph.Signal
 		parseErrors        []entitygraph.ParseError
@@ -349,10 +364,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 	// governance_health_index: composite health score per ticker.
 	// Re-compute combined to include director_link signals before scoring.
+	// Uses accuracy-calibrated penalties (healthPenalties) so historically
+	// low-precision signals contribute reduced weight to the composite score.
 	combined = append(combined, linkSigs...)
 	healthScores := map[string]float64{}
 	for ticker := range batchTickers {
-		if sig := entitygraph.ScoreGovernanceHealth(ticker, combined, rules.GovernanceHealthWindowDays); sig != nil {
+		if sig := entitygraph.ScoreGovernanceHealthWithPenalties(ticker, combined, rules.GovernanceHealthWindowDays, healthPenalties); sig != nil {
 			logger.Printf("governance_health ticker=%s score=%.3f severity=%s", ticker, sig.Score, sig.Severity)
 			allSignals = append(allSignals, *sig)
 			healthScores[ticker] = sig.Score
