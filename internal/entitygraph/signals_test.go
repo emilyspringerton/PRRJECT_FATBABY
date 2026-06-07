@@ -1315,3 +1315,157 @@ func TestScoreGovernanceHealthWithPenalties_ZeroPenaltyIgnoresSignal(t *testing.
 		t.Errorf("zero-penalty friction should not reduce health score, got %.4f", sig.Score)
 	}
 }
+
+// ── AccuracyAdjustedPenalties ────────────────────────────────────────────────
+
+// TestAccuracyAdjustedPenalties_HighPrecisionKeepsFullWeight verifies that a signal
+// type with high precision (≥60%) retains its base penalty weight.
+func TestAccuracyAdjustedPenalties_HighPrecisionKeepsFullWeight(t *testing.T) {
+	base := map[SignalType]float64{SignalDirectorFriction: 0.20}
+	reports := []AccuracyReport{{
+		SignalType: SignalDirectorFriction,
+		Confirmed:  8,
+		Refuted:    2,
+		Precision:  0.80, // 80% — above 0.60 threshold
+	}}
+	out := AccuracyAdjustedPenalties(base, reports, 5)
+	if out[SignalDirectorFriction] != 0.20 {
+		t.Errorf("high-precision signal should keep full weight 0.20, got %.4f", out[SignalDirectorFriction])
+	}
+}
+
+// TestAccuracyAdjustedPenalties_MediumPrecisionReduces verifies that a signal type
+// with medium precision (40–60%) gets its penalty reduced to 75% of base.
+func TestAccuracyAdjustedPenalties_MediumPrecisionReduces(t *testing.T) {
+	base := map[SignalType]float64{SignalAbstentionSpike: 0.05}
+	reports := []AccuracyReport{{
+		SignalType: SignalAbstentionSpike,
+		Confirmed:  3,
+		Refuted:    7,
+		Precision:  0.30, // below 0.40 — actually tests low-precision path
+	}}
+	// Use precision=0.50 for medium path
+	reports[0].Confirmed = 5
+	reports[0].Refuted = 5
+	reports[0].Precision = 0.50
+	out := AccuracyAdjustedPenalties(base, reports, 5)
+	want := 0.05 * 0.75
+	if out[SignalAbstentionSpike] < want-0.001 || out[SignalAbstentionSpike] > want+0.001 {
+		t.Errorf("medium-precision penalty = %.4f, want %.4f (0.75×)", out[SignalAbstentionSpike], want)
+	}
+}
+
+// TestAccuracyAdjustedPenalties_LowPrecisionHalves verifies that a signal type
+// with low precision (<40%) gets its penalty halved (50% of base).
+func TestAccuracyAdjustedPenalties_LowPrecisionHalves(t *testing.T) {
+	base := map[SignalType]float64{SignalBrokerNonVoteAnomaly: 0.05}
+	reports := []AccuracyReport{{
+		SignalType: SignalBrokerNonVoteAnomaly,
+		Confirmed:  2,
+		Refuted:    8,
+		Precision:  0.20, // 20% — below 0.40 threshold
+	}}
+	out := AccuracyAdjustedPenalties(base, reports, 5)
+	want := 0.05 * 0.50
+	if out[SignalBrokerNonVoteAnomaly] < want-0.001 || out[SignalBrokerNonVoteAnomaly] > want+0.001 {
+		t.Errorf("low-precision penalty = %.4f, want %.4f (0.50×)", out[SignalBrokerNonVoteAnomaly], want)
+	}
+}
+
+// TestAccuracyAdjustedPenalties_InsufficientResolvedSkips verifies that signal types
+// with fewer than minResolved outcomes retain their base weight unchanged.
+func TestAccuracyAdjustedPenalties_InsufficientResolvedSkips(t *testing.T) {
+	base := map[SignalType]float64{SignalDirectorDecay: 0.10}
+	reports := []AccuracyReport{{
+		SignalType: SignalDirectorDecay,
+		Confirmed:  1,
+		Refuted:    2,
+		Precision:  0.33, // low but only 3 resolved < minResolved=5
+	}}
+	out := AccuracyAdjustedPenalties(base, reports, 5)
+	if out[SignalDirectorDecay] != 0.10 {
+		t.Errorf("insufficient-resolved signal should keep base weight 0.10, got %.4f", out[SignalDirectorDecay])
+	}
+}
+
+// TestAccuracyAdjustedPenalties_UnknownSignalTypeIgnored verifies that reports for
+// signal types not in the base map are silently ignored.
+func TestAccuracyAdjustedPenalties_UnknownSignalTypeIgnored(t *testing.T) {
+	base := map[SignalType]float64{SignalDirectorFriction: 0.20}
+	reports := []AccuracyReport{{
+		SignalType: SignalHighTrustDirector, // not in base map
+		Confirmed:  1,
+		Refuted:    9,
+		Precision:  0.10,
+	}}
+	out := AccuracyAdjustedPenalties(base, reports, 5)
+	if len(out) != 1 || out[SignalDirectorFriction] != 0.20 {
+		t.Errorf("unknown signal type in reports should not affect base map; got %v", out)
+	}
+}
+
+// TestAccuracyAdjustedPenalties_DefaultMinResolved verifies that zero minResolved
+// falls back to the default of 5.
+func TestAccuracyAdjustedPenalties_DefaultMinResolved(t *testing.T) {
+	base := map[SignalType]float64{SignalLateFiling: 0.20}
+	// 4 resolved: below default minimum of 5
+	reports := []AccuracyReport{{
+		SignalType: SignalLateFiling,
+		Confirmed:  1,
+		Refuted:    3,
+		Precision:  0.25,
+	}}
+	out := AccuracyAdjustedPenalties(base, reports, 0) // 0 → default 5
+	if out[SignalLateFiling] != 0.20 {
+		t.Errorf("4 resolved < default minimum 5; base weight should be preserved, got %.4f", out[SignalLateFiling])
+	}
+}
+
+// TestAccuracyAdjustedPenalties_DoesNotMutateBase verifies that the base map is
+// not modified by AccuracyAdjustedPenalties (it must return a copy).
+func TestAccuracyAdjustedPenalties_DoesNotMutateBase(t *testing.T) {
+	base := map[SignalType]float64{SignalDirectorFriction: 0.20}
+	reports := []AccuracyReport{{
+		SignalType: SignalDirectorFriction,
+		Confirmed:  1,
+		Refuted:    9,
+		Precision:  0.10,
+	}}
+	AccuracyAdjustedPenalties(base, reports, 5)
+	if base[SignalDirectorFriction] != 0.20 {
+		t.Error("AccuracyAdjustedPenalties must not mutate the base map")
+	}
+}
+
+// TestAccuracyAdjustedPenalties_IntegrationWithGovernanceHealth verifies the full
+// RSI feedback loop: low-precision signal → halved penalty → higher health score.
+func TestAccuracyAdjustedPenalties_IntegrationWithGovernanceHealth(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "RSI", DetectedAt: today, Score: 0.80},
+	}
+
+	// Baseline: full friction penalty (0.20) → score = 0.80
+	baseline := ScoreGovernanceHealth("RSI", sigs, 365)
+	if baseline == nil {
+		t.Fatal("expected baseline health signal")
+	}
+
+	// RSI: friction has poor precision (20%) with 10 resolved → penalty halved
+	reports := []AccuracyReport{{
+		SignalType: SignalDirectorFriction,
+		Confirmed:  2,
+		Refuted:    8,
+		Precision:  0.20,
+	}}
+	calibrated := AccuracyAdjustedPenalties(DefaultGovernanceHealthPenalties(), reports, 5)
+	rsiSig := ScoreGovernanceHealthWithPenalties("RSI", sigs, 365, calibrated)
+	if rsiSig == nil {
+		t.Fatal("expected RSI-calibrated health signal")
+	}
+
+	// After halving friction penalty (0.10 instead of 0.20), score should be higher
+	if rsiSig.Score <= baseline.Score {
+		t.Errorf("RSI-calibrated score %.4f should exceed baseline %.4f (halved penalty)", rsiSig.Score, baseline.Score)
+	}
+}

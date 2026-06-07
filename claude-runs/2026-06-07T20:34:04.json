@@ -1,0 +1,20 @@
+{
+  "observation_summary": "use RSI to improve the entity graph stuff",
+  "observation_timestamp": "2026-05-31T21:28:48Z",
+  "run_started_at": "2026-06-07T20:10:00Z",
+  "run_completed_at": "2026-06-07T20:34:04Z",
+  "files_changed": [
+    "internal/entitygraph/signals.go",
+    "internal/entitygraph/accuracy.go",
+    "internal/entitygraph/rules.go",
+    "internal/entitygraph/observer.go",
+    "internal/entitygraph/signals_test.go",
+    "cmd/entity-graph/main.go",
+    "config/entity-graph-rules.json",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Implemented the RSI feedback loop that was previously missing: accuracy records were being collected but never fed back into scoring. (1) Extracted DefaultGovernanceHealthPenalties() from inline code in ScoreGovernanceHealth so the penalty map is addressable and testable. (2) Added ScoreGovernanceHealthWithPenalties() — parameterised form that accepts a custom penalty map; ScoreGovernanceHealth now delegates to it with nil→default, preserving backward compat. (3) Added AccuracyAdjustedPenalties() in accuracy.go: takes base penalty map + AccuracyReports, returns calibrated copy where signal types with low empirical precision (<40% with ≥minResolved resolved) get 50% weight, medium precision (40-60%) get 75%, high precision (≥60%) keep full weight. (4) Added MinResolvedForCalibration rule field (default 5) to Rules struct and config file; also added the previously missing long_tenure/peer_underperform/health_trend/post_failure fields to config/entity-graph-rules.json. (5) Wired RSI in cmd/entity-graph/main.go: at batch start loads accuracy.ndjson, builds AccuracyReports, calls AccuracyAdjustedPenalties, passes calibrated weights to ScoreGovernanceHealthWithPenalties. (6) Improved observer.go detectGaps and buildRefinementRequest to include accuracy-based gap alerts: when signal types have <40% precision with sufficient resolved predictions, the observation flags them for Claude recalibration with signal name, precision%, and resolved count. Added sort import for deterministic output. (7) Added 12 new tests covering all new functions. All 37 test packages pass.",
+  "git_commit_hash": "",
+  "exit_status": "success",
+  "notes": "The RSI loop is now fully closed: emit signals → track accuracy → load accuracy at next batch start → calibrate penalty weights → improved governance health scores. The observation RequestForClaude field now surfaces low-precision signals with specific names and counts, giving Claude actionable threshold recalibration targets. The 0.50 penalty floor (not zero) is intentional — preserves signal contribution for types whose low precision may reflect long prediction lags rather than genuine noise. Follow-up: once the pipeline accumulates 5+ resolved predictions per signal type, the calibration will begin making meaningful weight adjustments automatically."
+}

@@ -2,6 +2,51 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-07 — RSI feedback loop: accuracy-calibrated governance health scoring
+
+Closes the recursive self-improvement loop: historical signal accuracy records now feed
+back into the composite governance health score, so signals with poor empirical precision
+contribute proportionally less weight.
+
+**`DefaultGovernanceHealthPenalties()` (`internal/entitygraph/signals.go`)**  
+Extracts the previously inline penalty map into a named function. Enables callers to
+retrieve, modify, and pass a custom map — foundation for RSI calibration.
+
+**`ScoreGovernanceHealthWithPenalties()` (`internal/entitygraph/signals.go`)**  
+Parameterised form of `ScoreGovernanceHealth` that accepts an explicit penalty map.
+`ScoreGovernanceHealth` now delegates to this function with nil → default penalties,
+preserving full backward compatibility. Upstream callers can pass accuracy-calibrated
+weights to make the composite score reflect empirical signal quality.
+
+**`AccuracyAdjustedPenalties()` (`internal/entitygraph/accuracy.go`)**  
+Takes a base penalty map and a slice of `AccuracyReport`s; returns a calibrated copy
+where weights are scaled by empirical precision for signal types with ≥ `minResolved`
+resolved predictions. Scaling: precision ≥ 0.60 → 1.0×; ≥ 0.40 → 0.75×; < 0.40 → 0.50×.
+The 0.50 floor preserves contribution for signals whose low precision may reflect long
+prediction lags rather than genuine noise.
+
+**`MinResolvedForCalibration` rule field (`internal/entitygraph/rules.go`)**  
+New config field (default 5) controlling how many resolved predictions are required before
+a signal type's penalty is adjusted. Added to `config/entity-graph-rules.json`.
+
+**RSI wiring in `cmd/entity-graph/main.go`**  
+At batch start, loads `accuracy.ndjson` → builds `AccuracyReport`s → calls
+`AccuracyAdjustedPenalties`. Health scoring step now uses `ScoreGovernanceHealthWithPenalties`
+with calibrated weights. Log line: `rsi_calibration loaded accuracy_records=N reports=M
+calibrated_penalties=K`.
+
+**Improved observation gap detection (`internal/entitygraph/observer.go`)**  
+`detectGaps` and `buildRefinementRequest` now accept accuracy reports. When signal types
+have < 40% precision with ≥ 5 resolved predictions, gaps are flagged for Claude recalibration
+with the exact signal name, precision %, and resolved count. The `RequestForClaude` field
+now includes a `RSI RECALIBRATION NEEDED` section listing under-performing signals.
+`config/entity-graph-rules.json` is cited as the target for threshold changes.
+
+**Tests**: 12 new tests across `signals_test.go` covering `DefaultGovernanceHealthPenalties`,
+`ScoreGovernanceHealthWithPenalties` (nil fallback, reduced penalty raises score, zero
+penalty), and `AccuracyAdjustedPenalties` (high/medium/low precision, insufficient resolved,
+unknown signal type, default minResolved, immutability, integration). All 37 test packages pass.
+
 ## 2026-06-06 (22) — governance_health_index + director_long_tenure correlators — FULL COVERAGE
 
 Two new accuracy correlation functions in `accuracy.go`:

@@ -30,5 +30,10 @@
     "advisory vote on pay"
   ],
   "min_board_decay_count": 3,
-  "board_decay_concern_window_days": 730
+  "board_decay_concern_window_days": 730,
+  "long_tenure_years_threshold": 12,
+  "peer_governance_underperform_threshold": 0.15,
+  "governance_health_trend_min_delta": 0.10,
+  "post_failure_activist_window_days": 45,
+  "min_resolved_for_calibration": 5
 }
