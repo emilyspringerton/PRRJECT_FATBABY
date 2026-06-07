@@ -35,3 +35,6 @@
 !.env.example
 *.log
 .DS_Store
+
+# Claude Code session directory.
+.claude/
