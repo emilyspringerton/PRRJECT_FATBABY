@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-07 — emily.cli prime-task command: operator→Emily Prime→FatBaby directed loop
+
+`emily prime-task` (emily.cli v0.5.0) closes the operator-directed task loop. The operator
+types a task description at the CLI; the command writes a structured JSON task file to
+`EMILY/signals/tasks/`; the observation-watcher (`cmd/observation-watcher`) picks it up
+within 10 seconds and invokes Claude Code on FatBaby with the task as its prompt.
+
+This task (task-3623149323882848438) was the first task filed via that loop — it arrived
+through the `emily prime-task` command and was acted on here.
+
+**What exists in the FatBaby codebase:**
+- `cmd/observation-watcher/main.go` — `--prime-tasks` flag and `pollPrimeTasks` function
+  already poll `EMILY/signals/tasks/` alongside the Emily observation channel.
+- Auto-detection: if `--prime-tasks` is not set, the watcher looks for the sibling
+  `../EMILY/signals/tasks/` directory automatically.
+- `buildPrimeTaskPrompt` constructs the Claude prompt from the task JSON fields
+  (`description`, `context`, `acceptance_criteria`, `priority`).
+
+**No FatBaby source changes required** — the loop was already wired. This entry documents
+that the operator end (emily.cli) is now live and the first end-to-end dispatch worked.
+
 ## 2026-06-07 — RSI feedback loop: accuracy-calibrated governance health scoring
 
 Closes the recursive self-improvement loop: historical signal accuracy records now feed
