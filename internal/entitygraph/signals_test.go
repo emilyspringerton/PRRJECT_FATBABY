@@ -1421,6 +1421,79 @@ func TestAccuracyAdjustedPenalties_DefaultMinResolved(t *testing.T) {
 	}
 }
 
+// ── DeduplicateSignals ────────────────────────────────────────────────────────
+
+// TestDeduplicateSignals_KeepsMostRecent verifies that duplicate signal_ids are
+// collapsed to the most recently-detected entry. This prevents repeated batch runs
+// from accumulating copies of idempotent signals (e.g. director_long_tenure,
+// director_friction) that over-count governance health penalties.
+func TestDeduplicateSignals_KeepsMostRecent(t *testing.T) {
+	sigs := []Signal{
+		{SignalID: "sig-a", Type: SignalDirectorFriction, Ticker: "SCHW", DetectedAt: "2025-06-01", Score: 0.84},
+		{SignalID: "sig-a", Type: SignalDirectorFriction, Ticker: "SCHW", DetectedAt: "2025-06-08", Score: 0.82},
+		{SignalID: "sig-b", Type: SignalHighTrustDirector, Ticker: "AAPL", DetectedAt: "2025-06-01", Score: 0.97},
+	}
+	out := DeduplicateSignals(sigs)
+	if len(out) != 2 {
+		t.Fatalf("want 2 unique signals, got %d", len(out))
+	}
+	for _, s := range out {
+		if s.SignalID == "sig-a" && s.DetectedAt != "2025-06-08" {
+			t.Errorf("want most-recent sig-a (2025-06-08), got DetectedAt=%s", s.DetectedAt)
+		}
+	}
+}
+
+// TestDeduplicateSignals_PreservesEmptyID verifies that signals with empty SignalID
+// pass through without being deduplicated against each other.
+func TestDeduplicateSignals_PreservesEmptyID(t *testing.T) {
+	sigs := []Signal{
+		{SignalID: "", Type: SignalHighTrustDirector, Ticker: "AAPL", DetectedAt: "2025-06-01"},
+		{SignalID: "", Type: SignalHighTrustDirector, Ticker: "AAPL", DetectedAt: "2025-06-02"},
+	}
+	out := DeduplicateSignals(sigs)
+	if len(out) != 2 {
+		t.Errorf("empty-ID signals must pass through undeduped, got %d", len(out))
+	}
+}
+
+// TestDeduplicateSignals_PreventsHealthSaturation is the regression test for the
+// accumulation bug where repeated batch processing wrote duplicate long-tenure signals
+// to signals.ndjson, causing ScoreGovernanceHealth to multiply penalties and drive
+// health scores to 0 for companies with many long-tenured directors.
+func TestDeduplicateSignals_PreventsHealthSaturation(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+
+	// Six long-tenure directors each written twice (two batch runs).
+	var accumulated []Signal
+	names := []string{"dir0", "dir1", "dir2", "dir3", "dir4", "dir5"}
+	for _, n := range names {
+		id := "director_long_tenure_" + n + "_tst"
+		accumulated = append(accumulated,
+			Signal{SignalID: id, Type: SignalDirectorLongTenure, Ticker: "TST", DetectedAt: yesterday, Score: 0.80},
+			Signal{SignalID: id, Type: SignalDirectorLongTenure, Ticker: "TST", DetectedAt: today, Score: 0.80},
+		)
+	}
+
+	deduped := DeduplicateSignals(accumulated)
+	if len(deduped) != 6 {
+		t.Fatalf("expected 6 unique signals after dedup, got %d", len(deduped))
+	}
+
+	rawScore := ScoreGovernanceHealth("TST", accumulated, 365)
+	dedupScore := ScoreGovernanceHealth("TST", deduped, 365)
+	if rawScore == nil || dedupScore == nil {
+		t.Fatal("expected health signals from both computations")
+	}
+	if dedupScore.Score <= rawScore.Score {
+		t.Errorf("deduplication should improve health score: accumulated=%.3f deduped=%.3f", rawScore.Score, dedupScore.Score)
+	}
+	if dedupScore.Score == 0 {
+		t.Errorf("after dedup, 6 long-tenure signals should not saturate score to 0; got score=0")
+	}
+}
+
 // TestAccuracyAdjustedPenalties_DoesNotMutateBase verifies that the base map is
 // not modified by AccuracyAdjustedPenalties (it must return a copy).
 func TestAccuracyAdjustedPenalties_DoesNotMutateBase(t *testing.T) {

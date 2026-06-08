@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix signal accumulation driving governance_health to 0
+
+Three related fixes addressing the observation where all 4 tickers had
+`governance_health_index` score=0 (critical) regardless of actual board quality:
+
+**Root cause — duplicate signals accumulate across batch runs**: `signals.ndjson` is
+append-only. Every entity-graph batch writes signals for all directors in the graph,
+including idempotent signals whose `signal_id` is stable across runs (e.g.
+`director_long_tenure_<name>_<ticker>`, `director_friction_<name>_<ticker>`). Over
+multiple runs, these accumulate: a company with 6 long-tenure directors processed in
+5 batches → 30 long-tenure signals in the file. `ScoreGovernanceHealth` counted all
+copies within the 365-day window, applying the penalty 30× instead of 6×, driving
+scores to 0 even for well-governed companies.
+
+**Fix 1 — `DeduplicateSignals` in `graph.go`**: New exported function that keeps only
+the most recently-detected signal per `signal_id`. Signals with empty `signal_id` pass
+through unchanged. Called after `LoadSignals` in the entity-graph batch loop.
+
+**Fix 2 — Reduce `director_long_tenure` penalty from 0.06 to 0.03**: Even after
+deduplication, companies with 12+ long-tenure directors (e.g. Franklin Resources/BEN
+with 12 long-serving directors) accrued 12 × 0.06 = 0.72 in penalties — disproportionate
+for a low-confidence, low-urgency signal. Halved to 0.03. Adjusted in
+`DefaultGovernanceHealthPenalties` in `signals.go`.
+
+**Fix 3 — Gap detection for low proposal yield**: `detectGaps` previously only flagged
+`proposalsProcessed == 0`. Added a secondary check: when `processed >= 2` and fewer than
+50% of proxy filings yielded non-director proposals, a gap is now logged to the observation
+with the yield rate — making partially-broken proposal parsing visible to the RSI loop.
+
+- `internal/entitygraph/graph.go`: `DeduplicateSignals([]Signal) []Signal`
+- `internal/entitygraph/signals.go`: `SignalDirectorLongTenure` penalty 0.06 → 0.03
+- `internal/entitygraph/observer.go`: `detectGaps` accepts `processed int`; low-yield gap
+- `cmd/entity-graph/main.go`: call `DeduplicateSignals` after `LoadSignals`
+- `internal/entitygraph/signals_test.go`: 3 new tests for deduplication correctness
+
 ## 2026-06-08 — entity-graph: fix 0-proposals gap for 3-column and no-directors filings
 
 Two related fixes addressing the "0 proposals parsed despite directors found" observation gap:

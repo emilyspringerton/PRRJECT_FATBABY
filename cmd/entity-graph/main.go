@@ -132,10 +132,15 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	}
 
 	// Load historical signals for composite scoring (activist_risk, director_link).
+	// Deduplicate by signal_id (keep most recent per id) before use: signals.ndjson
+	// is append-only, so repeated batch runs write duplicate records that share the
+	// same signal_id (e.g. director_long_tenure, director_friction). Without dedup,
+	// ScoreGovernanceHealth over-counts penalties and drives health scores to 0.
 	historicalSignals, err := entitygraph.LoadSignals(cfg.graphDir)
 	if err != nil {
 		logger.Printf("load historical signals err=%v", err)
 	}
+	historicalSignals = entitygraph.DeduplicateSignals(historicalSignals)
 
 	// Load previous governance health snapshots for trend scoring (deteriorating/improving).
 	prevHealthHistory, err := entitygraph.LoadHealthHistory(cfg.graphDir)

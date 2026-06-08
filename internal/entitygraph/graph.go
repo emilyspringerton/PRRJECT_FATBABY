@@ -411,6 +411,38 @@ func RewriteSignals(dir string, signals []Signal) error {
 	return os.Rename(tmp, path)
 }
 
+// DeduplicateSignals keeps only the most recently-detected signal per signal_id.
+// Entity-graph batches append signals to signals.ndjson on every run, so repeated
+// processing of the same director or proposal accumulates duplicate signals that share
+// the same logical signal_id. Without deduplication, ScoreGovernanceHealth counts all
+// copies within the time window and over-applies penalties — driving health scores to 0
+// even for well-governed companies with many long-tenured directors. Signals with an
+// empty SignalID are passed through unchanged (they cannot be deduplicated by ID).
+func DeduplicateSignals(signals []Signal) []Signal {
+	type entry struct {
+		idx        int
+		detectedAt string
+	}
+	seen := make(map[string]entry, len(signals))
+	result := make([]Signal, 0, len(signals))
+	for _, s := range signals {
+		if s.SignalID == "" {
+			result = append(result, s)
+			continue
+		}
+		if e, ok := seen[s.SignalID]; ok {
+			if s.DetectedAt > e.detectedAt {
+				result[e.idx] = s
+				seen[s.SignalID] = entry{e.idx, s.DetectedAt}
+			}
+		} else {
+			seen[s.SignalID] = entry{len(result), s.DetectedAt}
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 // nowDate returns the current UTC date in YYYY-MM-DD format.
 func nowDate() string {
 	return time.Now().UTC().Format("2006-01-02")

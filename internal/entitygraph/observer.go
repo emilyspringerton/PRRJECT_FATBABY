@@ -88,7 +88,7 @@ func BuildObservation(
 		}
 	}
 
-	gaps := detectGaps(signals, nodeCount, byType, proposalsProcessed, accuracyReports)
+	gaps := detectGaps(signals, nodeCount, byType, processed, proposalsProcessed, accuracyReports)
 
 	status := "ok"
 	if len(parseErrors) > 0 || len(gaps) > 0 {
@@ -155,13 +155,18 @@ func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highS
 // are not gaps — they are expected outcomes for well-governed companies.
 // accuracyReports (optional) drives RSI gap reporting: signal types with poor empirical
 // precision are flagged so the observation-watcher/Claude can recommend recalibration.
-func detectGaps(signals []Signal, nodeCount int, byType map[string]int, proposalsProcessed int, accuracyReports []AccuracyReport) []string {
+func detectGaps(signals []Signal, nodeCount int, byType map[string]int, processed int, proposalsProcessed int, accuracyReports []AccuracyReport) []string {
 	var gaps []string
 	if nodeCount == 0 {
 		gaps = append(gaps, "No directors extracted — Item 5.07 parsing may have failed for this filing")
 	}
 	if nodeCount > 0 && proposalsProcessed == 0 {
 		gaps = append(gaps, "0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go")
+	} else if nodeCount > 0 && processed >= 2 && float64(proposalsProcessed)/float64(processed) < 0.5 {
+		gaps = append(gaps, fmt.Sprintf(
+			"Low proposal yield: %d of %d proxy filings yielded non-director proposals (%.0f%% rate) — possible unrecognized proposal header format; inspect extractProposals() in parser.go",
+			proposalsProcessed, processed, float64(proposalsProcessed)/float64(processed)*100,
+		))
 	}
 	// RSI: flag signal types with low empirical precision.
 	for _, r := range accuracyReports {

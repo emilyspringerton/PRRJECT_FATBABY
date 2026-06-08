@@ -750,7 +750,7 @@ func DefaultGovernanceHealthPenalties() map[SignalType]float64 {
 		SignalLateFiling:                    0.20,
 		SignalEPSFilingRevision:             0.12,
 		SignalBuybackSuspension:             0.08,
-		SignalDirectorLongTenure:            0.06,
+		SignalDirectorLongTenure:            0.03,
 		SignalGovernancePeerUnderperformer:  0.10,
 		SignalPostFailureActivistPrediction: 0.12,
 	}
