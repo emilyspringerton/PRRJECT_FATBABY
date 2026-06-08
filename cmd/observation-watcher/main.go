@@ -298,6 +298,12 @@ The run report file must be included in this commit.
 ### 3. If git push fails
 Retry once. If it still fails, set exit_status to "partial" and record the failure
 in notes. Never silently skip the sync.
+
+### 4. File a completion Apple (optional — only if emily CLI is available)
+If the emily CLI is installed and IDUNA is reachable, post a completion signal:
+  emily observe -s success "prime task complete" --findings "run report written to claude-runs/"
+This is best-effort — skip silently if emily is not found or IDUNA is offline.
+The Apple lets rsi-loop.sh detect completion via IDUNA instead of file polling.
 `
 }
 
