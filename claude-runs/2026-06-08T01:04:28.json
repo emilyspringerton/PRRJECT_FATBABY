@@ -9,7 +9,7 @@
     "CHANGELOG.md"
   ],
   "actions_taken": "Diagnosed root cause: extractProposals() and extractAuditor() in parser.go used an inline regex matching only 'Proposal N' format, but real EDGAR Item 5.07 filings use two other formats — parenthesised '(2) The stockholders ratified...' (ABBV/pharma style) and bare-number '2. Advisory Vote on...' (BA/industrial style). Confirmed by inspecting actual source_document_persisted events in var/secwatch/events/. Fixed by promoting the inline proposalSplitter to a package-level reProposalSplitter regex covering all three formats: 'Proposal N', '(N)', and 'N. Title'. Updated both extractProposals() and extractAuditor() to use the shared regex. Added two new test cases: TestParseItem507_ParenthesisedProposals (ABBV style) and TestParseItem507_BareNumberProposals (BA style). All existing tests continue to pass. No threshold changes needed in entity-graph-rules.json — the gap was structural (regex miss), not a calibration issue.",
-  "git_commit_hash": "",
+  "git_commit_hash": "2c8d809",
   "exit_status": "success",
   "notes": "config/entity-graph-rules.json was not modified — the root cause was a structural regex miss in the parser, not a threshold miscalibration. The fix will start yielding proposal signals (auditor_change, compensation_concern, governance_entrenchment, nomination_rejection) in the next entity-graph batch. No process restart required; the change takes effect on the next batch run."
 }
