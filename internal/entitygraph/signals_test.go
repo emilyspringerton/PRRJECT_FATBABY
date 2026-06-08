@@ -1724,3 +1724,82 @@ func TestAccuracyAdjustedPenalties_IntegrationWithGovernanceHealth(t *testing.T)
 		t.Errorf("RSI-calibrated score %.4f should exceed baseline %.4f (halved penalty)", rsiSig.Score, baseline.Score)
 	}
 }
+
+func TestNamesMatch_MiddleInitialVariants(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"Susan L. Wagner", "Sue Wagner", true},
+		{"John L. Hennessy", "John Hennessy", true},
+		{"Roger W. Ferguson Jr.", "Roger Ferguson", true},
+		{"William M. Daley", "Pamela Daley", false},  // different first initial
+		{"Tim Cook", "Linda Z. Cook", false},           // different first initial
+		{"Frank Herringer", "Frank Herringer", true},   // exact match
+		{"J. Smith", "John Smith", true},               // initial-only first name
+	}
+	for _, c := range cases {
+		got := NamesMatch(c.a, c.b)
+		if got != c.want {
+			t.Errorf("NamesMatch(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func TestScoreDirectorLinks_CrossBoardViaNameVariant(t *testing.T) {
+	// Simulate the real-world case: Susan L. Wagner at BLK, Sue Wagner at AAPL.
+	// Both are the same person; BLK has a friction signal; AAPL should get a director_link.
+	g := NewGraph()
+	today := time.Now().UTC().Format("2006-01-02")
+
+	// Load BLK node first (longer name form is "canonical" after merge).
+	g.UpsertPerson("Susan L. Wagner", NodeDirector, FilingAppearance{
+		Ticker: "BLK", CIK: "1364742", Form: "DEF 14A", FilingDate: "2024-05-17",
+	})
+	// Then AAPL node with nickname form.
+	g.UpsertPerson("Sue Wagner", NodeDirector, FilingAppearance{
+		Ticker: "AAPL", CIK: "320193", Form: "DEF 14A", FilingDate: "2026-05-30",
+	})
+
+	// Verify they merged into one node.
+	var merged *PersonNode
+	for _, n := range g.Nodes {
+		if n.Centrality == 2 {
+			merged = n
+			break
+		}
+	}
+	if merged == nil {
+		t.Fatalf("expected a merged 2-ticker node, got none; nodes=%d", len(g.Nodes))
+	}
+	tickers := map[string]bool{}
+	for _, f := range merged.Filings {
+		tickers[f.Ticker] = true
+	}
+	if !tickers["BLK"] || !tickers["AAPL"] {
+		t.Errorf("merged node should have BLK+AAPL filings, got %v", tickers)
+	}
+
+	// Friction signal at BLK triggers director_link at AAPL.
+	frictionSig := Signal{
+		SignalID:   "director_friction_sue_wagner_blk",
+		Type:       SignalDirectorFriction,
+		Ticker:     "BLK",
+		Entity:     merged.Name,
+		Score:      0.72,
+		DetectedAt: today,
+	}
+	linkSigs := ScoreDirectorLinks(g, []Signal{frictionSig})
+	if len(linkSigs) == 0 {
+		t.Fatal("expected director_link signal at AAPL, got none")
+	}
+	found := false
+	for _, s := range linkSigs {
+		if s.Type == SignalDirectorLink && s.Ticker == "AAPL" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no director_link for AAPL; got %v", linkSigs)
+	}
+}

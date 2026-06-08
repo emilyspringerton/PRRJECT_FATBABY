@@ -46,22 +46,40 @@ func Canonicalize(name string) string {
 }
 
 // NamesMatch returns true when two names canonicalize to the same slug,
-// or when one is a prefix of the other (handles "J. Smith" ≈ "John Smith").
+// or when they share the same last name and first initial (handles middle-initial
+// variants like "Susan L. Wagner" ≈ "Sue Wagner" and "John L. Smith" ≈ "John Smith").
 func NamesMatch(a, b string) bool {
 	ca, cb := Canonicalize(a), Canonicalize(b)
 	if ca == cb {
 		return true
 	}
-	// Allow initial-only first name: "j-smith" matches "john-smith"
-	pa, pb := namePrefix(ca), namePrefix(cb)
-	return pa == pb && pa != ""
+	la, fa := lastAndFirstInitial(ca)
+	lb, fb := lastAndFirstInitial(cb)
+	return la != "" && fa != "" && la == lb && fa == fb
 }
 
-// namePrefix returns <first-initial>-<last-name> from a canonical slug.
-func namePrefix(slug string) string {
-	parts := strings.SplitN(slug, "-", 2)
-	if len(parts) < 2 || len(parts[0]) == 0 {
-		return ""
+// nameSuffixes are name suffixes to ignore when extracting the last name.
+var nameSuffixes = map[string]bool{"jr": true, "sr": true, "ii": true, "iii": true, "iv": true}
+
+// lastAndFirstInitial extracts (last-name, first-initial) from a canonical slug,
+// skipping middle initials (single-letter parts) and known suffixes.
+func lastAndFirstInitial(slug string) (last, firstInitial string) {
+	parts := strings.Split(slug, "-")
+	if len(parts) == 0 {
+		return "", ""
 	}
-	return string(parts[0][0]) + "-" + parts[len(parts)-1]
+	// Find last name: scan backward, skip suffixes and single-letter initials.
+	for i := len(parts) - 1; i >= 0; i-- {
+		p := parts[i]
+		if nameSuffixes[p] || len(p) == 1 {
+			continue
+		}
+		last = p
+		break
+	}
+	if last == "" || len(parts[0]) == 0 {
+		return "", ""
+	}
+	firstInitial = string(parts[0][0])
+	return last, firstInitial
 }

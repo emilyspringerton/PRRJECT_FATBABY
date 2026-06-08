@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -142,6 +143,19 @@ func (g *Graph) FlushAuditors(dir string) error {
 func (g *Graph) UpsertPerson(name string, nodeType NodeType, app FilingAppearance) *PersonNode {
 	id := Canonicalize(name)
 	node, exists := g.Nodes[id]
+	if !exists {
+		// Fuzzy-scan existing nodes for a name variant match (e.g. "Sue Wagner" ≈
+		// "Susan L. Wagner"). This merges nickname / middle-initial variants into
+		// a single node so cross-board director links are detected correctly.
+		for existingID, existingNode := range g.Nodes {
+			if NamesMatch(name, existingNode.Name) {
+				id = existingID
+				node = existingNode
+				exists = true
+				break
+			}
+		}
+	}
 	if !exists {
 		node = &PersonNode{
 			CanonicalID:     id,
@@ -299,7 +313,71 @@ func (g *Graph) LoadNodesFromDir(dir string) error {
 		}
 		g.Nodes[node.CanonicalID] = &node
 	}
-	return sc.Err()
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	g.mergeNameVariants()
+	return nil
+}
+
+// mergeNameVariants consolidates nodes that represent the same person under
+// different name forms (e.g. "Sue Wagner" and "Susan L. Wagner"). Called after
+// loading the graph from disk so existing split records are reconciled.
+// O(n²) in the number of nodes; acceptable because n < 1000 in practice.
+func (g *Graph) mergeNameVariants() {
+	ids := make([]string, 0, len(g.Nodes))
+	for id := range g.Nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	for i := 0; i < len(ids); i++ {
+		n1, ok1 := g.Nodes[ids[i]]
+		if !ok1 {
+			continue
+		}
+		for j := i + 1; j < len(ids); j++ {
+			n2, ok2 := g.Nodes[ids[j]]
+			if !ok2 {
+				continue
+			}
+			if !NamesMatch(n1.Name, n2.Name) {
+				continue
+			}
+			// Keep the node with the longer name (more complete) or more filings.
+			keeper, dropped := ids[i], ids[j]
+			if len(n2.Name) > len(n1.Name) || (len(n2.Name) == len(n1.Name) && len(n2.Filings) > len(n1.Filings)) {
+				keeper, dropped = ids[j], ids[i]
+			}
+			kNode := g.Nodes[keeper]
+			dNode := g.Nodes[dropped]
+			for _, f := range dNode.Filings {
+				dup := false
+				for _, ef := range kNode.Filings {
+					if ef.Ticker == f.Ticker && ef.FilingDate == f.FilingDate && ef.Form == f.Form {
+						dup = true
+						break
+					}
+				}
+				if !dup {
+					kNode.Filings = append(kNode.Filings, f)
+				}
+			}
+			seen := map[string]bool{}
+			for _, f := range kNode.Filings {
+				seen[f.Ticker] = true
+			}
+			kNode.FilingCount = len(kNode.Filings)
+			kNode.Centrality = len(seen)
+			if dNode.FirstAppearance != "" && (kNode.FirstAppearance == "" || dNode.FirstAppearance < kNode.FirstAppearance) {
+				kNode.FirstAppearance = dNode.FirstAppearance
+			}
+			if dNode.LastAppearance > kNode.LastAppearance {
+				kNode.LastAppearance = dNode.LastAppearance
+			}
+			delete(g.Nodes, dropped)
+		}
+	}
 }
 
 // LoadSignals reads all Signal records from <dir>/signals.ndjson.
