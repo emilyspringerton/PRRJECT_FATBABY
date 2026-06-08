@@ -802,6 +802,13 @@ func ScoreGovernanceHealthWithPenalties(ticker string, allSignals []Signal, wind
 		if s.Ticker != ticker || effectiveDate < cutoff || s.Type == SignalGovernanceHealth {
 			continue
 		}
+		// Skip signals whose entity is a known non-person name (shareholder-proposal
+		// topic words that were misclassified as director names in older filings).
+		// These spurious nomination_rejection / director_friction signals carry large
+		// penalties and drove health scores to 0 before the parser filter was added.
+		if s.Entity != "" && isSpuriousName(s.Entity) {
+			continue
+		}
 		signalCount++
 		if s.Type == SignalHighTrustDirector {
 			trustBonus += 0.05

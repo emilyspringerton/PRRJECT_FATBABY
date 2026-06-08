@@ -787,6 +787,41 @@ func TestScoreGovernanceHealth_BoardDecayConcernPenalty(t *testing.T) {
 	}
 }
 
+// TestScoreGovernanceHealth_SpuriousEntityIgnored verifies that nomination_rejection
+// and director_friction signals whose Entity field contains a known non-person word
+// (shareholder-proposal topics like "Rights Code", "Written Consent") are skipped
+// during health scoring. Before the fix, 11 such signals in the BA store drove its
+// governance_health_index to 0 because each carried a 0.40 penalty.
+func TestScoreGovernanceHealth_SpuriousEntityIgnored(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	sigs := []Signal{
+		// Spurious BA proxy proposal topics that should be ignored
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Rights Code", DetectedAt: today, Score: 0.069},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Written Consent", DetectedAt: today, Score: 0.314},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Special Meetings", DetectedAt: today, Score: 0.337},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Political Activity", DetectedAt: today, Score: 0.192},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Executive Compensation", DetectedAt: today, Score: 0.935},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Independent Chairman", DetectedAt: today, Score: 0.350},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Former Executives", DetectedAt: today, Score: 0.235},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Retirement Benefits", DetectedAt: today, Score: 0.297},
+		{Type: SignalNominationRejection, Ticker: "BA", Entity: "Association Contributions", DetectedAt: today, Score: 0.257},
+		// One real director friction signal — should still be counted
+		{Type: SignalDirectorFriction, Ticker: "BA", Entity: "Arthur D. Collins Jr.", DetectedAt: today, Score: 0.78},
+	}
+	sig := ScoreGovernanceHealth("BA", sigs, 365)
+	if sig == nil {
+		t.Fatal("expected governance_health signal, got nil")
+	}
+	// Only the real director_friction penalty (0.20) should apply.
+	// Score = 1.0 - 0.20 = 0.80. Without the filter it would be 1.0 - 9*0.40 - 0.20 = 0.0.
+	if sig.Score < 0.75 {
+		t.Errorf("score = %.2f: spurious nomination_rejection entities should be ignored; want ~0.80", sig.Score)
+	}
+	if sig.Severity == SeverityCritical {
+		t.Errorf("severity = critical: spurious entities inflated penalty — filter not working")
+	}
+}
+
 // TestScoreGovernanceHealth_FilingDateFallback verifies that when FilingDate is empty,
 // DetectedAt is used as the window anchor (backward-compatible behavior).
 func TestScoreGovernanceHealth_FilingDateFallback(t *testing.T) {
