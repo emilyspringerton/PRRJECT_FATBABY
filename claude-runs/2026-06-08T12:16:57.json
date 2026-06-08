@@ -9,7 +9,7 @@
     "CHANGELOG.md"
   ],
   "actions_taken": "Root cause analysis: The '0 proposals' observation was produced by an entity-graph binary compiled before commits c39b57e/f00d612 that decoupled proposal extraction from director extraction. Live testing confirmed the current code (with those fixes) correctly extracts 4 proposals each from the ABBV 2025 and ABBV 2026 proxy 8-Ks (seq=62737 and seq=62741) that were in the batch.\n\nNewly identified gap: 'William H.L. Burnside' (ABBV 2025 proxy) was missing from director results. Root cause: reDirectorRow used (?:\\s+[A-Z]\\.)*  which requires a space before each initial. Compound initials like 'H.L.' (no space between H. and L.) failed the pattern.\n\nFix: Changed (?:\\s+[A-Z]\\.)*  to (?:\\s+[A-Z](?:\\.[A-Z])*\\.)* in both reDirectorRow and reDirectorRow3Col. The new pattern handles 'H.L.' as a single unit (one space before the compound) while single-spaced initials like 'H. L.' or 'C.' continue to match unchanged.\n\nTest added: TestParseItem507_CompoundInitials covers ABBV 2025 proxy text with William H.L. Burnside, Thomas C. Freyman, Brett J. Hart, plus 2 proposals. All 3 directors and both proposals must be extracted.\n\nAll tests pass (go test ./...).",
-  "git_commit_hash": "",
+  "git_commit_hash": "bd3bf70",
   "exit_status": "success",
   "notes": "The '0 proposals' observation gap was already addressed by prior commits (c39b57e, f00d612). The entity-graph binary that produced the observation was running old code. The fix in this run closes the remaining director-name parsing gap for compound initials. The entity-graph will pick up the compound-initial fix on the next restart."
 }
