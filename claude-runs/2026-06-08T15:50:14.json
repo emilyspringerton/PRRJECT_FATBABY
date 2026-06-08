@@ -9,7 +9,7 @@
     "CHANGELOG.md"
   ],
   "actions_taken": "Investigated 'proposals=0' gap. Found that the entity-graph daemon had been running pre-fix code all day (started before the 06:49 fix in commit c39b57e). More importantly, discovered a related bug not covered by prior fixes: reDirectorRow scans the entire Item 5.07 body including non-director proposal blocks. In BA-style annual meeting 8-Ks, shareholder proposal descriptions end with two title-case words before vote counts (e.g. 'Rights Code', 'Political Activity' from 'Shareholder Proposal Relating to ... Human Rights Code 36,584,516 ...'). These passed looksLikePersonName and were extracted as spurious director nodes with ~7% approval, generating false-positive nomination_rejection signals (critical severity). Fix: ParseItem507 now restricts the body passed to extractDirectorVotes to the director-election section only — detected via the first reProposalSplitter boundary. extractProposals and extractAuditor still receive the full body. Added TestParseItem507_BAProposalNoSpuriousDirectors test. All tests pass. BA 2010-2025 annual meetings now extract 8-13 real directors (was 13-14 including spurious) with proposals unchanged.",
-  "git_commit_hash": "TBD",
+  "git_commit_hash": "b00377f64d03c26bab0c654150732f428d670ccc",
   "exit_status": "success",
   "notes": "The observation gap was compounded: (1) entity-graph daemon ran pre-fix code causing proposals=0 in live runs; (2) the newly discovered spurious-director bug was causing false nomination_rejection signals for proposal topics. Both are now fixed. The proposals=0 gap will self-resolve on the next entity-graph restart since the parser code is correct. The spurious director fix prevents contamination of the graph with non-person nodes."
 }
