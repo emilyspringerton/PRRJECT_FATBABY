@@ -249,6 +249,93 @@ Votes For Votes Against Abstentions
 	}
 }
 
+// TestParseItem507_SCHWBareNumberFormat verifies the parser handles the SCHW 2021–2023
+// style where proposals are numbered with a bare integer (no period): "2 Ratification".
+// This format was observed in Charles Schwab annual meeting 8-Ks filed 2021–2023.
+func TestParseItem507_SCHWBareNumberFormat(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders
+The Annual Meeting of Stockholders was held on May 13, 2021.
+For Against Abstain Broker Non-Vote 1 Election of Directors
+(a) Walter W. Bettinger II 1,567,351,807 16,465,099 1,101,398 42,199,378
+(b) Joan T. Dea 1,418,371,747 165,484,822 1,061,735 42,199,378
+(c) Christopher V. Dodds 1,479,952,395 103,907,473 1,058,436 42,199,378
+2 Ratification of the selection of Deloitte Touche LLP as independent auditors 1,559,550,628 66,684,165 882,889 0
+3 Advisory vote to approve named executive officer compensation 1,495,476,997 86,578,454 2,862,853 42,199,378
+4 Stockholder Proposal requesting disclosure of lobbying policy 696,152,642 883,179,764 5,585,898 42,199,378
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 3 {
+		t.Errorf("want 3 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 3 {
+		t.Errorf("want >= 3 proposals from bare-number format, got %d", len(result.Proposals))
+	}
+	if result.Auditor == "" {
+		t.Error("expected Auditor from bare-number ratification, got empty")
+	}
+}
+
+// TestParseItem507_BLKItemFormat verifies the parser handles the BLK 2024-style
+// where proposals use HTML thin-space entities: "Item&#8201;2 &#8211; Description".
+// This format was observed in BlackRock annual meeting 8-Ks.
+func TestParseItem507_BLKItemFormat(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+Item&#8201;1 &#8211; Election to the Board of Directors: For Against Abstentions Broker Non-Votes
+Pamela Daley 119,757,616 2,210,592 101,402 9,821,539
+Laurence D. Fink 117,016,498 4,538,881 514,231 9,821,539
+William E. Ford 117,556,104 4,431,831 81,675 9,821,539
+Item&#8201;2 &#8211; Approval of compensation for named executive officers: For Against Abstentions Broker Non-Votes 71,553,955 50,371,487 144,168 9,821,539
+Item&#8201;3 &#8211; Approval of equity compensation plan: For Against Abstentions Broker Non-Votes 119,449,413 2,504,201 115,996 9,821,539
+Item&#8201;4 &#8211; Ratification of the appointment of Deloitte LLP as independent registered public accounting firm: For Against Abstentions Broker Non-Votes 126,252,849 5,544,695 93,605 0
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 3 {
+		t.Errorf("want 3 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 3 {
+		t.Errorf("want >= 3 proposals from BLK Item format, got %d", len(result.Proposals))
+	}
+	if result.Auditor == "" {
+		t.Error("expected Auditor from Item&#8201;4 ratification, got empty")
+	}
+}
+
+// TestParseItem507_LLYLetterFormat verifies the parser handles the LLY 2022–2026 style
+// where proposals use lowercase-letter markers: "a)" for directors, "b) By...", "c) The..." etc.
+// This format was observed in Eli Lilly annual meeting 8-Ks.
+func TestParseItem507_LLYLetterFormat(t *testing.T) {
+	text := `Item 5.07. Submission of Matters to a Vote of Security Holders.
+The total number of shares voted was 847,254,010.
+a) The four nominees for director were elected as follows: Nominee For Against Abstain Broker Nonvote
+Carolyn Bertozzi 761,930,361 1,898,735 939,585 82,485,329
+William Kaelin Jr. 726,270,361 37,418,960 1,079,360 82,485,329
+Jon Moeller 749,926,634 13,860,022 982,025 82,485,329
+David Ricks 734,760,028 29,119,356 889,297 82,485,329
+b) By the following vote, the shareholders approved executive compensation: For Against Abstain Broker Nonvote 731,998,717 30,467,278 2,302,686 82,485,329
+c) The appointment of Ernst Young LLP as the independent auditor was ratified: For Against Abstain 802,721,381 43,473,993 1,058,636
+d) The proposal to amend the Articles did not receive the required vote of 80% of outstanding shares: For Against Abstain Broker Nonvote 665,371,049 97,677,173 1,720,459 82,485,329
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 4 {
+		t.Errorf("want 4 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 3 {
+		t.Errorf("want >= 3 proposals from LLY letter format, got %d", len(result.Proposals))
+	}
+	if result.Auditor == "" {
+		t.Error("expected Auditor from c) ratification, got empty")
+	}
+}
+
 // TestLooksLikePersonName_HeaderRejection ensures vote-table headers and aggregate
 // row labels are never mistaken for director names. This guards against the
 // "Against Abstained" and "Broker Non-Vote" false-positives observed in live data.

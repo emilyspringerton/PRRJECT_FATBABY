@@ -79,8 +79,10 @@ var (
 
 	// reAuditorName extracts the public accounting firm name from a ratification proposal.
 	// Matches "appointment of <Firm LLP> as" — "ratification of" refers to the proposal
-	// title, not the firm name, so only "appointment of" anchors the firm name capture.
-	reAuditorName = regexp.MustCompile(`(?i)appointment\s+of\s+([\w\s&,\.]+?(?:LLP|LLC|PC|PLLC|L\.L\.P\.|P\.C\.))\s+as\s+`)
+	// title, not the firm name, so only "appointment/selection/retention of" anchors the
+	// firm name capture. "selection of" is used in SCHW-style filings; "appointment of"
+	// in ABBV/BLK/BA-style filings.
+	reAuditorName = regexp.MustCompile(`(?i)(?:appointment|selection|retention)\s+of\s+([\w\s&,\.]+?(?:LLP|LLC|PC|PLLC|L\.L\.P\.|P\.C\.))\s+as\s+`)
 
 	// reRatificationProposal detects that a proposal chunk is an auditor ratification.
 	// Includes "ratified" (past tense) in addition to "ratify/ratification/ratifying" because
@@ -89,13 +91,19 @@ var (
 	reRatificationProposal = regexp.MustCompile(`(?i)(?:ratif(?:y|ied|ication|ying|ies)|independent\s+registered\s+public\s+accounting)`)
 
 	// reProposalSplitter matches the start of a non-director (proposal 2+) block.
-	// Handles three common EDGAR Item 5.07 formats:
-	//   "Proposal 2"  — explicit word prefix (e.g. SCHW proxy)
-	//   "(2)"         — parenthesised number (e.g. ABBV annual meeting 8-K)
-	//   "2."          — bare number + period + space + uppercase (e.g. BA annual meeting 8-K)
-	// Proposal 1 (director election) is intentionally excluded in all three forms.
+	// Handles six common EDGAR Item 5.07 formats:
+	//   "Proposal 2"        — explicit word prefix (e.g. SCHW 2026 proxy)
+	//   "(2)"               — parenthesised number (e.g. ABBV annual meeting 8-K)
+	//   "2."                — bare number + period + uppercase (e.g. BA / AAPL)
+	//   "2 Ratification"    — bare number + space + title-case word ≥4 chars (e.g. SCHW 2021–2023)
+	//   "Item&#8201;2 "     — "Item" + HTML thin-space entity + number + space (e.g. BLK 2024)
+	//   " b) By..."         — lowercase b–z + ")" + space + uppercase (e.g. LLY 2022–2026)
+	// Proposal 1 / director section (letter "a)") is intentionally excluded in all forms.
+	// Character classes [A-Z] and [a-z] are intentionally NOT inside (?i) to stay case-sensitive:
+	// this prevents matching vote-table headers ("For", "Against") or mid-sentence lowercase counts
+	// (e.g., "of the following 16 nominees" must not look like a proposal boundary).
 	reProposalSplitter = regexp.MustCompile(
-		`(?i)(?:Proposal\s+(?:[2-9]|1\d)\b|\((?:[2-9]|1\d)\)\s|\b(?:[2-9]|1\d)\.\s+[A-Z])`,
+		`(?:(?i:Proposal)\s+(?:[2-9]|1\d)\b|\((?:[2-9]|1\d)\)\s|\b(?:[2-9]|1\d)\.\s+[A-Z]|\b(?:[2-9]|1\d)\s+[A-Z][a-z]{3,}|(?i:Item)(?:\s|&#\d+;)+(?:[2-9]|1\d)(?:\s|&#\d+;)|\s[b-z]\)\s+[A-Z])`,
 	)
 )
 
