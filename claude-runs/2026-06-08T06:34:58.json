@@ -1,0 +1,16 @@
+{
+  "observation_summary": "Entity-graph run completed with 0 parse errors and 1 gaps identified. Directors: 75, Proposals parsed: 0, Signals: 13 (1 high/critical). IMPORTANT: 0 proposals were parsed despite directors being found — the proposal-splitter regex may not be matching the filing text. Inspect internal/entitygraph/parser.go extractProposals() and consider whether the 'Proposal N' pattern matches the live filing format. Gap: 0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go. Refine thresholds in config/entity-graph-rules.json or parser patterns in internal/entitygraph/parser.go as appropriate.",
+  "observation_timestamp": "2026-06-08T06:34:58Z",
+  "run_started_at": "2026-06-08T06:40:00Z",
+  "run_completed_at": "2026-06-08T06:49:43Z",
+  "files_changed": [
+    "internal/entitygraph/parser.go",
+    "internal/entitygraph/parser_test.go",
+    "cmd/entity-graph/main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Investigated the '0 proposals parsed despite directors found' gap by tracing the batch that generated the observation. The batch (cursor ~38065-38321) processed 4 AAPL annual meeting 8-Ks from 2011-2014. These filings use a pre-majority-voting 3-column director vote table ('For | Authority Withheld | Broker Non-Votes') instead of the standard 4-column format; reDirectorRow requires 4 numbers and matched nothing, triggering the no_directors early-exit which also skipped all proposal processing. The proposal splitter regex DID correctly identify proposal boundaries in these filings, but the pipeline never reached ScoreProposals. Fix 1 (parser.go): Added reDirectorRow3Col regex and extractDirectorVotes3Col function as a fallback for 3-column format, activated when reWithheldHeader detects 'Authority Withheld' in the director section. Maps Withheld→AgainstVotes, ApprovalPct=For/(For+Withheld). Fix 2 (main.go): Moved proposal scoring, totalProposals counting, and auditor tracking to before the no_directors guard so proposals are always extracted from any parseable Item 5.07 section regardless of director vote format. Fix 3 (parser_test.go): Added TestParseItem507_ThreeColumnDirectorFormat covering AAPL 2011 format. All tests pass (go test ./...).",
+  "git_commit_hash": "c39b57e",
+  "exit_status": "success",
+  "notes": "No config/entity-graph-rules.json changes were needed — the gap was purely a parser/pipeline ordering issue, not a threshold issue. The 3-column director format is observed in AAPL 2011-2014 era filings; other pre-majority-voting companies may use similar formats. The proposal splitter regex already handled all observed AAPL proposal formats correctly (Proposal N, bare-number N., etc.) — only the early-exit was preventing them from being scored. The latest observation (2026-06-08T06:38:24Z) shows 4 filings, 77 directors, 0 proposals, 9 signals with the same gap; this fix addresses the root cause for future batches."
+}
