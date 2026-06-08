@@ -284,6 +284,7 @@ The file must contain:
   "actions_taken":         "<plain-English description of every edit and why>",
   "git_commit_hash":       "<hash of the commit made below>",
   "exit_status":           "success" | "partial" | "failed",
+  "tokens_used":           <approximate total tokens consumed this run (input+output, integer)>,
   "notes":                 "<caveats, skipped steps, follow-up recommendations>"
 }
 
