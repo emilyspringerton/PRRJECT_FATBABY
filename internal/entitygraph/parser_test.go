@@ -336,6 +336,86 @@ d) The proposal to amend the Articles did not receive the required vote of 80% o
 	}
 }
 
+// TestParseItem507_AMZNProseFormat verifies the prose-style fallback parser handles
+// AMZN 2010–2015 annual meeting 8-Ks where proposals carry no numbered header.
+// Each non-director proposal is a full English sentence followed by vote counts.
+func TestParseItem507_AMZNProseFormat(t *testing.T) {
+	text := `ITEM 5.07 SUBMISSION OF MATTERS TO A VOTE OF SECURITY HOLDERS On May 25, 2010, Amazon.com, Inc. held its Annual Meeting of Shareholders. The following nominees were elected as directors, each to hold office until his or her successor is elected and qualified, by the vote set forth below: Nominee For Against Abstain Broker Non-Votes Jeffrey P. Bezos 352,174,504 5,558,479 124,487 34,991,438 Tom A. Alberg 354,547,709 3,241,305 68,456 34,991,438 John Seely Brown 356,159,079 1,625,707 72,684 34,991,438 William B. Gordon 311,894,554 44,697,458 1,265,458 34,991,438 Thomas O. Ryder 320,923,598 36,859,307 74,565 34,991,438 Patricia Q. Stonesifer 311,548,443 45,047,122 1,261,905 34,991,438 The appointment of Ernst & Young LLP as our independent auditor was ratified by the vote set forth below: For Against Abstain Broker Non-Votes 389,078,666 3,651,119 119,123 0 A shareholder proposal asking the Company to make disclosures regarding corporate political contributions was not approved, as set forth below: For Against Abstain Broker Non-Votes 76,187,211 229,535,651 52,134,608 34,991,438`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 6 {
+		t.Errorf("want 6 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 2 {
+		t.Errorf("want >= 2 proposals from prose format, got %d", len(result.Proposals))
+	}
+	// Auditor ratification proposal should be detected.
+	if result.Auditor == "" {
+		t.Error("expected Auditor from prose-format ratification, got empty")
+	}
+	// Shareholder proposal should be marked not passed (76M for vs 229M against).
+	var foundRejected bool
+	for _, p := range result.Proposals {
+		if !p.Passed && p.AgainstVotes > p.ForVotes {
+			foundRejected = true
+		}
+	}
+	if !foundRejected {
+		t.Error("expected at least one not-passed shareholder proposal")
+	}
+}
+
+// TestParseItem507_AMZNProseFormat2011 verifies prose fallback handles the AMZN 2011
+// format which includes an advisory frequency vote with non-standard column headers.
+func TestParseItem507_AMZNProseFormat2011(t *testing.T) {
+	text := `ITEM 5.07 SUBMISSION OF MATTERS TO A VOTE OF SECURITY HOLDERS On June 7, 2011, Amazon.com, Inc. held its Annual Meeting of Shareholders. The following nominees were elected as directors, each to hold office until the next annual meeting of shareholders or until his or her successor is elected and qualified, by the vote set forth below: Nominee For Against Abstain Broker Non-Votes Jeffrey P. Bezos 364,111,695 6,811,186 129,329 36,575,667 Tom A. Alberg 367,808,977 3,152,895 90,338 36,575,667 John Seely Brown 357,651,787 13,251,475 148,948 36,575,667 The appointment of Ernst & Young LLP as our independent auditors was ratified by the vote set forth below: For Against Abstain Broker Non-Votes 405,117,762 2,390,112 120,003 0 An advisory vote was held regarding the compensation of our named executive officers as disclosed in the proxy statement, the results of which are set forth below: For Against Abstain Broker Non-Votes 365,258,830 5,361,676 431,704 36,575,667 A shareholder proposal regarding the shareholder ownership threshold for calling a special meeting of shareholders was not approved, as set forth below: For Against Abstain Broker Non-Votes 118,120,338 252,786,972 144,900 36,575,667`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 3 {
+		t.Errorf("want 3 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 3 {
+		t.Errorf("want >= 3 proposals from AMZN 2011 prose format, got %d", len(result.Proposals))
+	}
+	if result.Auditor == "" {
+		t.Error("expected Auditor from prose-format ratification, got empty")
+	}
+}
+
+// TestParseItem507_NumberedFormatUnaffectedByProseFallback verifies that numbered-format
+// filings (SCHW, ABBV, BA style) are not affected by the AMZN prose fallback — i.e.,
+// the primary numbered splitter still runs and the fallback is never triggered.
+func TestParseItem507_NumberedFormatUnaffectedByProseFallback(t *testing.T) {
+	// SCHW 2026 format uses "Proposal 2", "Proposal 3" etc. The prose fallback
+	// must NOT activate because the primary splitter already finds proposals.
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+As of March 23, 2026 there were 1,900,456,000 shares of common stock outstanding.
+Proposal 1 Election of Directors. For Against Abstain Broker Non-Votes
+Alice C. Johnson 1,397,200,000 26,800,000 5,000,000 239,044,000
+Bob D. Smith 1,213,200,000 221,400,000 8,500,000 239,044,000
+Proposal 2 Ratification of Independent Auditor.
+The stockholders ratified the appointment of Deloitte Touche LLP as auditor.
+For Against Abstain 1,512,345,000 87,654,000 32,456,000
+Proposal 3 Advisory Vote on Executive Compensation. The compensation of our named executive officers was approved.
+For Against Abstain Broker Non-Votes 1,245,100,000 175,300,000 8,700,000 239,044,000
+A stockholder proposal requesting additional disclosures was not approved.
+For Against Abstain Broker Non-Votes 400,000,000 900,000,000 50,000,000 239,044,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	// Primary splitter should find Proposal 2 and Proposal 3 — prose fallback must not
+	// create an additional spurious split on "A stockholder proposal requesting".
+	if len(result.Proposals) != 2 {
+		t.Errorf("want exactly 2 proposals (Proposal 2, Proposal 3), got %d — prose fallback may have fired incorrectly", len(result.Proposals))
+	}
+}
+
 // TestLooksLikePersonName_HeaderRejection ensures vote-table headers and aggregate
 // row labels are never mistaken for director names. This guards against the
 // "Against Abstained" and "Broker Non-Vote" false-positives observed in live data.

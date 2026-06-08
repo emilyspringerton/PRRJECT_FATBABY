@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: prose-fallback parser for AMZN-style proposals (2010–2015)
+
+Added `reProseSplitter` regex and `extractProseProposals` fallback to `internal/entitygraph/parser.go`,
+closing the "0 proposals parsed despite directors found" gap for AMZN annual meeting 8-Ks from 2010–2015
+that use no numbered proposal headers.
+
+**Root cause**: AMZN filings (2010–2015) describe each non-director proposal as a full English sentence
+("The appointment of Ernst & Young LLP as our independent auditor was ratified by the vote set forth below:")
+with no "Proposal N", "(N)", or "N." prefix. `reProposalSplitter` correctly returned zero splits,
+but `extractProposals` then returned an empty slice rather than trying an alternative strategy.
+
+**Fix**:
+- `reProseSplitter`: new regex matching AMZN prose-format proposal starters:
+  `The appointment of <Firm>`, `A/An shareholder/stockholder proposal`, `An advisory vote`,
+  `The compensation of our named`, `The material terms of the`.
+- `extractProposals`: calls `extractProseProposals` as a fallback when primary returns 0 results.
+- `extractAuditor`: refactored into `auditorFromSplits` helper; falls back to `reProseSplitter`
+  when `reProposalSplitter` finds nothing, so auditor name is correctly extracted from AMZN filings.
+- **Isolation guarantee**: the prose splitter is NEVER called when the primary finds proposals,
+  preventing spurious sub-splits in SCHW/ABBV/BA/BLK/LLY filings that contain phrases like
+  "A stockholder proposal" inside already-numbered proposal blocks.
+- 3 new tests: `TestParseItem507_AMZNProseFormat`, `_AMZNProseFormat2011`,
+  `_NumberedFormatUnaffectedByProseFallback`.
+
 ## 2026-06-08 — entity-graph: proposal-splitter handles BLK/SCHW/LLY filing formats
 
 Three new alternatives added to `reProposalSplitter` and `reAuditorName` extended, fixing

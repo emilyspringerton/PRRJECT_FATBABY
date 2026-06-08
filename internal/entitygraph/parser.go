@@ -105,6 +105,20 @@ var (
 	reProposalSplitter = regexp.MustCompile(
 		`(?:(?i:Proposal)\s+(?:[2-9]|1\d)\b|\((?:[2-9]|1\d)\)\s|\b(?:[2-9]|1\d)\.\s+[A-Z]|\b(?:[2-9]|1\d)\s+[A-Z][a-z]{3,}|(?i:Item)(?:\s|&#\d+;)+(?:[2-9]|1\d)(?:\s|&#\d+;)|\s[b-z]\)\s+[A-Z])`,
 	)
+
+	// reProseSplitter matches non-numbered proposal blocks in AMZN-style prose filings
+	// where each proposal is a full English sentence with no numbered header (2010–2015 era).
+	// Used ONLY as a fallback when reProposalSplitter finds zero matches, so it cannot
+	// accidentally split numbered-format filings that also contain these phrases.
+	// Patterns observed across AMZN annual meeting 8-Ks:
+	//   "The appointment of <Firm> as"  — auditor ratification
+	//   "A shareholder/stockholder proposal" — stockholder proposals
+	//   "An advisory vote"              — say-on-pay / frequency-of-vote
+	//   "The compensation of our named" — advisory say-on-pay (alternative phrasing)
+	//   "The material terms of the"     — IRC §162(m) performance-goal approval
+	reProseSplitter = regexp.MustCompile(
+		`(?:The\s+appointment\s+of\s+|A\s+(?:shareholder|stockholder)\s+proposal\b|An\s+advisory\s+vote\b|The\s+compensation\s+of\s+our\s+named|The\s+material\s+terms\s+of\s+the\b)`,
+	)
 )
 
 // ErrItem507NotFound is returned by ParseItem507 when the filing contains no
@@ -135,8 +149,15 @@ func ParseItem507(text string) (Item507Result, error) {
 // extractAuditor finds the public accounting firm name from an auditor ratification
 // proposal in the Item 5.07 body. Returns an empty string if not found.
 func extractAuditor(body string) string {
-	// Only search within ratification proposal chunks.
-	splits := reProposalSplitter.FindAllStringIndex(body, -1)
+	auditor := auditorFromSplits(reProposalSplitter.FindAllStringIndex(body, -1), body)
+	if auditor != "" {
+		return auditor
+	}
+	// Fallback: AMZN prose-style filings with no numbered proposal headers.
+	return auditorFromSplits(reProseSplitter.FindAllStringIndex(body, -1), body)
+}
+
+func auditorFromSplits(splits [][]int, body string) string {
 	for i, loc := range splits {
 		start := loc[0]
 		end := len(body)
@@ -208,12 +229,37 @@ func extractDirectorVotes(body string) []VoteResult {
 
 // extractProposals finds non-director proposal vote blocks after director election text ends.
 // It looks for 3-number aggregate vote sequences following proposal keywords.
+// Primary: numbered formats (Proposal N, (N), N., etc.).
+// Fallback: AMZN-style prose sentences (no numbered header) when primary finds nothing.
 func extractProposals(body string, outstanding int64) []ProposalResult {
 	var results []ProposalResult
 
-	// Split body on proposal markers (Proposal 2+, (2)+, or "2. Title" bare-number format).
-	// reProposalSplitter handles all three common EDGAR Item 5.07 layouts.
 	splits := reProposalSplitter.FindAllStringIndex(body, -1)
+	for i, loc := range splits {
+		start := loc[0]
+		end := len(body)
+		if i+1 < len(splits) {
+			end = splits[i+1][0]
+		}
+		chunk := body[start:end]
+		prop := parseProposalChunk(chunk, outstanding)
+		if prop != nil {
+			results = append(results, *prop)
+		}
+	}
+	if len(results) > 0 {
+		return results
+	}
+
+	// Fallback: prose-style proposal headers (AMZN 2010–2015 era).
+	return extractProseProposals(body, outstanding)
+}
+
+// extractProseProposals handles AMZN-style filings where each non-director proposal
+// is introduced by a plain English sentence rather than a numbered heading.
+func extractProseProposals(body string, outstanding int64) []ProposalResult {
+	var results []ProposalResult
+	splits := reProseSplitter.FindAllStringIndex(body, -1)
 	for i, loc := range splits {
 		start := loc[0]
 		end := len(body)
