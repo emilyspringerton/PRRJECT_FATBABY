@@ -1,6 +1,7 @@
 package entitygraph
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -1526,6 +1527,60 @@ func TestDeduplicateSignals_PreventsHealthSaturation(t *testing.T) {
 	}
 	if dedupScore.Score == 0 {
 		t.Errorf("after dedup, 6 long-tenure signals should not saturate score to 0; got score=0")
+	}
+}
+
+// TestDeduplicateSignals_CombinedHistoricalAndBatch simulates the pipeline pattern:
+// historicalSignals (already deduped) + currentBatch (same signal IDs, fresh DetectedAt).
+// Without dedup of combined, penalties double and AMZN/BEN-style clean companies score 0.
+// The fix in cmd/entity-graph/main.go deduplicates combined before health scoring.
+func TestDeduplicateSignals_CombinedHistoricalAndBatch(t *testing.T) {
+	today := time.Now().UTC().Format("2006-01-02")
+	yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+
+	// Simulate 20 long-tenured directors (AMZN-scale) with historical deduped entry + new batch entry.
+	var historical, currentBatch []Signal
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("director_long_tenure_dir%02d_tst", i)
+		historical = append(historical, Signal{
+			SignalID: id, Type: SignalDirectorLongTenure, Ticker: "TST", DetectedAt: yesterday, Score: 0.80,
+		})
+		currentBatch = append(currentBatch, Signal{
+			SignalID: id, Type: SignalDirectorLongTenure, Ticker: "TST", DetectedAt: today, Score: 0.80,
+		})
+	}
+	// Also add 10 high_trust signals (capped bonus = +0.20)
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("high_trust_dir%02d_tst", i)
+		historical = append(historical, Signal{
+			SignalID: id, Type: SignalHighTrustDirector, Ticker: "TST", DetectedAt: yesterday, Score: 0.90,
+		})
+		currentBatch = append(currentBatch, Signal{
+			SignalID: id, Type: SignalHighTrustDirector, Ticker: "TST", DetectedAt: today, Score: 0.90,
+		})
+	}
+
+	combined := append(historical, currentBatch...)
+	rawSig := ScoreGovernanceHealth("TST", combined, 365)
+	if rawSig == nil {
+		t.Fatal("expected governance signal from combined set")
+	}
+	// Without dedup: 20 tenure × 2 = 40 copies × 0.03 = 1.20 penalty → score clamped to 0.
+	if rawSig.Score > 0.10 {
+		t.Errorf("expected near-zero score from double-counted combined set, got %.3f", rawSig.Score)
+	}
+
+	deduped := DeduplicateSignals(combined)
+	dedupSig := ScoreGovernanceHealth("TST", deduped, 365)
+	if dedupSig == nil {
+		t.Fatal("expected governance signal from deduped combined set")
+	}
+	// After dedup: 20 tenure × 0.03 = 0.60 penalty, +0.20 trust bonus → score = 0.60
+	if dedupSig.Score < 0.50 {
+		t.Errorf("after dedup of combined, AMZN-style board should score ~0.60, got %.3f", dedupSig.Score)
+	}
+	if dedupSig.Severity == SeverityCritical {
+		t.Errorf("well-governed company should not be critical after dedup, got %s", dedupSig.Severity)
 	}
 }
 

@@ -378,6 +378,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	// Uses accuracy-calibrated penalties (healthPenalties) so historically
 	// low-precision signals contribute reduced weight to the composite score.
 	combined = append(combined, linkSigs...)
+	// Deduplicate before governance health scoring. Historical signals were deduped at
+	// load time (line 143), but the current batch may re-generate signals with the same
+	// signal_id (e.g. director_long_tenure_{name}_{ticker} is date-free and identical
+	// across runs). Without this second dedup, combined has 2x copies and the doubled
+	// penalties drive health scores to 0 for clean companies with many long-tenured directors.
+	combined = entitygraph.DeduplicateSignals(combined)
 	healthScores := map[string]float64{}
 	for ticker := range batchTickers {
 		if sig := entitygraph.ScoreGovernanceHealthWithPenalties(ticker, combined, rules.GovernanceHealthWindowDays, healthPenalties); sig != nil {
