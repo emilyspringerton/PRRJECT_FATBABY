@@ -72,8 +72,10 @@ var (
 		`(?i)(?:For[:\s]*)?([\d,]{5,})\s+(?:Against[:\s]*)?([\d,]+)\s+(?:Abstain[:\s]*)?([\d,]+)`,
 	)
 
-	// reDeclineKeyword detects "did not pass" or "failed" near a supermajority statement.
-	reDidNotPass = regexp.MustCompile(`(?i)did\s+not\s+pass|failed\s+to\s+pass|not\s+approved`)
+	// reDeclineKeyword detects failure phrases near a vote result.
+	// Includes "did not approve" because filings like ABBV-2026 use that phrasing for
+	// proposals that failed an implicit supermajority threshold not stated in the text.
+	reDidNotPass = regexp.MustCompile(`(?i)did\s+not\s+pass|failed\s+to\s+pass|not\s+approved|did\s+not\s+approve`)
 
 	// reAuditorName extracts the public accounting firm name from a ratification proposal.
 	// Matches "appointment of <Firm LLP> as" — "ratification of" refers to the proposal
@@ -81,7 +83,10 @@ var (
 	reAuditorName = regexp.MustCompile(`(?i)appointment\s+of\s+([\w\s&,\.]+?(?:LLP|LLC|PC|PLLC|L\.L\.P\.|P\.C\.))\s+as\s+`)
 
 	// reRatificationProposal detects that a proposal chunk is an auditor ratification.
-	reRatificationProposal = regexp.MustCompile(`(?i)(?:ratif(?:y|ication|ying)|independent\s+registered\s+public\s+accounting)`)
+	// Includes "ratified" (past tense) in addition to "ratify/ratification/ratifying" because
+	// ABBV-style filings phrase it as "The stockholders ratified the appointment of..." which
+	// contains neither "ratification" nor "ratifying".
+	reRatificationProposal = regexp.MustCompile(`(?i)(?:ratif(?:y|ied|ication|ying|ies)|independent\s+registered\s+public\s+accounting)`)
 
 	// reProposalSplitter matches the start of a non-director (proposal 2+) block.
 	// Handles three common EDGAR Item 5.07 formats:

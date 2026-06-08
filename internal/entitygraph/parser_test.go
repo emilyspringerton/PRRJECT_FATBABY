@@ -177,6 +177,44 @@ Jane B. Doe 305,000,000 8,000,000 4,000,000 25,000,000
 	}
 }
 
+// TestParseItem507_ABBV2026 verifies parsing against the real AbbVie 2026 Annual Meeting 8-K.
+// This exercises the parenthesised proposal format and "ratified" (past tense) auditor detection.
+func TestParseItem507_ABBV2026(t *testing.T) {
+	text := loadFixture(t, "../../fixtures/entitygraph/abbv_8k_5_07_2026.txt")
+
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+
+	// Expect 4 Class II directors.
+	if len(result.DirectorVotes) != 4 {
+		t.Errorf("want 4 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+
+	// Expect 4 non-director proposals (auditor ratification, say-on-pay, supermajority, stockholder).
+	if len(result.Proposals) < 4 {
+		t.Errorf("want >= 4 proposals from parenthesised format, got %d", len(result.Proposals))
+	}
+
+	// Auditor should be detected via "ratified the appointment" phrasing.
+	if result.Auditor == "" {
+		t.Error("expected Auditor from (2) ratification using past-tense 'ratified', got empty")
+	}
+
+	// Proposal (4) — supermajority amendment — should be marked as not passed because
+	// the text says "did not approve"; reDidNotPass must catch that phrasing.
+	var foundNotPassed bool
+	for _, p := range result.Proposals {
+		if !p.Passed && p.ForVotes > 1_000_000_000 {
+			foundNotPassed = true
+		}
+	}
+	if !foundNotPassed {
+		t.Error("expected proposal (4) 'did not approve' supermajority amendment to be Passed=false")
+	}
+}
+
 // TestParseItem507_BareNumberProposals verifies the parser handles the BA-style
 // bare-number proposal format — "2. Advisory Vote..." — which is common in
 // industrial and aerospace company annual meeting 8-Ks. The column header line

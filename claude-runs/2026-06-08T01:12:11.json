@@ -1,0 +1,16 @@
+{
+  "observation_summary": "Entity-graph run completed with 0 parse errors and 1 gaps identified. Directors: 36, Proposals parsed: 0, Signals: 3 (0 high/critical). IMPORTANT: 0 proposals were parsed despite directors being found — the proposal-splitter regex may not be matching the filing text. Inspect internal/entitygraph/parser.go extractProposals() and consider whether the 'Proposal N' pattern matches the live filing format. Gap: 0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go. Refine thresholds in config/entity-graph-rules.json or parser patterns in internal/entitygraph/parser.go as appropriate.",
+  "observation_timestamp": "2026-06-08T00:59:47Z",
+  "run_started_at": "2026-06-08T01:05:00Z",
+  "run_completed_at": "2026-06-08T01:12:11Z",
+  "files_changed": [
+    "internal/entitygraph/parser.go",
+    "internal/entitygraph/parser_test.go",
+    "fixtures/entitygraph/abbv_8k_5_07_2026.txt",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "The core proposal-splitter fix (parenthesised and bare-number formats) was already applied in the previous RSI run (commit 2c8d809). This run inspected the real ABBV 2026 filing text (seq=62741, 4 directors, 4 proposals) and identified two additional parser gaps: (1) reRatificationProposal matched 'ratification' and 'ratifying' but not 'ratified' (past tense) — ABBV uses 'The stockholders ratified the appointment of Ernst & Young LLP'; fixed by adding 'ied' to the alternation. (2) reDidNotPass matched 'not approved' but not 'did not approve' — ABBV proposal (4) 'did not approve...amendment...to eliminate supermajority voting' with 98.7% for-vote was being marked Passed=true; fixed by adding 'did\\s+not\\s+approve' to the pattern. Added real-data fixture file abbv_8k_5_07_2026.txt and test TestParseItem507_ABBV2026 that validates all four proposals are parsed and the 'did not approve' proposal is Passed=false. All 57+ tests pass. config/entity-graph-rules.json was not modified — no threshold changes needed.",
+  "git_commit_hash": "",
+  "exit_status": "success",
+  "notes": "The observation was stale — the original proposal-splitter fix was committed at 2026-06-08T01:04:55Z (2c8d809) during the prior RSI invocation. This run added two follow-on fixes discovered by testing against the actual ABBV 2026 filing: past-tense 'ratified' detection for auditor extraction, and 'did not approve' phrase for vote outcome. Both issues were verified against the real filing corpus. No threshold changes to entity-graph-rules.json were needed."
+}

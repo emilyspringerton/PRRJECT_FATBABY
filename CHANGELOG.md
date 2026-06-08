@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix ratification detection and "did not approve" parsing
+
+Two targeted improvements to `internal/entitygraph/parser.go` discovered by testing against
+the real AbbVie 2026 Annual Meeting 8-K (seq=62741):
+
+- **`reRatificationProposal`**: Added `ratified` (past-tense) to the alternation. Filings like
+  ABBV-2026 phrase the vote as "The stockholders ratified the appointment of..." which contains
+  neither "ratification" nor "ratifying". Previously `extractAuditor()` fell through to the
+  `independent\s+registered\s+public\s+accounting` branch; now the past-tense form is an
+  explicit match.
+- **`reDidNotPass`**: Added `did\s+not\s+approve` phrase. ABBV-2026 proposal (4) says
+  "The stockholders did not approve the management proposal regarding amendment of the
+  certificate of incorporation to eliminate supermajority voting" with a 98.7% for-vote —
+  an implicit supermajority requirement that isn't stated numerically. The parser was marking
+  this as `Passed=true`; it now correctly sets `Passed=false`.
+
+New test: `TestParseItem507_ABBV2026` runs against the real filing fixture at
+`fixtures/entitygraph/abbv_8k_5_07_2026.txt`.
+
 ## 2026-06-08 — entity-graph: fix proposal-splitter to match real EDGAR filing formats
 
 `extractProposals()` and `extractAuditor()` in `internal/entitygraph/parser.go` only
