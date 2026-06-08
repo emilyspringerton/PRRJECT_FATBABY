@@ -1,0 +1,15 @@
+{
+  "observation_summary": "Entity-graph run completed with 0 parse errors and 1 gaps identified. Directors: 167, Proposals parsed: 0, Signals: 118 (52 high/critical). IMPORTANT: 0 proposals were parsed despite directors being found — the proposal-splitter regex may not be matching the filing text. Inspect internal/entitygraph/parser.go extractProposals() and consider whether the 'Proposal N' pattern matches the live filing format. Gap: 0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go. Refine thresholds in config/entity-graph-rules.json or parser patterns in internal/entitygraph/parser.go as appropriate.",
+  "observation_timestamp": "2026-06-08T12:20:37Z",
+  "run_started_at": "2026-06-08T15:50:14Z",
+  "run_completed_at": "2026-06-08T16:08:02Z",
+  "files_changed": [
+    "internal/entitygraph/parser.go",
+    "internal/entitygraph/parser_test.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Investigated 'proposals=0' gap. Found that the entity-graph daemon had been running pre-fix code all day (started before the 06:49 fix in commit c39b57e). More importantly, discovered a related bug not covered by prior fixes: reDirectorRow scans the entire Item 5.07 body including non-director proposal blocks. In BA-style annual meeting 8-Ks, shareholder proposal descriptions end with two title-case words before vote counts (e.g. 'Rights Code', 'Political Activity' from 'Shareholder Proposal Relating to ... Human Rights Code 36,584,516 ...'). These passed looksLikePersonName and were extracted as spurious director nodes with ~7% approval, generating false-positive nomination_rejection signals (critical severity). Fix: ParseItem507 now restricts the body passed to extractDirectorVotes to the director-election section only — detected via the first reProposalSplitter boundary. extractProposals and extractAuditor still receive the full body. Added TestParseItem507_BAProposalNoSpuriousDirectors test. All tests pass. BA 2010-2025 annual meetings now extract 8-13 real directors (was 13-14 including spurious) with proposals unchanged.",
+  "git_commit_hash": "TBD",
+  "exit_status": "success",
+  "notes": "The observation gap was compounded: (1) entity-graph daemon ran pre-fix code causing proposals=0 in live runs; (2) the newly discovered spurious-director bug was causing false nomination_rejection signals for proposal topics. Both are now fixed. The proposals=0 gap will self-resolve on the next entity-graph restart since the parser code is correct. The spurious director fix prevents contamination of the graph with non-person nodes."
+}

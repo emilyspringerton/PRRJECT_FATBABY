@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix spurious director extraction from proposal descriptions (BA-style)
+
+**Root cause**: `reDirectorRow` scans the entire Item 5.07 body, including non-director
+proposal blocks. In BA-style annual meeting 8-Ks, shareholder proposal descriptions end with
+two title-case words immediately before vote counts — e.g. "Shareholder Proposal Relating to
+Independent Monitoring of the Human Rights Code 36,584,516 418,543,421 75,589,953 ...". The
+last two title-cased words before the numbers ("Rights Code", "Political Activity",
+"Advisory Vote") matched `reDirectorRow` and passed `looksLikePersonName`, generating
+spurious director nodes with ≈7% approval and cascading `nomination_rejection` signals
+(critical severity) that were false positives.
+
+**Fix**: `ParseItem507` now detects the first proposal-splitter boundary and restricts the
+body passed to `extractDirectorVotes` to the director-election section only. The full body
+is still used for `extractProposals` and `extractAuditor`. Single-boundary detection avoids
+scanning more than one match (`FindAllStringIndex(..., 1)`).
+
+**Test added**: `TestParseItem507_BAProposalNoSpuriousDirectors` in `parser_test.go` covering
+the BA 2011-style filing where "Rights Code", "Political Activity", and "Written Consent"
+previously appeared as spurious director names.
+
+**Impact**: All BA annual meeting 8-Ks (2010–2025) now extract 8–13 real directors with 0
+spurious entries; proposals are unaffected. Eliminates false `nomination_rejection` signals
+for entities "Rights Code", "Political Activity" etc.
+
 ## 2026-06-08 — entity-graph: fix compound-initial director name parsing (H.L. style)
 
 **Root cause**: `reDirectorRow` (and `reDirectorRow3Col`) used `(?:\s+[A-Z]\.)*` for middle

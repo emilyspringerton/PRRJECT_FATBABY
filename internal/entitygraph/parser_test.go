@@ -384,6 +384,41 @@ func TestParseItem507_ThreeColumnDirectorFormat(t *testing.T) {
 	}
 }
 
+// TestParseItem507_BAProposalNoSpuriousDirectors verifies that shareholder proposal
+// descriptions whose last two title-case words appear immediately before vote counts
+// are NOT extracted as director names. Root cause: in BA-style annual meeting 8-Ks
+// the director section is followed by proposal blocks that contain proposal descriptions
+// like "Shareholder Proposal Relating to Independent Monitoring of the Human Rights Code
+// 36,584,516 418,543,421 75,589,953". The last two title-cased words before the numbers
+// ("Rights Code") match reDirectorRow and would be misclassified as a director with
+// 6.9% approval — triggering spurious nomination_rejection signals. The fix truncates
+// the body passed to extractDirectorVotes at the first proposal boundary.
+func TestParseItem507_BAProposalNoSpuriousDirectors(t *testing.T) {
+	text := `Item 5.07. Submission of Matters to a Vote of Security Holders. Votes For Votes Against Abstentions Broker Non-Votes 1. Election of Directors: John E. Bryson 499,564,332 26,353,347 4,804,475 111,495,251 Susan C. Schwab 515,118,621 10,993,869 4,607,937 111,495,251 Mike S. Zafirovski 513,023,171 13,135,971 4,563,200 111,495,251 Votes For Votes Against Abstentions Broker Non-Votes 2. Advisory Vote on Executive Compensation 496,297,364 27,696,104 6,724,015 111,497,139 Votes For Votes Against Abstentions 3. Ratification of Appointment of Independent Auditor for 2011 626,432,231 12,336,048 3,448,589 Votes For Votes Against Abstentions Broker Non-Votes 4. Shareholder Proposal Relating to Action by Written Consent 166,095,428 358,208,371 6,414,797 111,497,126 Votes For Votes Against Abstentions Broker Non-Votes 5. Shareholder Proposal Relating to Independent Monitoring of the Human Rights Code 36,584,516 418,543,421 75,589,953 111,497,126 Votes For Votes Against Abstentions Broker Non-Votes 6. Shareholder Proposal Relating to a Report on Political Activity 101,734,667 359,135,925 69,848,178 111,497,926`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	// Only real directors should be extracted.
+	for _, v := range result.DirectorVotes {
+		switch v.Name {
+		case "Rights Code", "Political Activity", "Written Consent", "Advisory Vote", "Human Rights":
+			t.Errorf("spurious proposal-noun extracted as director: %q", v.Name)
+		}
+	}
+	// Real directors must be present.
+	if findDirector(result.DirectorVotes, "Bryson") == nil {
+		t.Error("John E. Bryson not found")
+	}
+	if findDirector(result.DirectorVotes, "Schwab") == nil {
+		t.Error("Susan C. Schwab not found")
+	}
+	// Proposals must also be extracted (5 non-director proposals in this filing).
+	if len(result.Proposals) < 4 {
+		t.Errorf("want >= 4 proposals, got %d", len(result.Proposals))
+	}
+}
+
 // TestParseItem507_CompoundInitials verifies that director names with compound
 // middle initials ("H.L." with no space between the two letters) are extracted
 // correctly. This format was observed in ABBV 2025 annual meeting 8-Ks where

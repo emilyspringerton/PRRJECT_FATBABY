@@ -165,7 +165,20 @@ func ParseItem507(text string) (Item507Result, error) {
 
 	outstanding := extractOutstanding(text)
 	result := Item507Result{}
-	result.DirectorVotes = extractDirectorVotes(body)
+
+	// Restrict director-vote extraction to the director-election section only.
+	// The numbered proposal splitter marks where non-director proposal blocks
+	// begin (Proposal 2, (2), "2. ...", letter "b)", etc.). Any title-case words
+	// appearing just before vote counts in shareholder-proposal descriptions
+	// (e.g. "Rights Code", "Political Activity", "Advisory Vote") would otherwise
+	// be matched by reDirectorRow and misclassified as director names.
+	// Truncating the body at the first proposal boundary prevents this.
+	dirBody := body
+	if splits := reProposalSplitter.FindAllStringIndex(body, 1); len(splits) > 0 {
+		dirBody = body[:splits[0][0]]
+	}
+
+	result.DirectorVotes = extractDirectorVotes(dirBody)
 	result.Proposals = extractProposals(body, outstanding)
 	result.Auditor = extractAuditor(body)
 	return result, nil
