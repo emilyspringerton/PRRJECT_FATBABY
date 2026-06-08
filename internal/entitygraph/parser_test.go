@@ -150,6 +150,67 @@ For Against Abstain
 	}
 }
 
+// TestParseItem507_ParenthesisedProposals verifies the parser handles the ABBV-style
+// parenthesised proposal numbering — "(2) The stockholders ratified..." — which is
+// common in pharmaceutical and biotech company annual meeting 8-Ks.
+func TestParseItem507_ParenthesisedProposals(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+As of March 1, 2026 there were 1,500,000,000 shares of common stock outstanding.
+(1) The stockholders elected directors, as follows: Name For Against Abstain Broker Non-Votes
+John A. Smith 300,000,000 10,000,000 5,000,000 25,000,000
+Jane B. Doe 305,000,000 8,000,000 4,000,000 25,000,000
+(2) The stockholders ratified the appointment of Ernst Young LLP as independent registered public accounting firm, as follows: For Against Abstain 1,400,000,000 50,000,000 10,000,000
+(3) The stockholders approved, on an advisory basis, the compensation of named executive officers, as follows: For Against Abstain Broker Non-Votes 1,200,000,000 200,000,000 40,000,000 25,000,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 2 {
+		t.Errorf("want 2 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 2 {
+		t.Errorf("want >= 2 proposals from parenthesised format, got %d", len(result.Proposals))
+	}
+	if result.Auditor == "" {
+		t.Error("expected Auditor from (2) ratification, got empty")
+	}
+}
+
+// TestParseItem507_BareNumberProposals verifies the parser handles the BA-style
+// bare-number proposal format — "2. Advisory Vote..." — which is common in
+// industrial and aerospace company annual meeting 8-Ks. The column header line
+// ("Votes For Votes Against Abstentions Broker Non-Votes") appears between the
+// proposal title and the vote numbers, matching real EDGAR filing layout.
+func TestParseItem507_BareNumberProposals(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+As of March 1, 2026 there were 700,000,000 shares of common stock outstanding.
+1. Election of Directors: Name For Against Abstain Broker Non-Votes
+Alice C. Johnson 500,000,000 15,000,000 5,000,000 80,000,000
+Bob D. Smith 495,000,000 20,000,000 5,000,000 80,000,000
+Votes For Votes Against Abstentions Broker Non-Votes
+2. Advisory Vote on Named Executive Officer Compensation: FOR AGAINST ABSTAIN BROKER NON-VOTES 450,000,000 80,000,000 10,000,000 80,000,000
+Votes For Votes Against Abstentions
+3. Ratification of the appointment of Deloitte Touche LLP as independent auditor: FOR AGAINST ABSTAIN 620,000,000 50,000,000 10,000,000
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	if len(result.DirectorVotes) != 2 {
+		t.Errorf("want 2 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	if len(result.Proposals) < 2 {
+		t.Errorf("want >= 2 proposals from bare-number format, got %d", len(result.Proposals))
+	}
+	if result.Auditor == "" {
+		t.Error("expected Auditor from bare-number ratification proposal, got empty")
+	}
+	if result.Auditor != "Deloitte Touche LLP" {
+		t.Errorf("Auditor = %q, want %q", result.Auditor, "Deloitte Touche LLP")
+	}
+}
+
 // TestLooksLikePersonName_HeaderRejection ensures vote-table headers and aggregate
 // row labels are never mistaken for director names. This guards against the
 // "Against Abstained" and "Broker Non-Vote" false-positives observed in live data.

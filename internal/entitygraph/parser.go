@@ -82,6 +82,16 @@ var (
 
 	// reRatificationProposal detects that a proposal chunk is an auditor ratification.
 	reRatificationProposal = regexp.MustCompile(`(?i)(?:ratif(?:y|ication|ying)|independent\s+registered\s+public\s+accounting)`)
+
+	// reProposalSplitter matches the start of a non-director (proposal 2+) block.
+	// Handles three common EDGAR Item 5.07 formats:
+	//   "Proposal 2"  — explicit word prefix (e.g. SCHW proxy)
+	//   "(2)"         — parenthesised number (e.g. ABBV annual meeting 8-K)
+	//   "2."          — bare number + period + space + uppercase (e.g. BA annual meeting 8-K)
+	// Proposal 1 (director election) is intentionally excluded in all three forms.
+	reProposalSplitter = regexp.MustCompile(
+		`(?i)(?:Proposal\s+(?:[2-9]|1\d)\b|\((?:[2-9]|1\d)\)\s|\b(?:[2-9]|1\d)\.\s+[A-Z])`,
+	)
 )
 
 // ErrItem507NotFound is returned by ParseItem507 when the filing contains no
@@ -113,8 +123,7 @@ func ParseItem507(text string) (Item507Result, error) {
 // proposal in the Item 5.07 body. Returns an empty string if not found.
 func extractAuditor(body string) string {
 	// Only search within ratification proposal chunks.
-	proposalSplitter := regexp.MustCompile(`(?i)Proposal\s+(?:[2-9]|1\d)\b`)
-	splits := proposalSplitter.FindAllStringIndex(body, -1)
+	splits := reProposalSplitter.FindAllStringIndex(body, -1)
 	for i, loc := range splits {
 		start := loc[0]
 		end := len(body)
@@ -189,10 +198,9 @@ func extractDirectorVotes(body string) []VoteResult {
 func extractProposals(body string, outstanding int64) []ProposalResult {
 	var results []ProposalResult
 
-	// Split body on proposal markers (Proposal 2, Proposal 3, ..., Proposal 19).
-	// Use a word-boundary anchor so "Proposal 4:" and "Proposal 4." also split correctly.
-	proposalSplitter := regexp.MustCompile(`(?i)Proposal\s+(?:[2-9]|1\d)\b`)
-	splits := proposalSplitter.FindAllStringIndex(body, -1)
+	// Split body on proposal markers (Proposal 2+, (2)+, or "2. Title" bare-number format).
+	// reProposalSplitter handles all three common EDGAR Item 5.07 layouts.
+	splits := reProposalSplitter.FindAllStringIndex(body, -1)
 	for i, loc := range splits {
 		start := loc[0]
 		end := len(body)

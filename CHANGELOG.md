@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix proposal-splitter to match real EDGAR filing formats
+
+`extractProposals()` and `extractAuditor()` in `internal/entitygraph/parser.go` only
+recognised `Proposal N` format, but actual EDGAR Item 5.07 filings use two other formats:
+
+- **Parenthesised**: `(2) The stockholders ratified...` (common in ABBV, pharma/biotech)
+- **Bare-number**: `2. Advisory Vote on...` (common in BA, industrial/aerospace)
+
+The `Proposal N` regex never fired in production, yielding 0 proposals despite 36 directors
+being found. Fixed by promoting the inline `proposalSplitter` regex to a package-level
+`reProposalSplitter` that handles all three formats. Two new parser tests added:
+`TestParseItem507_ParenthesisedProposals` and `TestParseItem507_BareNumberProposals`.
+
 ## 2026-06-07 — emily.cli prime-task command: operator→Emily Prime→FatBaby directed loop
 
 `emily prime-task` (emily.cli v0.5.0) closes the operator-directed task loop. The operator
