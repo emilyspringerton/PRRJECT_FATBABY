@@ -1437,6 +1437,98 @@ func TestAccuracyAdjustedPenalties_DoesNotMutateBase(t *testing.T) {
 	}
 }
 
+// ── FilterHighTrustByMinFilings ──────────────────────────────────────────────
+
+// TestFilterHighTrustByMinFilings_SuppressesFirstFiling verifies that a director
+// who has appeared only once at a ticker does not receive a high_trust signal
+// when minFilings=2.
+func TestFilterHighTrustByMinFilings_SuppressesFirstFiling(t *testing.T) {
+	g := NewGraph()
+	g.UpsertPerson("New Director", NodeDirector, FilingAppearance{Ticker: "AAPL", FilingDate: "2026-06-01", ApprovalPct: 0.97})
+
+	sigs := []Signal{
+		{Type: SignalHighTrustDirector, Ticker: "AAPL", Entity: "New Director", Score: 0.97},
+	}
+
+	out := FilterHighTrustByMinFilings(sigs, g, "AAPL", 2)
+	if len(out) != 0 {
+		t.Errorf("expected high_trust suppressed for director with 1 filing (minFilings=2), got %d signals", len(out))
+	}
+
+	// minFilings=1 → pass through unchanged.
+	out = FilterHighTrustByMinFilings(sigs, g, "AAPL", 1)
+	if len(out) != 1 {
+		t.Errorf("expected high_trust to pass for minFilings=1, got %d signals", len(out))
+	}
+}
+
+// TestFilterHighTrustByMinFilings_AllowsReturnDirector verifies that a director
+// with 2 filings at a ticker passes the minFilings=2 gate.
+func TestFilterHighTrustByMinFilings_AllowsReturnDirector(t *testing.T) {
+	g := NewGraph()
+	g.UpsertPerson("Return Director", NodeDirector, FilingAppearance{Ticker: "AAPL", FilingDate: "2025-06-01", ApprovalPct: 0.96})
+	g.UpsertPerson("Return Director", NodeDirector, FilingAppearance{Ticker: "AAPL", FilingDate: "2026-06-01", ApprovalPct: 0.97})
+
+	sigs := []Signal{
+		{Type: SignalHighTrustDirector, Ticker: "AAPL", Entity: "Return Director", Score: 0.97},
+	}
+
+	out := FilterHighTrustByMinFilings(sigs, g, "AAPL", 2)
+	if len(out) != 1 {
+		t.Errorf("expected high_trust to pass for director with 2 filings (minFilings=2), got %d signals", len(out))
+	}
+}
+
+// TestFilterHighTrustByMinFilings_TickerScopedCount verifies that the filing count is
+// scoped to the given ticker: a director serving on two boards has their cross-company
+// count ignored; only appearances at the specific ticker are checked.
+func TestFilterHighTrustByMinFilings_TickerScopedCount(t *testing.T) {
+	g := NewGraph()
+	// Director appears once at AAPL and once at MSFT — total=2, per-AAPL=1.
+	g.UpsertPerson("Cross Director", NodeDirector, FilingAppearance{Ticker: "AAPL", FilingDate: "2026-01-01", ApprovalPct: 0.96})
+	g.UpsertPerson("Cross Director", NodeDirector, FilingAppearance{Ticker: "MSFT", FilingDate: "2026-01-01", ApprovalPct: 0.97})
+
+	sigs := []Signal{
+		{Type: SignalHighTrustDirector, Ticker: "AAPL", Entity: "Cross Director", Score: 0.96},
+	}
+
+	// Total=2 but per-AAPL=1 — should be suppressed.
+	out := FilterHighTrustByMinFilings(sigs, g, "AAPL", 2)
+	if len(out) != 0 {
+		t.Errorf("expected high_trust suppressed: cross-ticker count is 2 but AAPL-specific count is 1, got %d signals", len(out))
+	}
+}
+
+// TestFilterHighTrustByMinFilings_PreservesNonHighTrustSignals verifies that only
+// high_trust_director signals are filtered; other signal types pass through unchanged.
+func TestFilterHighTrustByMinFilings_PreservesNonHighTrustSignals(t *testing.T) {
+	g := NewGraph()
+
+	sigs := []Signal{
+		{Type: SignalDirectorFriction, Ticker: "AAPL", Entity: "Friction Director", Score: 0.80},
+		{Type: SignalHighTrustDirector, Ticker: "AAPL", Entity: "New Director", Score: 0.97},
+	}
+
+	out := FilterHighTrustByMinFilings(sigs, g, "AAPL", 2)
+	if len(out) != 1 || out[0].Type != SignalDirectorFriction {
+		t.Errorf("expected only director_friction to survive (high_trust filtered, non-trust preserved), got %d signals", len(out))
+	}
+}
+
+// TestFilterHighTrustByMinFilings_NoOpWhenMinFilingsOne verifies that minFilings=1
+// is a complete no-op — the original slice is returned unmodified.
+func TestFilterHighTrustByMinFilings_NoOpWhenMinFilingsOne(t *testing.T) {
+	g := NewGraph()
+	sigs := []Signal{
+		{Type: SignalHighTrustDirector, Ticker: "AAPL", Entity: "Any Director", Score: 0.97},
+	}
+
+	out := FilterHighTrustByMinFilings(sigs, g, "AAPL", 1)
+	if len(out) != 1 {
+		t.Errorf("minFilings=1 should be a no-op, got %d signals", len(out))
+	}
+}
+
 // TestAccuracyAdjustedPenalties_IntegrationWithGovernanceHealth verifies the full
 // RSI feedback loop: low-precision signal → halved penalty → higher health score.
 func TestAccuracyAdjustedPenalties_IntegrationWithGovernanceHealth(t *testing.T) {

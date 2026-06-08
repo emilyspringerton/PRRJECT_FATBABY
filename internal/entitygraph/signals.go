@@ -675,6 +675,43 @@ func ScoreBoardDecayConcern(ticker string, allSignals []Signal, r Rules) *Signal
 	}
 }
 
+// FilterHighTrustByMinFilings removes high_trust_director signals for directors
+// who have not yet accumulated at least minFilings appearances at the given ticker
+// in the graph. Call this after UpsertPerson so the current filing is counted.
+//
+// When minFilings <= 1 the function is a no-op and returns sigs unchanged — this
+// preserves the Phase 1 bootstrap behaviour where any single filing is sufficient.
+// The count is per-ticker: a director serving on two boards counts only their filings
+// at the ticker in question, not their total cross-company filing count.
+func FilterHighTrustByMinFilings(sigs []Signal, g *Graph, ticker string, minFilings int) []Signal {
+	if minFilings <= 1 {
+		return sigs
+	}
+	out := make([]Signal, 0, len(sigs))
+	for _, s := range sigs {
+		if s.Type != SignalHighTrustDirector {
+			out = append(out, s)
+			continue
+		}
+		canon := Canonicalize(s.Entity)
+		node, ok := g.Nodes[canon]
+		if !ok {
+			// Director not in graph ⇒ zero filing history at any ticker.
+			continue
+		}
+		count := 0
+		for _, f := range node.Filings {
+			if f.Ticker == ticker {
+				count++
+			}
+		}
+		if count >= minFilings {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func isCompVote(desc string, r Rules) bool {
 	dl := strings.ToLower(desc)
 	for _, kw := range r.CompVoteKeywords {

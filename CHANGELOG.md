@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: enforce HighTrustMinFilings to reduce high_trust_director noise
+
+Implemented the previously-defined but unenforced `high_trust_min_filings` rule. The config field
+existed and was documented as "relaxed for Phase 1 bootstrap" but the scoring code never checked it
+— every director with ≥95% approval in any single filing received a `high_trust_director` signal
+regardless of filing history depth.
+
+**Root cause**: `scoreOneDirector` checked only `ApprovalPct >= HighTrustMinApproval`; the
+`HighTrustMinFilings` field was a dead config key. In a 2-filing batch with 75 directors this
+produced 19 high_trust signals (83% of all signals), masking actionable adverse signals.
+
+**Fix**:
+- `internal/entitygraph/signals.go`: added `FilterHighTrustByMinFilings(sigs []Signal, g *Graph, ticker string, minFilings int) []Signal`.
+  Filters `high_trust_director` signals for directors whose per-ticker filing count in the graph
+  is below the threshold. Count is ticker-scoped — a cross-board director's filings at other
+  companies do not count toward the threshold at this ticker.
+- `cmd/entity-graph/main.go`: calls `FilterHighTrustByMinFilings` immediately after
+  `ScoreDirectorVotes` so the filter runs inside the per-filing loop before signals accumulate.
+- `config/entity-graph-rules.json`: raised `high_trust_min_filings` from 1 to 2.
+  Directors now require at least 2 consecutive proxy season appearances at the same ticker before
+  receiving a high_trust signal — consistent with what ISS/Glass Lewis define as "track record".
+
+Five new tests added to `internal/entitygraph/signals_test.go`:
+- `TestFilterHighTrustByMinFilings_SuppressesFirstFiling`
+- `TestFilterHighTrustByMinFilings_AllowsReturnDirector`
+- `TestFilterHighTrustByMinFilings_TickerScopedCount`
+- `TestFilterHighTrustByMinFilings_PreservesNonHighTrustSignals`
+- `TestFilterHighTrustByMinFilings_NoOpWhenMinFilingsOne`
+
 ## 2026-06-08 — entity-graph: fix spurious director extraction from SCHW bare-number proposal lines
 
 Fixed two parser defects affecting SCHW 2022 and 2023 annual meeting 8-Ks:

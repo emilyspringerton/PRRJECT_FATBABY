@@ -274,6 +274,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		graph.BuildEdgesFromFiling(canonIDs, doc.Ticker)
 
 		dirSigs := entitygraph.ScoreDirectorVotes(result.DirectorVotes, doc.Ticker, filingDate, rules)
+		dirSigs = entitygraph.FilterHighTrustByMinFilings(dirSigs, graph, doc.Ticker, rules.HighTrustMinFilings)
 		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, filingDate, rules)
 
 		// Tag all per-filing signals with their source identity for traceability.
