@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix 0-proposals gap for 3-column and no-directors filings
+
+Two related fixes addressing the "0 proposals parsed despite directors found" observation gap:
+
+**Root cause 1 — 3-column director format not recognized**: AAPL annual meeting 8-Ks from
+2011–2014 (and similar pre-majority-voting era filings) report director votes as three columns
+("For | Authority Withheld | Broker Non-Votes") rather than the standard four columns
+("For | Against | Abstain | Broker Non-Votes"). The existing `reDirectorRow` regex requires
+four numbers after the director name; these filings produced 0 director matches, triggering
+the `no_directors` early-exit in the pipeline — which also skipped proposal extraction.
+
+**Root cause 2 — proposals gated behind director extraction**: The `no_directors` guard used
+`continue` to skip the entire rest of the per-filing processing block, including proposal
+scoring and auditor tracking. Any filing whose director section used an unrecognized format
+would silently produce 0 proposals even when the proposal sections were perfectly parseable.
+
+**Fixes**:
+- `internal/entitygraph/parser.go`:
+  - Added `reDirectorRow3Col` regex — same name pattern as `reDirectorRow` but captures only
+    3 numbers (For, Withheld, BNV). Used as a fallback when the 4-column regex yields 0 results
+    and the body contains an "Authority Withheld" column header (`reWithheldHeader`).
+  - Added `extractDirectorVotes3Col` — maps Withheld → AgainstVotes, AbstainVotes=0,
+    ApprovalPct = For/(For+Withheld), preserving historical ISS-compatible approval scoring.
+  - Refactored `extractDirectorVotes` into primary (4-col) + fallback (3-col) pass.
+- `cmd/entity-graph/main.go`:
+  - Moved proposal scoring, `totalProposals` counting, and auditor tracking to before the
+    `no_directors` guard. Proposals and auditor signals are now always emitted for any filing
+    that contains a parseable Item 5.07 section, regardless of director vote format.
+- `internal/entitygraph/parser_test.go`:
+  - Added `TestParseItem507_ThreeColumnDirectorFormat` — verifies AAPL 2011 format produces
+    correct director extraction and >= 2 proposals.
+
 ## 2026-06-08 — entity-graph: enforce HighTrustMinFilings to reduce high_trust_director noise
 
 Implemented the previously-defined but unenforced `high_trust_min_filings` rule. The config field

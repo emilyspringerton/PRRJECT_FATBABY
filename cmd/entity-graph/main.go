@@ -228,11 +228,6 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			continue
 		}
 
-		if len(result.DirectorVotes) == 0 {
-			logger.Printf("no_directors seq=%d identity=%s", r.Sequence, doc.Identity)
-			continue
-		}
-
 		// Resolve the SEC filing date. Priority order:
 		// 1. doc.FilingDate from the source_document_persisted payload (set by
 		//    processor from the filing_discovered event going forward).
@@ -253,6 +248,37 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 				filingDate = time.Now().UTC().Format("2006-01-02")
 			}
 		}
+
+		// Score proposals and track auditor regardless of whether director votes
+		// were found — some older filings (AAPL 2011–2014) have a 3-column director
+		// table that the 4-column regex misses on first pass, but their proposals are
+		// fully parseable and should not be silently dropped.
+		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, filingDate, rules)
+		for i := range propSigs {
+			if propSigs[i].Metadata == nil {
+				propSigs[i].Metadata = map[string]string{}
+			}
+			propSigs[i].Metadata["source_identity"] = doc.Identity
+		}
+		allSignals = append(allSignals, propSigs...)
+		totalProposals += len(result.Proposals)
+
+		if result.Auditor != "" {
+			changed, prev := graph.TrackAuditor(doc.Ticker, result.Auditor, filingDate)
+			if changed {
+				sig := entitygraph.ScoreAuditorChange(doc.Ticker, prev, result.Auditor, filingDate)
+				allSignals = append(allSignals, sig)
+				logger.Printf("auditor_change ticker=%s prev=%q new=%q", doc.Ticker, prev, result.Auditor)
+			} else {
+				logger.Printf("auditor ticker=%s firm=%q (unchanged)", doc.Ticker, result.Auditor)
+			}
+		}
+
+		if len(result.DirectorVotes) == 0 {
+			logger.Printf("no_directors seq=%d identity=%s proposals=%d", r.Sequence, doc.Identity, len(result.Proposals))
+			continue
+		}
+
 		var canonIDs []string
 
 		for _, vote := range result.DirectorVotes {
@@ -275,37 +301,16 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 		dirSigs := entitygraph.ScoreDirectorVotes(result.DirectorVotes, doc.Ticker, filingDate, rules)
 		dirSigs = entitygraph.FilterHighTrustByMinFilings(dirSigs, graph, doc.Ticker, rules.HighTrustMinFilings)
-		propSigs := entitygraph.ScoreProposals(result.Proposals, doc.Ticker, filingDate, rules)
 
-		// Tag all per-filing signals with their source identity for traceability.
+		// Tag director signals with source identity.
 		for i := range dirSigs {
 			if dirSigs[i].Metadata == nil {
 				dirSigs[i].Metadata = map[string]string{}
 			}
 			dirSigs[i].Metadata["source_identity"] = doc.Identity
 		}
-		for i := range propSigs {
-			if propSigs[i].Metadata == nil {
-				propSigs[i].Metadata = map[string]string{}
-			}
-			propSigs[i].Metadata["source_identity"] = doc.Identity
-		}
 
 		allSignals = append(allSignals, dirSigs...)
-		allSignals = append(allSignals, propSigs...)
-		totalProposals += len(result.Proposals)
-
-		// Auditor tracking: detect firm changes across filings.
-		if result.Auditor != "" {
-			changed, prev := graph.TrackAuditor(doc.Ticker, result.Auditor, filingDate)
-			if changed {
-				sig := entitygraph.ScoreAuditorChange(doc.Ticker, prev, result.Auditor, filingDate)
-				allSignals = append(allSignals, sig)
-				logger.Printf("auditor_change ticker=%s prev=%q new=%q", doc.Ticker, prev, result.Auditor)
-			} else {
-				logger.Printf("auditor ticker=%s firm=%q (unchanged)", doc.Ticker, result.Auditor)
-			}
-		}
 
 		logger.Printf("signals ticker=%s dir_signals=%d prop_signals=%d proposals=%d", doc.Ticker, len(dirSigs), len(propSigs), len(result.Proposals))
 	}

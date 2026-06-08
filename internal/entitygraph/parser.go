@@ -73,6 +73,21 @@ var (
 		`([A-Z][a-z']+(?:\s+[A-Z]\.)*\s+(?:[A-Z][a-z']+(?:-[A-Z][a-z']+)*)(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\s+([\d,]{5,})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)`,
 	)
 
+	// reDirectorRow3Col matches the pre-majority-voting 3-column format used by AAPL
+	// in 2011–2014 and other companies that reported "For | Authority Withheld | Broker
+	// Non-Votes" rather than the standard 4-column "For | Against | Abstain | BNV".
+	// In this era, "Authority Withheld" served as the sole dissent mechanism.
+	// Withheld votes are mapped to AgainstVotes for approval-pct computation:
+	//   ApprovalPct = For / (For + Withheld)
+	// Used only as a fallback when reDirectorRow yields zero results.
+	reDirectorRow3Col = regexp.MustCompile(
+		`([A-Z][a-z']+(?:\s+[A-Z]\.)*\s+(?:[A-Z][a-z']+(?:-[A-Z][a-z']+)*)(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\s+([\d,]{5,})\s+([\d,]+)\s+([\d,]+)\b`,
+	)
+
+	// reWithheldHeader detects the 3-column director vote table header used in
+	// pre-majority-voting era filings ("For Authority Withheld Broker Non-Vote").
+	reWithheldHeader = regexp.MustCompile(`(?i)\bauthority\s+withheld\b|\bvotes?\s+withheld\b`)
+
 	// reForAgainstAbstain matches proposal-level aggregate votes (3 numbers after optional labels).
 	reProposalVotes = regexp.MustCompile(
 		`(?i)(?:For[:\s]*)?([\d,]{5,})\s+(?:Against[:\s]*)?([\d,]+)\s+(?:Abstain[:\s]*)?([\d,]+)`,
@@ -193,7 +208,21 @@ func extractOutstanding(text string) int64 {
 
 // extractDirectorVotes finds rows of the form <name> <for> <against> <abstain> <bnv>.
 // A row qualifies when the first field looks like a human name (Title case, multiple words).
+// Falls back to a 3-column format (For | Withheld | BNV) when the standard 4-column
+// regex yields no results and the section header contains "Authority Withheld".
 func extractDirectorVotes(body string) []VoteResult {
+	results := extractDirectorVotes4Col(body)
+	if len(results) > 0 {
+		return results
+	}
+	// Fallback: older "For | Authority Withheld | BNV" format (AAPL 2011–2014 era).
+	if reWithheldHeader.MatchString(body) {
+		return extractDirectorVotes3Col(body)
+	}
+	return nil
+}
+
+func extractDirectorVotes4Col(body string) []VoteResult {
 	var results []VoteResult
 	seen := map[string]bool{}
 
@@ -226,6 +255,49 @@ func extractDirectorVotes(body string) []VoteResult {
 			ForVotes:       forV,
 			AgainstVotes:   againstV,
 			AbstainVotes:   abstainV,
+			BrokerNonVotes: bnv,
+			ApprovalPct:    approvalPct,
+		})
+	}
+	return results
+}
+
+// extractDirectorVotes3Col handles pre-majority-voting filings (AAPL 2011–2014) that
+// use a 3-column table: "For | Authority Withheld | Broker Non-Votes". The Withheld
+// count is mapped to AgainstVotes; AbstainVotes is set to zero. ApprovalPct is
+// computed as For / (For + Withheld), matching how EDGAR-era proxy advisors scored it.
+func extractDirectorVotes3Col(body string) []VoteResult {
+	var results []VoteResult
+	seen := map[string]bool{}
+
+	matches := reDirectorRow3Col.FindAllStringSubmatch(body, -1)
+	for _, m := range matches {
+		if len(m) < 5 {
+			continue
+		}
+		name := strings.TrimSpace(m[1])
+		if !looksLikePersonName(name) {
+			continue
+		}
+		key := Canonicalize(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
+		forV := parseInt64(m[2])
+		withheld := parseInt64(m[3])
+		bnv := parseInt64(m[4])
+		total := forV + withheld
+		var approvalPct float64
+		if total > 0 {
+			approvalPct = float64(forV) / float64(total)
+		}
+		results = append(results, VoteResult{
+			Name:           name,
+			ForVotes:       forV,
+			AgainstVotes:   withheld, // Authority Withheld → AgainstVotes
+			AbstainVotes:   0,
 			BrokerNonVotes: bnv,
 			ApprovalPct:    approvalPct,
 		})

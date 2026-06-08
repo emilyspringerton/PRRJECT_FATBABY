@@ -336,6 +336,54 @@ d) The proposal to amend the Articles did not receive the required vote of 80% o
 	}
 }
 
+// TestParseItem507_ThreeColumnDirectorFormat verifies that the 3-column "For | Authority
+// Withheld | Broker Non-Vote" director table format used by AAPL in 2011–2014 (and other
+// companies before majority voting became standard) is correctly parsed. Directors should
+// be extracted via the reDirectorRow3Col fallback, and non-director proposals that follow
+// must also be found — this was the root cause of the "0 proposals despite directors found"
+// gap observed in 2026-06-08 entity-graph runs.
+func TestParseItem507_ThreeColumnDirectorFormat(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders The Annual Meeting of Shareholders of Apple Inc. was held on February 23, 2011. Proposal 1 The individuals listed below were elected at the Annual Meeting to serve a one-year term on the Board of Directors. For Authority Withheld Broker Non-Vote William V. Campbell 567,613,937 8,115,733 178,309,247 Albert A. Gore Jr. 569,870,576 5,859,094 178,309,247 Ronald D. Sugar 574,417,007 1,312,663 178,309,247 Proposal 2 Proposal 2 was a management proposal to ratify the appointment of Ernst Young LLP as the Company's independent registered public accounting firm for fiscal year 2011, as described in the proxy materials. This proposal was approved. For Against Abstained 750,715,722 1,965,874 1,357,321 Proposal 3 Proposal 3 was a management proposal to hold an advisory vote on executive compensation, as described in the proxy materials. This proposal was approved. For Against Abstained Broker Non-Vote 564,545,821 9,516,759 1,667,313 178,309,024`
+
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+
+	// Expect 3 directors via the 3-column fallback.
+	if len(result.DirectorVotes) != 3 {
+		t.Errorf("want 3 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+
+	// ApprovalPct for Campbell: 567,613,937 / (567,613,937 + 8,115,733) ≈ 98.6%.
+	campbell := findDirector(result.DirectorVotes, "Campbell")
+	if campbell == nil {
+		t.Fatal("William V. Campbell not found in results")
+	}
+	if campbell.ApprovalPct < 0.984 || campbell.ApprovalPct > 0.988 {
+		t.Errorf("Campbell approval = %.4f, want ~0.986", campbell.ApprovalPct)
+	}
+
+	// Sugar should have very high approval (≈99.8%).
+	sugar := findDirector(result.DirectorVotes, "Sugar")
+	if sugar == nil {
+		t.Fatal("Ronald D. Sugar not found in results")
+	}
+	if sugar.ApprovalPct < 0.997 {
+		t.Errorf("Sugar approval = %.4f, want ≥0.997", sugar.ApprovalPct)
+	}
+
+	// Proposals 2 and 3 must be extracted despite 3-column director section.
+	if len(result.Proposals) < 2 {
+		t.Errorf("want >= 2 proposals, got %d — 3-column director format should not block proposal parsing", len(result.Proposals))
+	}
+
+	// Auditor Ernst Young LLP should be detected.
+	if result.Auditor == "" {
+		t.Error("expected Auditor from Proposal 2 ratification, got empty")
+	}
+}
+
 // TestParseItem507_AMZNProseFormat verifies the prose-style fallback parser handles
 // AMZN 2010–2015 annual meeting 8-Ks where proposals carry no numbered header.
 // Each non-director proposal is a full English sentence followed by vote counts.
