@@ -384,6 +384,41 @@ func TestParseItem507_ThreeColumnDirectorFormat(t *testing.T) {
 	}
 }
 
+// TestParseItem507_CompoundInitials verifies that director names with compound
+// middle initials ("H.L." with no space between the two letters) are extracted
+// correctly. This format was observed in ABBV 2025 annual meeting 8-Ks where
+// "William H.L. Burnside" appears with no space between "H." and "L.".
+func TestParseItem507_CompoundInitials(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders.
+AbbVie held its 2025 Annual Meeting of Stockholders on May 9, 2025.
+(1) The stockholders elected AbbVie's Class I directors: Name For Against Abstain Broker Non-Votes
+William H.L. Burnside 1,219,911,544 63,608,245 2,130,012 242,314,197
+Thomas C. Freyman 1,208,501,938 75,272,385 1,875,478 242,314,197
+Brett J. Hart 1,246,674,074 35,896,110 3,079,617 242,314,197
+(2) The stockholders ratified the appointment of Ernst & Young LLP as independent auditor: For Against Abstain 1,498,390,498 27,184,089 2,389,411
+(3) The stockholders approved executive compensation: For Against Abstain Broker Non-Votes 1,196,778,926 78,389,723 10,481,152 242,314,197
+`
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+	// All 3 directors must be found including the compound-initial name.
+	if len(result.DirectorVotes) != 3 {
+		t.Errorf("want 3 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+	burnside := findDirector(result.DirectorVotes, "Burnside")
+	if burnside == nil {
+		t.Fatal("William H.L. Burnside not found — compound-initial regex not matching")
+	}
+	if burnside.ForVotes != 1_219_911_544 {
+		t.Errorf("Burnside ForVotes = %d, want 1219911544", burnside.ForVotes)
+	}
+	// Proposals must also be extracted.
+	if len(result.Proposals) < 2 {
+		t.Errorf("want >= 2 proposals, got %d", len(result.Proposals))
+	}
+}
+
 // TestParseItem507_AMZNProseFormat verifies the prose-style fallback parser handles
 // AMZN 2010–2015 annual meeting 8-Ks where proposals carry no numbered header.
 // Each non-director proposal is a full English sentence followed by vote counts.

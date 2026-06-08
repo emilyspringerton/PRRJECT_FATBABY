@@ -68,9 +68,12 @@ var (
 	// may be compound-hyphenated (Schwab-Pomerantz), optional suffix.
 	// Dotted middle initials are required to have a dot so the regex does not
 	// greedily consume the first capital of a compound surname.
+	// The initial group (?:\s+[A-Z](?:\.[A-Z])*\.) handles both spaced initials
+	// ("H. L.") and compound initials without inter-initial spaces ("H.L.") as
+	// used in some EDGAR filings (e.g. ABBV 2025: "William H.L. Burnside").
 	// A mandatory \s+ separates the (optional) middle initials from the last name.
 	reDirectorRow = regexp.MustCompile(
-		`([A-Z][a-z']+(?:\s+[A-Z]\.)*\s+(?:[A-Z][a-z']+(?:-[A-Z][a-z']+)*)(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\s+([\d,]{5,})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)`,
+		`([A-Z][a-z']+(?:\s+[A-Z](?:\.[A-Z])*\.)*\s+(?:[A-Z][a-z']+(?:-[A-Z][a-z']+)*)(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\s+([\d,]{5,})\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)`,
 	)
 
 	// reDirectorRow3Col matches the pre-majority-voting 3-column format used by AAPL
@@ -80,8 +83,9 @@ var (
 	// Withheld votes are mapped to AgainstVotes for approval-pct computation:
 	//   ApprovalPct = For / (For + Withheld)
 	// Used only as a fallback when reDirectorRow yields zero results.
+	// Same compound-initial fix applied as in reDirectorRow.
 	reDirectorRow3Col = regexp.MustCompile(
-		`([A-Z][a-z']+(?:\s+[A-Z]\.)*\s+(?:[A-Z][a-z']+(?:-[A-Z][a-z']+)*)(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\s+([\d,]{5,})\s+([\d,]+)\s+([\d,]+)\b`,
+		`([A-Z][a-z']+(?:\s+[A-Z](?:\.[A-Z])*\.)*\s+(?:[A-Z][a-z']+(?:-[A-Z][a-z']+)*)(?:\s+(?:Jr\.|Sr\.|II|III|IV))?)\s+([\d,]{5,})\s+([\d,]+)\s+([\d,]+)\b`,
 	)
 
 	// reWithheldHeader detects the 3-column director vote table header used in

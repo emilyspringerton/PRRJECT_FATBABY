@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix compound-initial director name parsing (H.L. style)
+
+**Root cause**: `reDirectorRow` (and `reDirectorRow3Col`) used `(?:\s+[A-Z]\.)*` for middle
+initials, which requires each initial to be preceded by a space. Directors with compound
+initials written without spaces between letters (e.g. "William H.L. Burnside" from ABBV 2025
+annual meeting 8-K) were silently skipped — the regex expected " H." + " L." but saw " H.L.".
+
+**Fix**: Changed `(?:\s+[A-Z]\.)*` to `(?:\s+[A-Z](?:\.[A-Z])*\.)*` in both `reDirectorRow`
+and `reDirectorRow3Col`. The new pattern treats a compound initial unit like "H.L." (one space
+before the unit, then chained letter-dot pairs) as a single optional group iteration. Single
+spaced initials ("H. L." or " C.") continue to work as before.
+
+**Test added**: `TestParseItem507_CompoundInitials` in `parser_test.go` covering the ABBV 2025
+proxy meeting text with "William H.L. Burnside", verifying all 3 directors and both proposals
+are extracted.
+
 ## 2026-06-08 — entity-graph: fix signal accumulation driving governance_health to 0
 
 Three related fixes addressing the observation where all 4 tickers had

@@ -1,0 +1,15 @@
+{
+  "observation_summary": "Entity graph run: 2 filings, 126 directors, 0 proposals, 53 signals. IMPORTANT: 0 proposals were parsed despite directors being found — the proposal-splitter regex may not be matching the filing text. Inspect internal/entitygraph/parser.go extractProposals() and consider whether the 'Proposal N' pattern matches the live filing format. Gap: 0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go. Refine thresholds in config/entity-graph-rules.json or parser patterns in internal/entitygraph/parser.go as appropriate.",
+  "observation_timestamp": "2026-06-08T12:07:12Z",
+  "run_started_at": "2026-06-08T12:10:00Z",
+  "run_completed_at": "2026-06-08T12:16:57Z",
+  "files_changed": [
+    "internal/entitygraph/parser.go",
+    "internal/entitygraph/parser_test.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Root cause analysis: The '0 proposals' observation was produced by an entity-graph binary compiled before commits c39b57e/f00d612 that decoupled proposal extraction from director extraction. Live testing confirmed the current code (with those fixes) correctly extracts 4 proposals each from the ABBV 2025 and ABBV 2026 proxy 8-Ks (seq=62737 and seq=62741) that were in the batch.\n\nNewly identified gap: 'William H.L. Burnside' (ABBV 2025 proxy) was missing from director results. Root cause: reDirectorRow used (?:\\s+[A-Z]\\.)*  which requires a space before each initial. Compound initials like 'H.L.' (no space between H. and L.) failed the pattern.\n\nFix: Changed (?:\\s+[A-Z]\\.)*  to (?:\\s+[A-Z](?:\\.[A-Z])*\\.)* in both reDirectorRow and reDirectorRow3Col. The new pattern handles 'H.L.' as a single unit (one space before the compound) while single-spaced initials like 'H. L.' or 'C.' continue to match unchanged.\n\nTest added: TestParseItem507_CompoundInitials covers ABBV 2025 proxy text with William H.L. Burnside, Thomas C. Freyman, Brett J. Hart, plus 2 proposals. All 3 directors and both proposals must be extracted.\n\nAll tests pass (go test ./...).",
+  "git_commit_hash": "",
+  "exit_status": "success",
+  "notes": "The '0 proposals' observation gap was already addressed by prior commits (c39b57e, f00d612). The entity-graph binary that produced the observation was running old code. The fix in this run closes the remaining director-name parsing gap for compound initials. The entity-graph will pick up the compound-initial fix on the next restart."
+}
