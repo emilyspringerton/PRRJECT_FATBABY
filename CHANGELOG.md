@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: proposal-splitter handles BLK/SCHW/LLY filing formats
+
+Three new alternatives added to `reProposalSplitter` and `reAuditorName` extended, fixing
+the "0 proposals parsed despite directors found" gap reported in Emily observations:
+
+- **SCHW 2021–2023 bare-number format**: "2 Ratification" (no period) — `\b(?:[2-9]|1\d)\s+[A-Z][a-z]{3,}`.
+  Requires a title-case word of ≥4 chars to avoid matching vote-table headers like "For".
+- **BLK 2024 Item-entity format**: "Item&#8201;2 &#8211;" (HTML thin-space entities) — `(?i:Item)(?:\s|&#\d+;)+(?:[2-9]|1\d)(?:\s|&#\d+;)`.
+  Requires space/entity (not ".") after the number so "Item 5.07" is not matched.
+- **LLY 2022–2026 letter format**: " b) By..." (lowercase letter a–z without opening paren) — `\s[b-z]\)\s+[A-Z]`.
+  Excludes "(b)" SCHW director sub-items by requiring whitespace (not paren) before the letter.
+- **`reAuditorName`**: Added `selection` and `retention` alongside `appointment` so
+  SCHW-style "selection of Deloitte & Touche LLP as independent auditors" is captured.
+- All `[A-Z]`/`[a-z]`/`[b-z]` character classes are intentionally outside any `(?i)` scope
+  to remain case-sensitive; this prevents "of the following 16 nominees" from being mistaken
+  for a proposal boundary (a false-positive observed in BLK filing).
+- 3 new test cases added: `TestParseItem507_SCHWBareNumberFormat`, `_BLKItemFormat`, `_LLYLetterFormat`.
+
 ## 2026-06-08 — entity-graph: fix ratification detection and "did not approve" parsing
 
 Two targeted improvements to `internal/entitygraph/parser.go` discovered by testing against
