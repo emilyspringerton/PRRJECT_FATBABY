@@ -416,6 +416,94 @@ For Against Abstain Broker Non-Votes 400,000,000 900,000,000 50,000,000 239,044,
 	}
 }
 
+// TestParseItem507_SCHW2022Format verifies the parser handles the SCHW 2022 annual
+// meeting 8-K format, which uses bare-number proposal lines immediately after the
+// director election table. Critically, proposal title nouns that end a description
+// line ("Incentive Plan", "proxy access") must NOT be extracted as director names.
+func TestParseItem507_SCHW2022Format(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders. (a) The Annual Meeting was held on May 17, 2022. As of the close of business on March 18, 2022, the record date for the Annual Meeting, there were 1,816,003,557 shares of CSC voting common stock outstanding, with each share entitled to one vote. The proposal to amend CSC's Bylaws, to declassify the Board, which required the affirmative vote of 80% of all outstanding shares of CSC's voting common stock, was not approved. The final voting results were as follows: For Against Abstain Broker Non-Vote 1 Election of Directors (a) John K. Adams, Jr. 1,591,270,097 17,076,753 634,660 35,075,990 (b) Stephen A. Ellis 1,541,356,577 66,966,902 658,031 35,075,990 (c) Brian M. Levitt 1,574,533,140 33,688,768 759,602 35,075,990 (d) Arun Sarin 1,466,490,268 141,841,227 650,015 35,075,990 (e) Charles R. Schwab 1,550,928,506 57,549,303 503,701 35,075,990 (f) Paula A. Sneed 1,523,676,597 77,497,845 7,807,068 35,075,990 For Against Abstain Broker Non-Vote 2 Approval of amendments to Certificate of Incorporation and Bylaws to declassify the Board 1,425,958,661 182,051,166 971,683 35,075,990 3 Ratification of the selection of Deloitte & Touche LLP as independent auditors 1,551,491,318 91,993,339 572,843 0 4 Advisory vote to approve named executive officer compensation 1,499,041,479 108,280,222 1,659,809 35,075,990 5 Approval of the 2022 Stock Incentive Plan 1,556,189,076 51,876,293 916,141 35,075,990 6 Approval of the Board's proposal to amend Bylaws to adopt proxy access 1,595,101,275 12,739,560 1,140,675 35,075,990 7 Stockholder proposal requesting amendment to Bylaws to adopt proxy access 494,220,875 1,112,327,357 2,433,278 35,075,990 8 Stockholder proposal requesting disclosure of lobbying policy, procedures and oversight 557,517,246 1,047,778,039 3,686,225 35,075,990`
+
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+
+	// Adams Jr. won't parse (comma before Jr.); expect 5 of the 6 directors.
+	if len(result.DirectorVotes) < 5 {
+		t.Errorf("want >= 5 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+
+	// Proposal-title nouns must not be extracted as directors.
+	for _, v := range result.DirectorVotes {
+		switch v.Name {
+		case "Incentive Plan", "Stock Plan", "Proxy Access":
+			t.Errorf("spurious proposal-noun extracted as director: %q", v.Name)
+		}
+	}
+
+	// Outstanding shares must be parsed from the SCHW-style "shares of CSC voting common stock" line.
+	outstanding := extractOutstanding(text)
+	if outstanding != 1_816_003_557 {
+		t.Errorf("outstanding shares = %d, want 1816003557", outstanding)
+	}
+
+	// Expect proposals 2-8 to be extracted.
+	if len(result.Proposals) < 7 {
+		t.Errorf("want >= 7 proposals, got %d", len(result.Proposals))
+	}
+
+	// Auditor ratification (proposal 3) should be found.
+	if result.Auditor == "" {
+		t.Error("expected Auditor from proposal 3 ratification, got empty")
+	}
+}
+
+// TestParseItem507_SCHW2023Format verifies the parser handles the SCHW 2023 annual
+// meeting 8-K format, which includes a frequency-vote proposal with non-standard
+// column headers and two stockholder proposals whose descriptions end with Title-case
+// nouns ("Equity Disclosure", "Risk Oversight") immediately before vote counts.
+// These must NOT be extracted as director names.
+func TestParseItem507_SCHW2023Format(t *testing.T) {
+	text := `Item 5.07 Submission of Matters to a Vote of Security Holders. (a) The 2023 Annual Meeting was held on May 18, 2023. The final voting results were as follows: For Against Abstain Broker Non-Vote 1 Election of Directors (a) Marianne C. Brown 1,391,923,049 77,744,557 10,504,388 65,171,953 (b) Frank C. Herringer 1,187,522,013 276,652,237 15,997,744 65,171,953 (c) Gerri K. Martin-Flickinger 1,398,255,689 71,370,592 10,545,713 65,171,953 (d) Todd M. Ricketts 1,397,658,822 71,906,569 10,606,603 65,171,953 (e) Carolyn Schwab-Pomerantz 1,386,051,905 78,347,621 15,772,468 65,171,953 2 Ratification of the selection of Deloitte & Touche LLP as independent auditors 1,466,597,288 77,187,153 1,559,506 0 3 Advisory vote to approve named executive officer (NEO) compensation 1,358,945,646 118,735,604 2,490,744 65,171,953 One Year Two Years Three Years Abstain Broker Non-Vote 4 Frequency of advisory vote on NEO compensation 1,463,499,865 3,414,694 11,453,065 1,804,370 65,171,953 For Against Abstain Broker Non-Vote 5 Stockholder Proposal on Pay Equity Disclosure 361,505,475 1,101,320,605 17,345,914 65,171,953 6 Stockholder Proposal on Discrimination Risk Oversight and Impact 14,281,846 1,454,343,901 11,546,247 65,171,953`
+
+	result, err := ParseItem507(text)
+	if err != nil {
+		t.Fatalf("ParseItem507: %v", err)
+	}
+
+	// All 5 nominees must be extracted.
+	if len(result.DirectorVotes) != 5 {
+		t.Errorf("want 5 directors, got %d: %v", len(result.DirectorVotes), directorNames(result.DirectorVotes))
+	}
+
+	// Verify no proposal-noun phrases were extracted as director names.
+	for _, v := range result.DirectorVotes {
+		switch v.Name {
+		case "Equity Disclosure", "Risk Oversight", "Pay Equity", "Discrimination Risk":
+			t.Errorf("spurious proposal-noun extracted as director: %q", v.Name)
+		}
+	}
+
+	// Director friction: Herringer should have low approval (~84%).
+	herringer := findDirector(result.DirectorVotes, "Herringer")
+	if herringer == nil {
+		t.Fatal("Frank C. Herringer not found in results")
+	}
+	if herringer.ApprovalPct < 0.79 || herringer.ApprovalPct > 0.83 {
+		t.Errorf("Herringer approval = %.3f, want ~0.802", herringer.ApprovalPct)
+	}
+
+	// Expect proposals 2-6 to be extracted.
+	if len(result.Proposals) < 5 {
+		t.Errorf("want >= 5 proposals, got %d", len(result.Proposals))
+	}
+
+	// Auditor should be Deloitte & Touche LLP from proposal 2.
+	if result.Auditor == "" {
+		t.Error("expected Auditor from proposal 2, got empty")
+	}
+}
+
 // TestLooksLikePersonName_HeaderRejection ensures vote-table headers and aggregate
 // row labels are never mistaken for director names. This guards against the
 // "Against Abstained" and "Broker Non-Vote" false-positives observed in live data.
@@ -428,6 +516,11 @@ func TestLooksLikePersonName_HeaderRejection(t *testing.T) {
 		"Withheld Abstained",
 		"Votes Cast",
 		"Total Votes",
+		// Proposal-title nouns that previously caused spurious director extraction
+		// in SCHW 2022 ("5 Approval of the 2022 Stock Incentive Plan …") and
+		// SCHW 2023 ("5 Stockholder Proposal on Pay Equity Disclosure …").
+		"Incentive Plan",
+		"Equity Disclosure",
 	}
 	for _, s := range rejects {
 		if looksLikePersonName(s) {

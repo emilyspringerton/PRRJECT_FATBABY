@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-08 — entity-graph: fix spurious director extraction from SCHW bare-number proposal lines
+
+Fixed two parser defects affecting SCHW 2022 and 2023 annual meeting 8-Ks:
+
+**Spurious directors from proposal-title nouns** (SCHW 2022 "Incentive Plan", SCHW 2023 "Equity Disclosure"):
+- Added `"plan"`, `"disclosure"`, `"proposal"`, and `"policy"` to `nonNameWords` so Title-case proposal
+  noun phrases at the tail of a bare-number proposal line are no longer extracted as director names by
+  `reDirectorRow`. Fixes `LoadNodesFromDir` also dropping these via `isSpuriousName` retrospectively.
+
+**Outstanding shares not parsed for SCHW** ("shares of CSC voting common stock outstanding"):
+- Extended `reOutstandingShares` from `shares\s+of\s+(?:common\s+)?stock` to allow 0–4 arbitrary words
+  between "of" and "stock" (`(?:\w+\s+){0,4}`), covering SCHW's "CSC voting common stock" phrasing.
+
+Two new tests added (`TestParseItem507_SCHW2022Format`, `TestParseItem507_SCHW2023Format`) and
+`TestLooksLikePersonName_HeaderRejection` updated to include the new rejected nouns.
+
 ## 2026-06-08 — entity-graph: prose-fallback parser for AMZN-style proposals (2010–2015)
 
 Added `reProseSplitter` regex and `extractProseProposals` fallback to `internal/entitygraph/parser.go`,

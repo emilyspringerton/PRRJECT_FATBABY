@@ -45,9 +45,15 @@ var (
 	re507Section = regexp.MustCompile(`(?i)Item\s+5\.07`)
 
 	// reOutstandingShares captures the total outstanding share count from the preamble.
-	// Handles variants: "N shares of common stock outstanding", "N shares of Common Stock outstanding",
-	// "N common shares outstanding".
-	reOutstandingShares = regexp.MustCompile(`(?i)([\d,]+)\s+(?:shares\s+of\s+(?:common\s+)?stock|common\s+shares)\s+outstanding`)
+	// Handles variants:
+	//   "N shares of common stock outstanding"         — standard form
+	//   "N shares of Common Stock outstanding"         — title-case variant
+	//   "N common shares outstanding"                  — reversed word order
+	//   "N shares of CSC voting common stock outstanding" — SCHW-style company-prefixed form
+	// The middle section allows 0–4 arbitrary words between "of" and the trailing "…stock",
+	// covering company abbreviations and modifiers (e.g. "voting", "CSC") that precede
+	// "common stock" in SCHW annual meeting 8-Ks.
+	reOutstandingShares = regexp.MustCompile(`(?i)([\d,]+)\s+(?:shares\s+of\s+(?:\w+\s+){0,4}(?:common\s+)?stock|common\s+shares)\s+outstanding`)
 
 	// reSupermajority captures a supermajority threshold percentage.
 	// Handles variants: "80% of the outstanding shares", "80% of outstanding shares",
@@ -352,17 +358,26 @@ var headerPhrases = map[string]bool{
 }
 
 // nonNameWords are keywords that never appear in a real director name but do
-// appear in vote-table headers and aggregate rows. Any match disqualifies the
-// candidate regardless of title-casing.
+// appear in vote-table headers, aggregate rows, or proposal-title descriptions.
+// Any match disqualifies the candidate regardless of title-casing.
+// Proposal-title nouns (plan, disclosure, proposal, policy) are included to
+// prevent SCHW-style bare-number proposal lines (e.g. "5 Approval of the 2022
+// Stock Incentive Plan 1,556,189,076…") from extracting the last two Title-case
+// words before the vote counts ("Incentive Plan", "Equity Disclosure") as
+// spurious director names.
 var nonNameWords = map[string]bool{
-	"against":   true,
-	"abstain":   true,
-	"abstained": true,
-	"withheld":  true,
-	"non-vote":  true,
-	"non-votes": true,
-	"broker":    true,
-	"cast":      true,
+	"against":    true,
+	"abstain":    true,
+	"abstained":  true,
+	"withheld":   true,
+	"non-vote":   true,
+	"non-votes":  true,
+	"broker":     true,
+	"cast":       true,
+	"plan":       true,
+	"disclosure": true,
+	"proposal":   true,
+	"policy":     true,
 }
 
 // isSpuriousName returns true when a name contains known vote-table non-name

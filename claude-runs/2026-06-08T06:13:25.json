@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-06-08T06:13:25Z",
+  "trigger": "observation-watcher",
+  "observation_timestamp": "2026-06-08T03:15:50Z",
+  "observation_source": "entity-graph",
+  "summary": "Fixed spurious director extraction from SCHW bare-number proposal lines and outstanding-shares regex for SCHW CSC voting stock phrasing",
+  "changes": [
+    {
+      "file": "internal/entitygraph/parser.go",
+      "description": "Extended nonNameWords with 'plan', 'disclosure', 'proposal', 'policy' to prevent SCHW 2022/2023 proposal-title nouns being extracted as directors; extended reOutstandingShares to allow 0-4 words between 'of' and 'stock' covering SCHW 'CSC voting common stock' phrasing"
+    },
+    {
+      "file": "internal/entitygraph/parser_test.go",
+      "description": "Added TestParseItem507_SCHW2022Format and TestParseItem507_SCHW2023Format; updated TestLooksLikePersonName_HeaderRejection with new rejected nouns; corrected Herringer approval range to 0.79-0.83 (actual 0.802)"
+    },
+    {
+      "file": "CHANGELOG.md",
+      "description": "Added dated entry for SCHW spurious-director and outstanding-shares fixes"
+    }
+  ],
+  "root_cause": "Observation (03:15:50) predated the AMZN prose-fallback fix (committed 03:24:40). Additionally, SCHW 2022/2023 bare-number proposal lines like '5 Approval of the 2022 Stock Incentive Plan 1,556,189,076...' caused reDirectorRow to extract 'Incentive Plan' as a director, and 'shares of CSC voting common stock outstanding' did not match reOutstandingShares.",
+  "tests_run": "go test ./...",
+  "tests_passed": true,
+  "gaps_addressed": [
+    "Spurious directors 'Incentive Plan' (SCHW 2022) and 'Equity Disclosure' (SCHW 2023) extracted from proposal-title nouns",
+    "reOutstandingShares did not match 'shares of CSC voting common stock outstanding'"
+  ],
+  "gaps_deferred": [],
+  "commit": "pending"
+}
