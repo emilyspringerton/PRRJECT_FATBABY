@@ -454,7 +454,12 @@ var headerPhrases = map[string]bool{
 // Stock Incentive Plan 1,556,189,076…") from extracting the last two Title-case
 // words before the vote counts ("Incentive Plan", "Equity Disclosure") as
 // spurious director names.
+// Shareholder-proposal topic words (compensation, consent, meetings, etc.) are
+// included to block BA-style proposal descriptions like "Rights Code",
+// "Special Meetings", "Written Consent" from matching as director names when
+// the proposal-splitter fails to find a boundary in the filing text.
 var nonNameWords = map[string]bool{
+	// Vote-table headers and aggregate-row labels
 	"against":    true,
 	"abstain":    true,
 	"abstained":  true,
@@ -463,10 +468,27 @@ var nonNameWords = map[string]bool{
 	"non-votes":  true,
 	"broker":     true,
 	"cast":       true,
+	// SCHW-style bare-number proposal nouns
 	"plan":       true,
 	"disclosure": true,
 	"proposal":   true,
 	"policy":     true,
+	// Shareholder-proposal topic words — common in BA/Boeing-style proxy 8-Ks
+	// where the proposal-splitter may miss the boundary and extractDirectorVotes
+	// runs over the full body, picking up proposal descriptions as "director" rows.
+	"compensation":  true,
+	"consent":       true,
+	"meetings":      true,
+	"activity":      true,
+	"contributions": true,
+	"benefits":      true,
+	"executives":    true,
+	"chairman":      true,
+	"retirement":    true,
+	"association":   true,
+	"political":     true,
+	"code":          true,
+	"rights":        true,
 }
 
 // isSpuriousName returns true when a name contains known vote-table non-name

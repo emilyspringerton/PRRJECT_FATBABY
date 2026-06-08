@@ -1053,6 +1053,13 @@ func ScoreLongTenure(graph *Graph, r Rules) []Signal {
 
 	var out []Signal
 	for _, node := range graph.Nodes {
+		// Skip nodes whose names contain known non-person words (proposal topics,
+		// vote-table labels). These can accumulate in the graph store from filings
+		// where the proposal-splitter missed the boundary and extractDirectorVotes
+		// ran over the full body.
+		if isSpuriousName(node.Name) {
+			continue
+		}
 		// Find the earliest filing date per ticker for this node.
 		firstByTicker := map[string]string{}
 		for _, f := range node.Filings {

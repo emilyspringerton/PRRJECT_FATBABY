@@ -639,6 +639,17 @@ func TestLooksLikePersonName_HeaderRejection(t *testing.T) {
 		// SCHW 2023 ("5 Stockholder Proposal on Pay Equity Disclosure …").
 		"Incentive Plan",
 		"Equity Disclosure",
+		// BA/Boeing shareholder-proposal topic descriptions that fire when the
+		// proposal-splitter misses the boundary in the 8-K text.
+		"Rights Code",
+		"Special Meetings",
+		"Written Consent",
+		"Political Activity",
+		"Association Contributions",
+		"Retirement Benefits",
+		"Former Executives",
+		"Independent Chairman",
+		"Executive Compensation",
 	}
 	for _, s := range rejects {
 		if looksLikePersonName(s) {
