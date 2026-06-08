@@ -137,11 +137,10 @@ func ScoreDirectorVotes(votes []VoteResult, ticker, filingDate string, r Rules) 
 		if total > 0 && v0.BrokerNonVotes > 0 {
 			bnvFrac := float64(v0.BrokerNonVotes) / float64(total)
 			if bnvFrac > r.BrokerNonVoteAnomalyThreshold {
-				today := time.Now().UTC().Format("2006-01-02")
-				nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+				bnvDetectedAt, bnvValidThrough := signalTimestamps(filingDate)
 				filingKey := filingDate
 				if filingKey == "" {
-					filingKey = today
+					filingKey = bnvDetectedAt
 				}
 				out = append(out, Signal{
 					SignalID:       fmt.Sprintf("bnv_anomaly_%s_%s", strings.ToLower(ticker), strings.ReplaceAll(filingKey, "-", "")),
@@ -151,8 +150,8 @@ func ScoreDirectorVotes(votes []VoteResult, ticker, filingDate string, r Rules) 
 					Confidence:     0.60,
 					Score:          bnvFrac,
 					FilingDate:     filingDate,
-					DetectedAt:     today,
-					ValidThrough:   nextYear,
+					DetectedAt:     bnvDetectedAt,
+					ValidThrough:   bnvValidThrough,
 					Interpretation: fmt.Sprintf("Broker non-votes represent %.1f%% of total shares in this election — above %.0f%% anomaly threshold. High BNV indicates passive/retail share concentration; institutional engagement is below average.", bnvFrac*100, r.BrokerNonVoteAnomalyThreshold*100),
 				})
 			}
@@ -199,8 +198,7 @@ func ScoreAbstentionOutliers(votes []VoteResult, ticker, filingDate string, r Ru
 	// The multiplier*median check handles the "too uniform" case independently.
 	const absFloor = 0.01
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps(filingDate)
 
 	var out []Signal
 	for i, v := range votes {
@@ -218,8 +216,8 @@ func ScoreAbstentionOutliers(votes []VoteResult, ticker, filingDate string, r Ru
 			Confidence:     0.65,
 			Score:          rate,
 			FilingDate:     filingDate,
-			DetectedAt:     today,
-			ValidThrough:   nextYear,
+			DetectedAt:     detectedAt,
+			ValidThrough:   validThrough,
 			Interpretation: fmt.Sprintf("Director %s received %.1f%% abstentions — %.1fx the filing median of %.1f%%. Targeted abstention may indicate proxy advisor differentiated recommendation, ownership conflict, or protest vote directed at this director specifically.", v.Name, rate*100, rate/median, median*100),
 			Metadata:       map[string]string{"peer_median_abstain_pct": fmt.Sprintf("%.4f", median)},
 		})
@@ -227,10 +225,28 @@ func ScoreAbstentionOutliers(votes []VoteResult, ticker, filingDate string, r Ru
 	return out
 }
 
+// signalTimestamps returns (detectedAt, validThrough) for a signal.
+// For historical filings (filingDate non-empty), detectedAt is the filing date
+// so prediction windows are anchored to the event, not the batch run date.
+// This allows the accuracy loop to resolve records for historical filings
+// immediately instead of waiting until 1+ year after the batch runs.
+func signalTimestamps(filingDate string) (detectedAt, validThrough string) {
+	today := time.Now().UTC().Format("2006-01-02")
+	detectedAt = today
+	if filingDate != "" && filingDate < today {
+		detectedAt = filingDate
+	}
+	t, err := time.Parse("2006-01-02", detectedAt)
+	if err != nil {
+		t = time.Now().UTC()
+	}
+	validThrough = t.AddDate(1, 0, 0).Format("2006-01-02")
+	return detectedAt, validThrough
+}
+
 func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal {
 	canon := Canonicalize(v.Name)
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps(filingDate)
 	var out []Signal
 
 	switch {
@@ -247,8 +263,8 @@ func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal
 			Confidence:     0.95,
 			Score:          v.ApprovalPct,
 			FilingDate:     filingDate,
-			DetectedAt:     today,
-			ValidThrough:   nextYear,
+			DetectedAt:     detectedAt,
+			ValidThrough:   validThrough,
 			Interpretation: fmt.Sprintf("Director received only %.1f%% approval — below %.0f%% majority threshold. Under majority voting standards the director must submit a resignation; board refusal to accept is a governance crisis indicator.", v.ApprovalPct*100, r.NominationRejectionThreshold*100),
 		})
 
@@ -268,8 +284,8 @@ func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal
 			Confidence:     conf,
 			Score:          v.ApprovalPct,
 			FilingDate:     filingDate,
-			DetectedAt:     today,
-			ValidThrough:   nextYear,
+			DetectedAt:     detectedAt,
+			ValidThrough:   validThrough,
 			Interpretation: fmt.Sprintf("Director approval at %.1f%% is below the %.0f%% friction threshold; may indicate activist targeting or board misalignment.", v.ApprovalPct*100, r.FrictionThreshold*100),
 		})
 
@@ -283,8 +299,8 @@ func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal
 			Confidence:     0.70,
 			Score:          v.ApprovalPct,
 			FilingDate:     filingDate,
-			DetectedAt:     today,
-			ValidThrough:   nextYear,
+			DetectedAt:     detectedAt,
+			ValidThrough:   validThrough,
 			Interpretation: fmt.Sprintf("Director approval at %.1f%% meets high-trust threshold (>%.0f%%).", v.ApprovalPct*100, r.HighTrustMinApproval*100),
 		})
 	}
@@ -301,8 +317,8 @@ func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal
 				Confidence:     0.65,
 				Score:          v.ApprovalPct,
 				FilingDate:     filingDate,
-				DetectedAt:     today,
-				ValidThrough:   nextYear,
+				DetectedAt:     detectedAt,
+				ValidThrough:   validThrough,
 				Interpretation: fmt.Sprintf("Director name contains founder/family keyword '%s'; may represent founder control concentration.", kw),
 				Metadata:       map[string]string{"keyword": kw},
 			})
@@ -353,8 +369,7 @@ func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules)
 	}
 
 	canon := Canonicalize(name)
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := time.Now().UTC().Format("2006-01-02"), time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
 
 	sev := SeverityLow
 	conf := 0.65
@@ -385,8 +400,8 @@ func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules)
 		Severity:       sev,
 		Confidence:     conf,
 		Score:          avgDrop,
-		DetectedAt:     today,
-		ValidThrough:   nextYear,
+		DetectedAt:     detectedAt,
+		ValidThrough:   validThrough,
 		Interpretation: interp,
 	}
 }
@@ -395,8 +410,7 @@ func ScoreDirectorDecay(name, ticker string, approvalHistory []float64, r Rules)
 // filingDate is the SEC filing date (e.g. "2019-04-26"); pass "" for composite/derived signals.
 func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rules) []Signal {
 	var out []Signal
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps(filingDate)
 
 	for i, p := range proposals {
 		total := p.ForVotes + p.AgainstVotes + p.AbstainVotes
@@ -419,8 +433,8 @@ func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rul
 				Confidence:     0.91,
 				Score:          forPct,
 				FilingDate:     filingDate,
-				DetectedAt:     today,
-				ValidThrough:   nextYear,
+				DetectedAt:     detectedAt,
+				ValidThrough:   validThrough,
 				Interpretation: fmt.Sprintf("Proposal '%s' received %.1f%% shareholder support but failed due to %.0f%% of outstanding shares supermajority requirement. Board is using structural defenses against clear shareholder preference.", descShort, forPct*100, p.RequiredPct*100),
 				Metadata:       map[string]string{"required_pct": fmt.Sprintf("%.2f", p.RequiredPct), "for_pct": fmt.Sprintf("%.4f", forPct)},
 			})
@@ -438,8 +452,8 @@ func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rul
 					Confidence:     0.75,
 					Score:          againstPct,
 					FilingDate:     filingDate,
-					DetectedAt:     today,
-					ValidThrough:   nextYear,
+					DetectedAt:     detectedAt,
+					ValidThrough:   validThrough,
 					Interpretation: fmt.Sprintf("Advisory compensation vote received %.1f%% opposition. Exceeds %.0f%% alert threshold; potential ESG or pay-for-performance concern.", againstPct*100, r.CompExecAlertThreshold*100),
 				})
 			}
@@ -460,8 +474,8 @@ func ScoreProposals(proposals []ProposalResult, ticker, filingDate string, r Rul
 				Confidence:     0.60,
 				Score:          abstainPct,
 				FilingDate:     filingDate,
-				DetectedAt:     today,
-				ValidThrough:   nextYear,
+				DetectedAt:     detectedAt,
+				ValidThrough:   validThrough,
 				Interpretation: fmt.Sprintf("Proposal '%s' abstention rate %.1f%% exceeds %.0f%% threshold; may indicate shareholder confusion, protest vote, or inadequate disclosure.", descShort, abstainPct*100, r.AbstentionSpikeThreshold*100),
 			})
 		}
@@ -535,17 +549,16 @@ func ScoreCompositeActivistRisk(ticker string, allSignals []Signal, windowDays i
 		interp = fmt.Sprintf("CRITICAL: governance_entrenchment co-occurs with a director nomination_rejection at %s within %d days. A director failed to achieve majority support (%.1f%% approval) while the board enforces supermajority structural defenses. Historical base rate for activist 13D within 6 months: ~75%%. Immediate monitoring warranted.", ticker, windowDays, worstFrictionPct*100)
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 	return &Signal{
-		SignalID:       fmt.Sprintf("activist_risk_%s_%s", strings.ToLower(ticker), today),
+		SignalID:       fmt.Sprintf("activist_risk_%s_%s", strings.ToLower(ticker), detectedAt),
 		Type:           SignalActivistRisk,
 		Ticker:         ticker,
 		Severity:       sev,
 		Confidence:     conf,
 		Score:          compositeScore,
-		DetectedAt:     today,
-		ValidThrough:   nextYear,
+		DetectedAt:     detectedAt,
+		ValidThrough:   validThrough,
 		Interpretation: interp,
 	}
 }
@@ -571,8 +584,7 @@ func ScoreDirectorLinks(graph *Graph, allSignals []Signal) []Signal {
 		return nil
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 	var out []Signal
 
 	for canonID, frictionSig := range frictionByDirector {
@@ -596,8 +608,8 @@ func ScoreDirectorLinks(graph *Graph, allSignals []Signal) []Signal {
 				Severity:       SeverityLow,
 				Confidence:     0.65,
 				Score:          frictionSig.Score,
-				DetectedAt:     today,
-				ValidThrough:   nextYear,
+				DetectedAt:     detectedAt,
+				ValidThrough:   validThrough,
 				Interpretation: fmt.Sprintf("Director %s has friction at %s (%.1f%% approval) and also serves on the board at %s. Friction score implies potential governance risk propagation across this director's portfolio.", node.Name, frictionSig.Ticker, frictionSig.Score*100, ticker),
 				Metadata:       map[string]string{"source_ticker": frictionSig.Ticker, "source_signal": frictionSig.SignalID},
 			})
@@ -659,17 +671,16 @@ func ScoreBoardDecayConcern(ticker string, allSignals []Signal, r Rules) *Signal
 		conf = 0.80
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 	return &Signal{
-		SignalID:       fmt.Sprintf("board_decay_concern_%s_%s", strings.ToLower(ticker), today),
+		SignalID:       fmt.Sprintf("board_decay_concern_%s_%s", strings.ToLower(ticker), detectedAt),
 		Type:           SignalBoardDecayConcern,
 		Ticker:         ticker,
 		Severity:       sev,
 		Confidence:     conf,
 		Score:          float64(n) / float64(minCount), // normalised count
-		DetectedAt:     today,
-		ValidThrough:   nextYear,
+		DetectedAt:     detectedAt,
+		ValidThrough:   validThrough,
 		Interpretation: fmt.Sprintf("%d directors at %s show declining approval trends within the past %d days (threshold: %d). Concurrent board-wide decay suggests systematic governance concerns — proxy-advisor widespread downgrades or compensation misalignment across nominees.", n, ticker, windowDays, minCount),
 		Metadata:       map[string]string{"decaying_director_count": fmt.Sprintf("%d", n)},
 	}
@@ -852,17 +863,16 @@ func ScoreGovernanceHealthWithPenalties(ticker string, allSignals []Signal, wind
 		interp = fmt.Sprintf("Composite governance health score for %s: %.2f/1.00 — healthy governance. Minimal adverse signals within %d days.", ticker, score, windowDays)
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 	return &Signal{
-		SignalID:       fmt.Sprintf("governance_health_%s_%s", strings.ToLower(ticker), today),
+		SignalID:       fmt.Sprintf("governance_health_%s_%s", strings.ToLower(ticker), detectedAt),
 		Type:           SignalGovernanceHealth,
 		Ticker:         ticker,
 		Severity:       sev,
 		Confidence:     conf,
 		Score:          score,
-		DetectedAt:     today,
-		ValidThrough:   nextYear,
+		DetectedAt:     detectedAt,
+		ValidThrough:   validThrough,
 		Interpretation: interp,
 	}
 }
@@ -888,8 +898,7 @@ func ScoreGovernanceHealthTrend(ticker string, currentScore, previousScore, minD
 		return nil // no meaningful change
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 
 	if delta < 0 {
 		// Governance is getting worse.
@@ -901,14 +910,14 @@ func ScoreGovernanceHealthTrend(ticker string, currentScore, previousScore, minD
 			conf = 0.80
 		}
 		return &Signal{
-			SignalID:     fmt.Sprintf("governance_deteriorating_%s_%s", strings.ToLower(ticker), today),
+			SignalID:     fmt.Sprintf("governance_deteriorating_%s_%s", strings.ToLower(ticker), detectedAt),
 			Type:         SignalGovernanceDeterioration,
 			Ticker:       ticker,
 			Severity:     sev,
 			Confidence:   conf,
 			Score:        absDelta,
-			DetectedAt:   today,
-			ValidThrough: nextYear,
+			DetectedAt:   detectedAt,
+			ValidThrough: validThrough,
 			Interpretation: fmt.Sprintf("Governance health index for %s deteriorated by %.2f (%.2f → %.2f). Worsening governance trajectory; monitor for escalating activist risk.", ticker, absDelta, previousScore, currentScore),
 			Metadata: map[string]string{
 				"previous_score": fmt.Sprintf("%.3f", previousScore),
@@ -920,14 +929,14 @@ func ScoreGovernanceHealthTrend(ticker string, currentScore, previousScore, minD
 
 	// Governance is improving.
 	return &Signal{
-		SignalID:     fmt.Sprintf("governance_improving_%s_%s", strings.ToLower(ticker), today),
+		SignalID:     fmt.Sprintf("governance_improving_%s_%s", strings.ToLower(ticker), detectedAt),
 		Type:         SignalGovernanceImproving,
 		Ticker:       ticker,
 		Severity:     SeverityLow,
 		Confidence:   0.68,
 		Score:        delta,
-		DetectedAt:   today,
-		ValidThrough: nextYear,
+		DetectedAt:   detectedAt,
+		ValidThrough: validThrough,
 		Interpretation: fmt.Sprintf("Governance health index for %s improved by %.2f (%.2f → %.2f). Positive governance trajectory; activist pressure may be easing.", ticker, delta, previousScore, currentScore),
 		Metadata: map[string]string{
 			"previous_score": fmt.Sprintf("%.3f", previousScore),
@@ -943,8 +952,7 @@ func ScoreGovernanceHealthTrend(ticker string, currentScore, previousScore, minD
 // restructuring.
 // filingDate is the SEC filing date of the filing where the change was detected.
 func ScoreAuditorChange(ticker, prevAuditor, newAuditor, filingDate string) Signal {
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 	return Signal{
 		SignalID:       fmt.Sprintf("auditor_change_%s", strings.ToLower(ticker)),
 		Type:           SignalAuditorChange,
@@ -953,8 +961,8 @@ func ScoreAuditorChange(ticker, prevAuditor, newAuditor, filingDate string) Sign
 		Confidence:     0.95,
 		Score:          1.0,
 		FilingDate:     filingDate,
-		DetectedAt:     today,
-		ValidThrough:   nextYear,
+		DetectedAt:     detectedAt,
+		ValidThrough:   validThrough,
 		Interpretation: fmt.Sprintf("Auditor changed from %q to %q. Auditor changes may indicate audit quality disputes, fee negotiations, regulatory pressure, or pre-transaction restructuring.", prevAuditor, newAuditor),
 		Metadata:       map[string]string{"prev_auditor": prevAuditor, "new_auditor": newAuditor},
 	}
@@ -968,8 +976,7 @@ func ScoreLeadershipChange(result Item502Result, ticker, filingDate string) []Si
 	if filingDate == "" {
 		filingDate = time.Now().UTC().Format("2006-01-02")
 	}
-	today := time.Now().UTC().Format("2006-01-02")
-	validThrough := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps(filingDate)
 
 	var signals []Signal
 	for _, ev := range result.Departures {
@@ -1002,7 +1009,7 @@ func ScoreLeadershipChange(result Item502Result, ticker, filingDate string) []Si
 			Severity:       sev,
 			Confidence:     conf,
 			Score:          0.6,
-			DetectedAt:     today,
+			DetectedAt:     detectedAt,
 			FilingDate:     filingDate,
 			ValidThrough:   validThrough,
 			Interpretation: interp,
@@ -1026,7 +1033,7 @@ func ScoreLeadershipChange(result Item502Result, ticker, filingDate string) []Si
 				Severity:       SeverityHigh,
 				Confidence:     0.82,
 				Score:          0.75,
-				DetectedAt:     today,
+				DetectedAt:     detectedAt,
 				FilingDate:     filingDate,
 				ValidThrough:   validThrough,
 				Interpretation: cfInterp,
@@ -1056,7 +1063,7 @@ func ScoreLongTenure(graph *Graph, r Rules) []Signal {
 	}
 	today := time.Now().UTC()
 	todayStr := today.Format("2006-01-02")
-	nextYear := today.AddDate(1, 0, 0).Format("2006-01-02")
+	validThrough := today.AddDate(1, 0, 0).Format("2006-01-02")
 
 	var out []Signal
 	for _, node := range graph.Nodes {
@@ -1102,7 +1109,7 @@ func ScoreLongTenure(graph *Graph, r Rules) []Signal {
 				Confidence:   conf,
 				Score:        years / 20.0, // normalised: 20 years = 1.0
 				DetectedAt:   todayStr,
-				ValidThrough: nextYear,
+				ValidThrough: validThrough,
 				Interpretation: fmt.Sprintf(
 					"Director %s has served on the %s board for approximately %d years (since %s). Directors with >%d-year tenure may lack independence per ISS/Glass Lewis standards; proxy advisors increasingly vote against long-tenured directors.",
 					node.Name, ticker, yearsInt, firstDate, threshold,
@@ -1150,8 +1157,7 @@ func ScorePeerGovernanceRank(healthScores map[string]float64, sectorMap map[stri
 		}{ticker, score})
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
-	nextYear := time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	detectedAt, validThrough := signalTimestamps("")
 	var out []Signal
 
 	for sector, peers := range bySector {
@@ -1184,14 +1190,14 @@ func ScorePeerGovernanceRank(healthScores map[string]float64, sectorMap map[stri
 				conf = 0.73
 			}
 			out = append(out, Signal{
-				SignalID:     fmt.Sprintf("governance_peer_underperformer_%s_%s", strings.ToLower(p.ticker), today),
+				SignalID:     fmt.Sprintf("governance_peer_underperformer_%s_%s", strings.ToLower(p.ticker), detectedAt),
 				Type:         SignalGovernancePeerUnderperformer,
 				Ticker:       p.ticker,
 				Severity:     sev,
 				Confidence:   conf,
 				Score:        gap,
-				DetectedAt:   today,
-				ValidThrough: nextYear,
+				DetectedAt:   detectedAt,
+				ValidThrough: validThrough,
 				Interpretation: fmt.Sprintf(
 					"%s governance health score %.2f is %.2f below the %s sector median (%.2f across %d peers). Sector-relative underperformance amplifies activist targeting risk.",
 					p.ticker, p.score, gap, sector, median, len(peers),
@@ -1251,17 +1257,17 @@ func ScorePostFailureActivistPrediction(ticker string, allSignals []Signal, wind
 		score = 0.80
 	}
 
-	today := time.Now().UTC().Format("2006-01-02")
+	detectedAt := time.Now().UTC().Format("2006-01-02")
 	sixMonths := time.Now().UTC().AddDate(0, 6, 0).Format("2006-01-02")
 
 	return &Signal{
-		SignalID:     fmt.Sprintf("post_failure_activist_%s_%s", strings.ToLower(ticker), today),
+		SignalID:     fmt.Sprintf("post_failure_activist_%s_%s", strings.ToLower(ticker), detectedAt),
 		Type:         SignalPostFailureActivistPrediction,
 		Ticker:       ticker,
 		Severity:     sev,
 		Confidence:   conf,
 		Score:        score,
-		DetectedAt:   today,
+		DetectedAt:   detectedAt,
 		ValidThrough: sixMonths,
 		Interpretation: fmt.Sprintf(
 			"%s had a failed structural vote within %d days (governance_entrenchment). Failed declassification or supermajority-blocked proposals are lead indicators for activist 13D activity: ~50%% base rate within 6 months. Distinct from activist_risk (requires concurrent director friction) — this is an early-warning forward prediction on entrenchment alone.",
