@@ -77,15 +77,16 @@ type observation struct {
 
 func main() {
 	var (
-		root      = flag.String("root", envOr("FATBABY_ROOT", "."), "fatbaby project root")
-		interval  = flag.Duration("interval", 10*time.Second, "poll interval")
-		cmdName   = flag.String("cmd", envOr("OBSERVATION_CMD", "claude"), "command to invoke when a new observation arrives")
-		extraArg  = flag.String("extra-args", envOr("OBSERVATION_CMD_ARGS", "--dangerously-skip-permissions"), "space-separated extra args passed to the command before the prompt")
-		rulesPath = flag.String("rules", envOr("ENTITY_GRAPH_RULES", ""), "path to entity-graph-rules.json; included in refinement prompts when non-empty")
-		oneShot   = flag.Bool("one-shot", false, "process at most one observation, then exit")
-		dryRun    = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
-		gateMode  = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
-		primeDir  = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
+		root        = flag.String("root", envOr("FATBABY_ROOT", "."), "fatbaby project root")
+		interval    = flag.Duration("interval", 10*time.Second, "poll interval")
+		cmdName     = flag.String("cmd", envOr("OBSERVATION_CMD", "claude"), "command to invoke when a new observation arrives")
+		extraArg    = flag.String("extra-args", envOr("OBSERVATION_CMD_ARGS", "--dangerously-skip-permissions"), "space-separated extra args passed to the command before the prompt")
+		rulesPath   = flag.String("rules", envOr("ENTITY_GRAPH_RULES", ""), "path to entity-graph-rules.json; included in refinement prompts when non-empty")
+		oneShot     = flag.Bool("one-shot", false, "process at most one observation, then exit")
+		dryRun      = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
+		gateMode    = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
+		primeDir    = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
+		batchWindow = flag.Duration("batch-window", 0, "when >0, collect all new observations within this window and invoke Claude once for the batch (e.g. 60s)")
 	)
 	flag.Parse()
 
@@ -96,6 +97,7 @@ func main() {
 	dir := filepath.Join(*root, "var", "emily-observations")
 	latest := filepath.Join(dir, "latest.json")
 	cursor := filepath.Join(dir, ".last-processed")
+	batchCursor := filepath.Join(dir, ".last-batch-processed")
 
 	// Auto-detect Emily Prime tasks dir if not explicitly configured.
 	// Looks for the sibling EMILY/signals/tasks directory — the standard layout
@@ -122,9 +124,15 @@ func main() {
 	log.Printf("watching %s (interval=%s cmd=%q dry_run=%v)", latest, *interval, *cmdName, *dryRun)
 
 	for {
-		processed, err := pollOnce(latest, cursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode)
-		if err != nil {
-			log.Printf("poll error: %v", err)
+		var processed bool
+		var pollErr error
+		if *batchWindow > 0 {
+			processed, pollErr = pollBatched(dir, batchCursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode, *batchWindow)
+		} else {
+			processed, pollErr = pollOnce(latest, cursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode)
+		}
+		if pollErr != nil {
+			log.Printf("poll error: %v", pollErr)
 		}
 
 		// Poll Emily Prime's tasks directory if configured.
@@ -498,6 +506,159 @@ func buildEntityGraphPrompt(latestPath string, obs observation, rulesPath string
 	sb.WriteString("6. Document the change in CHANGELOG.md with today's date.\n")
 	sb.WriteString(runReportFooter(obs.RequestForClaude, obs.Timestamp))
 
+	return sb.String()
+}
+
+// pollBatched scans the observations directory for all .json files newer than
+// the batch cursor (last-processed filename) and invokes Claude once for the
+// entire batch. Files within batchWindow of each other are treated as one batch.
+// Trivial observations are filtered out by the gate mode before batching.
+// Returns true if at least one non-trivial batch was dispatched.
+func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath, gateMode string, batchWindow time.Duration) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read obs dir: %w", err)
+	}
+
+	lastProcessed := ""
+	if b, err := os.ReadFile(cursorPath); err == nil {
+		lastProcessed = strings.TrimSpace(string(b))
+	}
+
+	// Collect all new observation files in filename order (timestamp-sorted).
+	type candidate struct {
+		name string
+		path string
+		obs  observation
+	}
+	var candidates []candidate
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if lastProcessed != "" && e.Name() <= lastProcessed {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var obs observation
+		if err := json.Unmarshal(data, &obs); err != nil || obs.Timestamp == "" {
+			continue
+		}
+		candidates = append(candidates, candidate{e.Name(), p, obs})
+	}
+	if len(candidates) == 0 {
+		return false, nil
+	}
+
+	// Apply gate: filter trivial observations before batching.
+	var nontrivial []candidate
+	for _, c := range candidates {
+		if gateMode == "nontrivial" && isTrivialObservation(c.obs) {
+			log.Printf("batch gate: skipping trivial %s", c.name)
+		} else {
+			nontrivial = append(nontrivial, c)
+		}
+	}
+	// Always advance the cursor to the last candidate so we don't re-process trivials.
+	newestName := candidates[len(candidates)-1].name
+
+	if len(nontrivial) == 0 {
+		log.Printf("batch: %d new obs, all trivial — skipping invocation, advancing cursor", len(candidates))
+		if err := os.WriteFile(cursorPath, []byte(newestName), 0o644); err != nil {
+			return false, fmt.Errorf("update batch cursor: %w", err)
+		}
+		return true, nil
+	}
+
+	log.Printf("batch: %d new obs (%d nontrivial) — invoking Claude once for the batch", len(candidates), len(nontrivial))
+
+	var obsList []observation
+	var paths []string
+	for _, c := range nontrivial {
+		obsList = append(obsList, c.obs)
+		paths = append(paths, c.path)
+	}
+	prompt := buildBatchedPrompt(obsList, paths, rulesPath, batchWindow)
+
+	if !dryRun {
+		args := splitArgs(extraArgs)
+		args = append(args, prompt)
+		cmd := exec.Command(cmdName, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return false, fmt.Errorf("invoke %s: %w", cmdName, err)
+		}
+	}
+
+	if err := os.WriteFile(cursorPath, []byte(newestName), 0o644); err != nil {
+		return false, fmt.Errorf("update batch cursor: %w", err)
+	}
+	return true, nil
+}
+
+// buildBatchedPrompt builds a single Claude prompt summarising all observations
+// in the batch. Entity-graph observations are handled inline with their details.
+func buildBatchedPrompt(observations []observation, paths []string, rulesPath string, batchWindow time.Duration) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Emily has published %d observations since the last Claude Code run (batch window: %s). Act on all of them in a single pass to minimise token overhead.\n\n", len(observations), batchWindow)
+
+	for i, obs := range observations {
+		fmt.Fprintf(&sb, "---\n## Observation %d of %d — %s\n", i+1, len(observations), obs.Timestamp)
+		if obs.Source != "" {
+			fmt.Fprintf(&sb, "Source: %s | Status: %s | Subject: %s\n", obs.Source, obs.Status, obs.Subject)
+			fmt.Fprintf(&sb, "Filings: %d | Directors: %d | Signals: %d\n", obs.FilingsProcessed, obs.DirectorsFound, obs.SignalsGenerated)
+			if len(obs.Gaps) > 0 {
+				fmt.Fprintf(&sb, "Gaps: %v\n", obs.Gaps)
+			}
+			if len(obs.ParseErrors) > 0 {
+				fmt.Fprintf(&sb, "Parse errors: %d (see %s)\n", len(obs.ParseErrors), paths[i])
+			}
+			if obs.RequestForClaude != "" {
+				fmt.Fprintf(&sb, "Request: %s\n", obs.RequestForClaude)
+			}
+		} else {
+			fmt.Fprintf(&sb, "Severity: %s\nSummary: %s\n", obs.Severity, obs.Summary)
+			if obs.Findings != "" {
+				fmt.Fprintf(&sb, "Findings: %s\n", obs.Findings)
+			}
+			if obs.SuggestedFix != "" {
+				fmt.Fprintf(&sb, "Suggested fix: %s\n", obs.SuggestedFix)
+			}
+		}
+	}
+
+	// Inline rules file once for all entity-graph observations.
+	hasEntityGraph := false
+	for _, obs := range observations {
+		if obs.Source == "entity-graph" || obs.Subject != "" {
+			hasEntityGraph = true
+			break
+		}
+	}
+	if hasEntityGraph && rulesPath != "" {
+		if rulesJSON, err := os.ReadFile(rulesPath); err == nil {
+			fmt.Fprintf(&sb, "\n---\n## Current Signal Rules (%s)\n```json\n%s\n```\n", rulesPath, rulesJSON)
+		}
+	}
+
+	sb.WriteString("\n---\n## Your task (batched)\n")
+	sb.WriteString("Process all observations above in priority order (gaps and parse errors first).\n")
+	sb.WriteString("1. For each observation that requires action: identify root cause, implement fix, run `go test ./...`.\n")
+	sb.WriteString("2. Group related fixes into as few commits as possible.\n")
+	sb.WriteString("3. Document all changes in CHANGELOG.md with today's date.\n")
+
+	// Use the last observation's summary/timestamp for the run report footer.
+	last := observations[len(observations)-1]
+	batchSummary := fmt.Sprintf("batched %d observations ending at %s", len(observations), last.Timestamp)
+	sb.WriteString(runReportFooter(batchSummary, last.Timestamp))
 	return sb.String()
 }
 

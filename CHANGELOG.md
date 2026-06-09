@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-09 — observation-watcher: --batch-window flag for RSI token efficiency
+
+Added `--batch-window duration` flag (env: none; default 0 = disabled). When set to a
+non-zero duration (e.g. `--batch-window=60s`), the watcher switches from single-observation
+mode to directory-scan mode:
+
+- Scans `var/emily-observations/*.json` for all files newer than the `.last-batch-processed`
+  cursor (filename-ordered, same as prime-task cursor).
+- Applies the existing gate filter (trivial observations skipped silently).
+- Invokes Claude Code **once** for the entire batch of nontrivial observations with a
+  consolidated prompt that includes all observations inline.
+- Updates `.last-batch-processed` to the newest processed file regardless of gate result.
+
+**Why:** During active entity-graph runs, 10–15 observations can accumulate per hour.
+Each single-obs invocation pays ~8k tokens of context overhead. A batch of 10 observations
+costs roughly the same overhead once — estimated 50–80% token reduction on busy days.
+
+Single-observation mode (default) is unchanged. The two modes use different cursor files
+so switching back and forth does not cause re-processing.
+
 ## 2026-06-08 — entity-graph: fix spurious director extraction from proposal descriptions (BA-style)
 
 **Root cause**: `reDirectorRow` scans the entire Item 5.07 body, including non-director
