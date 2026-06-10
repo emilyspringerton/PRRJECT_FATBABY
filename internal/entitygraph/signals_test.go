@@ -293,6 +293,24 @@ func TestScoreDirectorVotes_NominationRejection(t *testing.T) {
 	}
 }
 
+func TestScoreDirectorVotes_SpuriousEntityFiltered(t *testing.T) {
+	r := DefaultRules()
+	// Proposal-topic strings misclassified as director names should produce no signals.
+	spurious := []VoteResult{
+		{Name: "Rights Code", ForVotes: 100_000, AgainstVotes: 900_000, AbstainVotes: 0, ApprovalPct: 0.069},
+		{Name: "Written Consent", ForVotes: 300_000, AgainstVotes: 700_000, AbstainVotes: 0, ApprovalPct: 0.314},
+		{Name: "Special Meetings", ForVotes: 330_000, AgainstVotes: 670_000, AbstainVotes: 0, ApprovalPct: 0.337},
+		{Name: "Political Activity", ForVotes: 192_000, AgainstVotes: 808_000, AbstainVotes: 0, ApprovalPct: 0.192},
+		{Name: "Independent Chairman", ForVotes: 350_000, AgainstVotes: 650_000, AbstainVotes: 0, ApprovalPct: 0.350},
+	}
+	sigs := ScoreDirectorVotes(spurious, "BA", "2011-04-25", r)
+	for _, s := range sigs {
+		if s.Type == SignalNominationRejection || s.Type == SignalDirectorFriction {
+			t.Errorf("spurious entity %q produced %s signal; want none", s.Entity, s.Type)
+		}
+	}
+}
+
 func TestScoreProposals_AbstentionSpike(t *testing.T) {
 	r := DefaultRules()
 	proposals := []ProposalResult{

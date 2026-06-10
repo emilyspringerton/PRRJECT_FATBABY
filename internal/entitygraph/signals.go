@@ -245,6 +245,9 @@ func signalTimestamps(filingDate string) (detectedAt, validThrough string) {
 }
 
 func scoreOneDirector(v VoteResult, ticker, filingDate string, r Rules) []Signal {
+	if isSpuriousName(v.Name) {
+		return nil
+	}
 	canon := Canonicalize(v.Name)
 	detectedAt, validThrough := signalTimestamps(filingDate)
 	var out []Signal
