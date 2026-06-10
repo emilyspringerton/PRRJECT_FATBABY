@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — token efficiency: runToolLoop conversation history caching (task-2030592364394918999)
+
+Fourth tic-toc iteration on RSI token efficiency. Implemented conversation history caching in the
+FatBaby emily-agent tool loop.
+
+**Changes:**
+- `cmd/emily-agent/main.go` — `runToolLoop()` now marks the last tool-result block of each turn
+  with `cache_control: {type: "ephemeral"}`. This enables the Anthropic API to cache the entire
+  conversation history through the previous turn, so each subsequent request in the loop only pays
+  fresh for the new turn's content (new assistant tool_call + new tool_result), not the full
+  growing history. Estimated savings per tick: ~2,000–4,500T across a 5–10 turn tick.
+
+**Efficiency analysis (full four-cycle history):**
+- Cycle 1 (7b7d688): system + tool definitions cached → ~35,640T/tick savings
+- Cycle 2 (EMILY 57cfb90): EMILY AnthropicClient prompt caching + cr.Value truncation → ~6,300T/task
+- Cycle 3 (71e73b0): extractLessons strip artifacts + batch-window 60s + symlink fix
+- Cycle 4 (this): conversation history caching in tool loop
+
+**Remaining highest-ROI items (not yet implemented):**
+1. Prime-task batching (N queued tasks → 1 claude invocation, saves N-1 invocation overheads)
+2. Entity-graph rules inline skip when hash unchanged (~320T/dispatch)
+
 ## 2026-06-10 — token efficiency: extractLessons optimisation + observation-watcher batch default (task-4870555018142724568)
 
 Third tic-toc iteration on RSI token efficiency. Implemented the next two highest-ROI improvements.

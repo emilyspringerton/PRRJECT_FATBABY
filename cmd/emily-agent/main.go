@@ -1496,6 +1496,12 @@ func (s *Server) runToolLoop(msgs []map[string]any) (string, []map[string]string
 			toolCalls = append(toolCalls, map[string]string{"tool": name, "result": res})
 			resultBlocks = append(resultBlocks, map[string]any{"type": "tool_result", "tool_use_id": id, "content": res, "is_error": isErr})
 		}
+		// Cache completed turns so each subsequent request only pays fresh for
+		// new content. Without this the full growing message history is resent
+		// uncached; with it, turns 2-N each save ~400-800T of prior context.
+		if len(resultBlocks) > 0 {
+			resultBlocks[len(resultBlocks)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
+		}
 		msgs = append(msgs, map[string]any{"role": "user", "content": resultBlocks})
 	}
 	return "I reached the tool call limit without completing. Try again or simplify the request.", toolCalls
