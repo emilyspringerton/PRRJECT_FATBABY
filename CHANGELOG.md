@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — docs: MJOLNIR integration documentation (task-3146266896637121286)
+
+Authored the EMILY-side MJOLNIR integration documentation in the EMILY repo:
+- `EMILY/docs/MJOLNIR_INTEGRATION.md` — FCM sender design, Apple severity thresholds for push,
+  device token resolution via IDUNA, morning briefing cron spec, codebase seams, Android
+  notification channels (EMILY commit 3341a26)
+- `EMILY/BACKLOG.md` Section 9 — all MJOLNIR backlog items were already completed and committed
+  (push_tokens table, FCM sender, dispatch wiring, Android skeleton, APPLES MANIFEST.json,
+  integration spec, morning briefing) as of 2026-06-09
+- `EMILY/context/mjolnir-context.md` — architectural summary for future Emily sessions
+  explaining the MJOLNIR mobile push channel and current implementation status
+
+All files committed and pushed in EMILY repo. Run report in claude-runs/.
+
 ## 2026-06-09 — observation-watcher: --batch-window flag for RSI token efficiency
 
 Added `--batch-window duration` flag (env: none; default 0 = disabled). When set to a
