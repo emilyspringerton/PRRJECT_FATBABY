@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — token efficiency: extractLessons optimisation + observation-watcher batch default (task-4870555018142724568)
+
+Third tic-toc iteration on RSI token efficiency. Implemented the next two highest-ROI improvements.
+
+**Changes (EMILY repo):**
+- `emily-agent/rsi.go` — `extractLessons()` now returns nil for single-iteration task completions
+  (no multi-iteration dynamics to learn). For multi-iteration tasks, the artifact field is stripped
+  from each iteration before marshaling, reducing LLM input by ~1–4 kT per iteration stored in the
+  history. Estimated savings: 1,000–5,000T per completed multi-iteration task.
+
+**Changes (PRRJECT_FATBABY):**
+- `cmd/observation-watcher/main.go` — `--batch-window` default changed from 0 to 60s: multiple
+  observations that accumulate between polls are now dispatched as a single Claude Code invocation
+  instead of N separate runs. Each avoided invocation saves ~5,000–10,000T in fixed context overhead.
+- `cmd/observation-watcher/main.go` — `pollBatched` now skips symlinks (e.g. `latest.json →
+  2026-…Z.json`). Previously the symlink sorted lexicographically after any timestamped cursor and
+  would be re-processed on every poll, triggering spurious Claude invocations.
+
+**Previous cycles:**
+- Cycle 1 (commit 7b7d688): FatBaby emily-agent prompt caching on tool loop (~35,640T/tick savings)
+- Cycle 2 (EMILY commit 57cfb90): EMILY AnthropicClient prompt caching + cr.Value truncation to ≤120
+  chars (~6,300T/task + ~500T/iter savings)
+
 ## 2026-06-10 — token efficiency RSI report + EMILY AnthropicClient caching (task-2263691656595819891)
 
 Wrote token-spend analysis across the three RSI subsystems and implemented the next-highest-ROI

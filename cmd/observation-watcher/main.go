@@ -86,7 +86,7 @@ func main() {
 		dryRun      = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
 		gateMode    = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
 		primeDir    = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
-		batchWindow = flag.Duration("batch-window", 0, "when >0, collect all new observations within this window and invoke Claude once for the batch (e.g. 60s)")
+		batchWindow = flag.Duration("batch-window", 60*time.Second, "when >0, collect all new observations within this window and invoke Claude once for the batch; set to 0 to process each observation individually")
 	)
 	flag.Parse()
 
@@ -537,6 +537,12 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 	var candidates []candidate
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		// Skip symlinks (e.g. latest.json → timestamped file). The target file is
+		// already processed directly; including the symlink would re-trigger on every
+		// poll because "latest.json" sorts after any "2026…" cursor value.
+		if e.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 		if lastProcessed != "" && e.Name() <= lastProcessed {
