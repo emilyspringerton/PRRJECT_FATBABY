@@ -1,0 +1,16 @@
+{
+  "observation_summary": "Write a report on optimal token use for recursive self-improvement across the full Emily OS system. Analyse current token spend per cycle in emily-agent (cron.go RSI loop), observation-watcher invocations, and prime-task → Claude Code dispatches. Identify the highest-ROI improvements: e.g. prompt compression, caching, batching observations, gating trivial cycles. Produce a prioritised action list with estimated token savings per item. Then implement the top item as a concrete code change, commit it, and post findings as an IDUNA Apple.",
+  "observation_timestamp": "2026-06-10T10:19:01Z",
+  "run_started_at": "2026-06-10T10:19:30Z",
+  "run_completed_at": "2026-06-10T10:23:39Z",
+  "files_changed": [
+    "cmd/emily-agent/main.go",
+    "cmd/emily-agent/tick_test.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Analysed token spend across three RSI subsystems: (1) FatBaby emily-agent runToolLoop sends ~4400T of system+tools on every iteration with no caching; (2) Emily Prime RSI generator includes full prior-artifact history in generation prompts, growing quadratically by iteration; (3) observation-watcher dispatches pay the full runReportFooter overhead per observation. Implemented the highest-ROI fix: Anthropic prompt caching in the FatBaby emily-agent. Added cache_control: ephemeral to the last tool definition in AnthropicDefs() and converted the system field from a bare string to a content-block array (required by the caching API). Added the anthropic-beta: prompt-caching-2024-07-31 header. Updated tick_test.go to unmarshal the system field as []map[string]any. All tests pass. CHANGELOG updated.",
+  "git_commit_hash": "7b7d6881e363345e16bd96a0ba17292da7bff93f",
+  "exit_status": "success",
+  "tokens_used": 95000,
+  "notes": "Three prioritised improvements identified: (1) IMPLEMENTED — Anthropic prompt caching in emily-agent: saves ~35,600T/tick (~81% reduction on system+tools overhead, ~$1.28/hr at $3/MTok and 12 ticks/hr). (2) NEXT — RSI artifact compression in EMILY/emily-agent/rsi.go buildGenerationPrompt(): replace full prior-artifact blobs with analysis+next_focus summaries to eliminate quadratic token growth across iterations (~15K tokens saved per task). (3) FUTURE — Enable observation-watcher batch-window by default for prime-task dispatches to amortise the runReportFooter overhead across multiple observations. IDUNA Apple post attempted below."
+}
