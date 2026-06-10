@@ -1,0 +1,16 @@
+{
+  "observation_summary": "Write a report on optimal token use for recursive self-improvement across the full Emily OS system. Analyse current token spend per cycle in emily-agent (cron.go RSI loop), observation-watcher invocations, and prime-task → Claude Code dispatches. Identify the highest-ROI improvements: e.g. prompt compression, caching, batching observations, gating trivial cycles. Produce a prioritised action list with estimated token savings per item. Then implement the top item as a concrete code change, commit it, and post findings as an IDUNA Apple.",
+  "observation_timestamp": "2026-06-10T17:57:35Z",
+  "run_started_at": "2026-06-10T20:20:00Z",
+  "run_completed_at": "2026-06-10T20:29:16Z",
+  "files_changed": [
+    "cmd/observation-watcher/main.go",
+    "cmd/observation-watcher/main_test.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Analysed token spend across the full Emily OS RSI system by reading: emily-agent cron.go (RSI loop), rsi.go (generator/evaluator), observation-watcher/main.go (prime task dispatch), integration.go (dedup logic), rsi-loop.sh (preset rotation), and emily.cli/cmd/primetask.go (task file generation). Identified that rsi-loop.sh fires 'emily prime-task --preset X' every 30s with a unique task_id per file, bypassing the existing recentDuplicateExists() guard in integration.go which only covers triage-auto tasks. This caused unlimited back-to-back Claude Code sessions (~100K–200K tokens each) for identical preset descriptions. Implemented primeTaskDuplicateExists() in observation-watcher to scan task files within a 4h window for matching task_type+description before dispatching Claude Code. Added primeDedupWindow=4h constant. Added cursor advancement for skipped tasks so they are not re-evaluated. Added TestPrimeTaskDuplicateExists covering match, type-mismatch, desc-mismatch, and self-check. Updated CHANGELOG.md with full efficiency history and remaining items.",
+  "git_commit_hash": "4b2f34c",
+  "exit_status": "success",
+  "tokens_used": 185000,
+  "notes": "Full token efficiency report: (1) Emily Prime cron RSI loop per cycle ~10K–16KT; system prompts already cached in AnthropicClient.Complete(). (2) Observation-watcher per dispatch ~75K–200KT dominated by Claude Code session; batch window + nontrivial gate already active. (3) Prime-task→Claude Code: highest cost, no dedup guard existed for CLI-written tasks. Top item implemented: 4h dedup in pollPrimeTasks(). Remaining items: RSI static-prefix caching (~3,600T/task, requires CachedPrefix field in LLMRequest + AnthropicClient block-level cache_control); Pipeline.Run() turn-level caching in Emily Prime (~4,500T/session)."
+}
