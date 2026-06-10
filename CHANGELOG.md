@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — emily-agent: Anthropic prompt caching for RSI token efficiency (task-5310742279807206135)
+
+Added `cache_control: ephemeral` to the FatBaby emily-agent's Anthropic API requests, enabling
+server-side prompt caching for the system prompt and tool definitions.
+
+**Changes:**
+- `cmd/emily-agent/main.go` — `AnthropicDefs()` marks the last tool definition with
+  `cache_control: {"type": "ephemeral"}`, creating a cache breakpoint covering the entire
+  system-prompt + tool-list prefix. `runToolLoop` now sends `system` as a content-block array
+  (required by the caching API) and adds the `anthropic-beta: prompt-caching-2024-07-31` header.
+- `cmd/emily-agent/tick_test.go` — updated `TestTickHappyPathRepliesOK` to read `system` as an
+  array of content blocks matching the new wire format.
+
+**Token savings:**
+The `emilySystemPrompt` (~2 000 T) + 24 tool definitions (~2 400 T) = ~4 400 T are now cached
+after the first call in any session. With up to 10 tool-loop iterations per `/tick`, 9 re-reads
+cost 10 % instead of 100 % of input-token rate:
+  - Without caching: 10 × 4 400 T = 44 000 T input overhead
+  - With caching:     1 × 4 400 T write + 9 × 440 T reads = 8 360 T
+  - Savings: ~35 640 T per tick (~81 % reduction on the cached prefix)
+
+At $3/MTok and 12 ticks/hour this saves approximately $1.28/hour of system/tool overhead.
+
 ## 2026-06-10 — docs: MJOLNIR integration documentation (task-3146266896637121286)
 
 Authored the EMILY-side MJOLNIR integration documentation in the EMILY repo:

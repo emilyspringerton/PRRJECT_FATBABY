@@ -113,6 +113,13 @@ func (d *ToolDispatcher) AnthropicDefs() []map[string]any {
 		}
 		out = append(out, map[string]any{"name": td.Name, "description": td.Description, "input_schema": map[string]any{"type": td.Parameters.Type, "properties": props, "required": td.Parameters.Required}})
 	}
+	// Mark the last tool with a cache breakpoint so the API caches the entire
+	// system-prompt + tool-list prefix. At ≥10 tool-loop iterations per tick the
+	// repeated re-send of ~4400 tokens is eliminated; cached reads cost 10% of
+	// normal input tokens.
+	if len(out) > 0 {
+		out[len(out)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
+	}
 	return out
 }
 
@@ -1414,11 +1421,21 @@ func (s *Server) runToolLoop(msgs []map[string]any) (string, []map[string]string
 	toolCalls := []map[string]string{}
 	for i := 0; i < s.cfg.MaxToolIters; i++ {
 		s.limiter.Wait()
-		payload := map[string]any{"model": "claude-sonnet-4-6", "max_tokens": 4096, "system": emilySystemPrompt, "tools": s.d.AnthropicDefs(), "messages": msgs}
+		payload := map[string]any{
+			"model":      "claude-sonnet-4-6",
+			"max_tokens": 4096,
+			// Array form required for prompt caching (cache_control on system block).
+			"system": []map[string]any{
+				{"type": "text", "text": emilySystemPrompt, "cache_control": map[string]any{"type": "ephemeral"}},
+			},
+			"tools":    s.d.AnthropicDefs(),
+			"messages": msgs,
+		}
 		b, _ := json.Marshal(payload)
 		req, _ := http.NewRequest(http.MethodPost, s.anthropicURL, bytes.NewReader(b))
 		req.Header.Set("x-api-key", s.cfg.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
+		req.Header.Set("anthropic-beta", "prompt-caching-2024-07-31")
 		req.Header.Set("content-type", "application/json")
 		resp, err := s.client.Do(req)
 		if err != nil {

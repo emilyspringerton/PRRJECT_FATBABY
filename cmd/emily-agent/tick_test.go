@@ -33,16 +33,21 @@ func TestTickRequiresPOST(t *testing.T) {
 }
 
 func TestTickHappyPathRepliesOK(t *testing.T) {
-	var seenSystem string
+	var seenSystemText string
 	var seenMessages []map[string]any
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// system is now sent as an array of content blocks (required for prompt caching).
 		var payload struct {
-			System   string           `json:"system"`
+			System   []map[string]any `json:"system"`
 			Messages []map[string]any `json:"messages"`
 		}
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &payload)
-		seenSystem = payload.System
+		for _, block := range payload.System {
+			if t, ok := block["text"].(string); ok {
+				seenSystemText += t
+			}
+		}
 		seenMessages = payload.Messages
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}`))
@@ -66,8 +71,8 @@ func TestTickHappyPathRepliesOK(t *testing.T) {
 	if resp.Reply != "ok" {
 		t.Errorf("reply = %q, want ok", resp.Reply)
 	}
-	if !strings.Contains(seenSystem, "Emily") {
-		t.Errorf("system prompt missing Emily identity: %s", seenSystem)
+	if !strings.Contains(seenSystemText, "Emily") {
+		t.Errorf("system prompt missing Emily identity: %s", seenSystemText)
 	}
 	if len(seenMessages) != 1 {
 		t.Fatalf("expected 1 seeded message, got %d", len(seenMessages))
