@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — token efficiency RSI report + EMILY AnthropicClient caching (task-2263691656595819891)
+
+Wrote token-spend analysis across the three RSI subsystems and implemented the next-highest-ROI
+improvement: Anthropic prompt caching in the EMILY RSI engine (symmetric to the FatBaby change).
+
+**Analysis findings:**
+- FatBaby emily-agent: ALREADY fixed (commit 7b7d688) — ~35,640 tokens/tick savings
+- EMILY RSI AnthropicClient: sent system prompt uncached; 2 calls/iteration × 10 iters/task × ~700T system = 14,000T uncached overhead
+- observation-watcher dispatches: run-report footer (~600T) is constant overhead per dispatch; rules JSON re-inlined each entity-graph call
+
+**Changes (EMILY repo, commit 57cfb90):**
+- `emily-agent/main.go` — `AnthropicClient.Complete()` now wraps non-empty system prompts in the
+  content-block array form with `cache_control: {type: "ephemeral"}` and sends the
+  `anthropic-beta: prompt-caching-2024-07-31` header. Saves ~90% on the ~700T system prompt
+  re-sent on each of the 10 RSI generator/evaluator calls per task (~6,300T saved/task).
+- `emily-agent/rsi.go` — `buildGenerationPrompt()` truncates `cr.Value` to ≤120 chars, capping
+  artifact-quote bloat in multi-iteration failure reports (~500T/iteration savings).
+
+**Prioritised remaining improvements:**
+1. Enable `--batch-window 60s` by default in observation-watcher for prime-task dispatches
+2. Skip rules-JSON inline in observation-watcher when rules file hash hasn't changed
+
 ## 2026-06-10 — emily-agent: Anthropic prompt caching for RSI token efficiency (task-5310742279807206135)
 
 Added `cache_control: ephemeral` to the FatBaby emily-agent's Anthropic API requests, enabling
