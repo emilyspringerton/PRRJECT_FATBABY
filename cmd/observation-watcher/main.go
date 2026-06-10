@@ -171,9 +171,53 @@ type primeTask struct {
 	Deadline           string   `json:"deadline,omitempty"`
 }
 
+// primeDedupWindow is the minimum interval between Claude Code dispatches for
+// identical prime tasks (same task_type + description). The rsi-loop.sh preset
+// rotation fires the same preset every 30s; without this guard each firing
+// queues an independent Claude Code session (~100K–200K tokens each).
+const primeDedupWindow = 4 * time.Hour
+
+// primeTaskDuplicateExists returns true when another task file in tasksDir
+// (excluding currentFile) has the same task_type and description and was
+// written within lookback. Filenames are timestamp-prefixed so the cutoff
+// is a simple lexicographic comparison after stripping colons.
+func primeTaskDuplicateExists(tasksDir, currentFile, taskType, description string, lookback time.Duration) bool {
+	cutoff := strings.ReplaceAll(
+		time.Now().UTC().Add(-lookback).Format(time.RFC3339), ":", "")
+	entries, err := os.ReadDir(tasksDir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if e.Name() == currentFile {
+			continue // skip self
+		}
+		if e.Name() < cutoff {
+			continue // outside dedup window
+		}
+		data, err := os.ReadFile(filepath.Join(tasksDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var t primeTask
+		if err := json.Unmarshal(data, &t); err != nil {
+			continue
+		}
+		if t.TaskType == taskType && t.Description == description {
+			return true
+		}
+	}
+	return false
+}
+
 // pollPrimeTasks checks the tasks directory for new task files and invokes
 // Claude for each unprocessed one. Tasks are processed in filename order
 // (which is timestamp order since filenames are timestamp-prefixed).
+// Identical tasks (same type + description) within primeDedupWindow are
+// skipped to prevent the rsi-loop.sh preset rotation from flooding Claude.
 func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool) (bool, error) {
 	entries, err := os.ReadDir(tasksDir)
 	if err != nil {
@@ -207,6 +251,17 @@ func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool
 		var task primeTask
 		if err := json.Unmarshal(data, &task); err != nil {
 			log.Printf("prime task parse %s: %v", e.Name(), err)
+			continue
+		}
+
+		// Dedup: skip identical task type+description seen within the dedup window.
+		// Advances the cursor so the file is not re-evaluated on the next poll.
+		if primeTaskDuplicateExists(tasksDir, e.Name(), task.TaskType, task.Description, primeDedupWindow) {
+			log.Printf("prime task dedup: skipping %s (type=%s dispatched within %s)", e.Name(), task.TaskType, primeDedupWindow)
+			if err := os.WriteFile(cursorPath, []byte(e.Name()), 0o644); err != nil {
+				return processed, fmt.Errorf("update prime task cursor (dedup skip): %w", err)
+			}
+			lastProcessed = e.Name()
 			continue
 		}
 

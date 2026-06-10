@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — token efficiency: prime-task dedup gate in observation-watcher (task-2869191005352699116)
+
+Fifth tic-toc iteration on RSI token efficiency. Added a 4-hour dedup window to `pollPrimeTasks()`
+in observation-watcher to prevent the rsi-loop.sh preset rotation from flooding Claude Code with
+identical sessions.
+
+**Root cause**: `emily prime-task --preset rsi-token-report` fires every 30 seconds in rsi-loop.sh.
+Each invocation writes a new task file with a unique `task_id` (random int63), so the existing
+`recentDuplicateExists()` guard in `integration.go` (which only covers triage-issued tasks) never
+triggered. Each unique file was dispatched as a fresh Claude Code session (~100K–200K tokens each).
+
+**Changes:**
+- `cmd/observation-watcher/main.go` — added `primeTaskDuplicateExists()` and a
+  `primeDedupWindow = 4h` gate in `pollPrimeTasks()`. Before invoking Claude, scans the tasks
+  directory for other files within the 4h window that share the same `task_type + description`.
+  If found, advances the cursor (marking the file as seen) but skips the Claude invocation.
+- `cmd/observation-watcher/main_test.go` — added `TestPrimeTaskDuplicateExists` covering
+  match, type-mismatch, desc-mismatch, and self-check cases.
+
+**Token savings:**
+- Before: up to ~120 Claude Code sessions/hour during active rsi-loop.sh runs (30s cadence)
+- After: max 1 session per preset per 4h window = 4 presets × 6 windows/day = 24 sessions/day max
+- Realistic saving: 20–100 avoided sessions/day × 150K tokens = 3M–15M tokens/day
+
+**Full efficiency history (all five cycles):**
+- Cycle 1 (7b7d688): system + tool definitions cached → ~35,640T/tick savings
+- Cycle 2 (EMILY 57cfb90): EMILY AnthropicClient prompt caching + cr.Value truncation → ~6,300T/task
+- Cycle 3 (71e73b0): extractLessons strip artifacts + batch-window 60s + symlink fix
+- Cycle 4 (d84b500): conversation history caching in runToolLoop → ~2,000–4,500T/tick
+- Cycle 5 (this): prime-task dedup gate → 3M–15M tokens/day saved
+
+**Remaining highest-ROI items:**
+1. RSI generator/evaluator static-prefix caching: cache task description+criteria across iterations (~3,600T/task)
+2. Pipeline.Run() turn-level caching in Emily Prime: mark last tool result per turn with cache_control (~4,500T/session)
+
 ## 2026-06-10 — token efficiency: runToolLoop conversation history caching (task-2030592364394918999)
 
 Fourth tic-toc iteration on RSI token efficiency. Implemented conversation history caching in the

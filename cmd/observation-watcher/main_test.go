@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeObs(t *testing.T, path string, obs observation) {
@@ -295,6 +296,42 @@ func TestBuildPromptEntityGraph(t *testing.T) {
 		if !strings.Contains(p, want) {
 			t.Errorf("entity-graph prompt missing %q", want)
 		}
+	}
+}
+
+func writePrimeTask(t *testing.T, dir, filename, taskType, description string) {
+	t.Helper()
+	b, _ := json.Marshal(primeTask{TaskID: "t1", TaskType: taskType, Description: description})
+	if err := os.WriteFile(filepath.Join(dir, filename), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPrimeTaskDuplicateExists(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a recent task with type "rsi_report" and a specific description.
+	recent := "2099-01-01T120000Z-task-111.json"
+	writePrimeTask(t, dir, recent, "rsi_report", "analyse token spend")
+
+	// Same type+description → duplicate detected.
+	if !primeTaskDuplicateExists(dir, "2099-01-01T120005Z-task-222.json", "rsi_report", "analyse token spend", 4*time.Hour) {
+		t.Error("expected duplicate to be detected for matching type+description")
+	}
+
+	// Different description → not a duplicate.
+	if primeTaskDuplicateExists(dir, "2099-01-01T120005Z-task-222.json", "rsi_report", "different task", 4*time.Hour) {
+		t.Error("expected no duplicate for different description")
+	}
+
+	// Different type → not a duplicate.
+	if primeTaskDuplicateExists(dir, "2099-01-01T120005Z-task-222.json", "other_type", "analyse token spend", 4*time.Hour) {
+		t.Error("expected no duplicate for different task_type")
+	}
+
+	// Self-check: a file should not match itself.
+	if primeTaskDuplicateExists(dir, recent, "rsi_report", "analyse token spend", 4*time.Hour) {
+		t.Error("file should not match itself")
 	}
 }
 
