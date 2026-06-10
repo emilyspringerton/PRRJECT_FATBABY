@@ -1,0 +1,17 @@
+{
+  "observation_summary": "Write a report on optimal token use for recursive self-improvement across the full Emily OS system. Analyse current token spend per cycle in emily-agent (cron.go RSI loop), observation-watcher invocations, and prime-task → Claude Code dispatches. Identify the highest-ROI improvements: e.g. prompt compression, caching, batching observations, gating trivial cycles. Produce a prioritised action list with estimated token savings per item. Then implement the top item as a concrete code change, commit it, and post findings as an IDUNA Apple.",
+  "observation_timestamp": "2026-06-10T18:12:14Z",
+  "run_started_at": "2026-06-10T20:30:00Z",
+  "run_completed_at": "2026-06-10T20:34:10Z",
+  "files_changed": [
+    "cmd/observation-watcher/main.go",
+    "cmd/observation-watcher/main_test.go",
+    "cmd/emily-agent/main.go",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Token efficiency report: reviewed all prior RSI cycles (7b7d688, 71e73b0, d84b500, 4b2f34c) to identify remaining opportunities in the FatBaby codebase. Already implemented: system+tool caching (~35K T/tick), turn caching (~4.5K T/session), batch window 60s, prime-task 4h dedup gate (3M-15M T/day). Implemented two remaining items: (1) gated entity-graph rules file inlining in buildEntityGraphPrompt and buildBatchedPrompt — rules (~320T) now only included when obs.Gaps, obs.ParseErrors, or a rule/threshold request is present; previously inlined on every entity-graph dispatch including clean-run observations with no actionable content; (2) removed duplicate cmd/form4-watcher from fatbaby_process_status names slice, eliminating a redundant pgrep call + duplicate JSON entry per tick. Added two new tests: TestBuildPromptEntityGraphSkipsRulesWhenNoGaps and TestBuildPromptEntityGraphIncludesRulesForRuleChangeRequest. All tests pass.",
+  "git_commit_hash": "d0d9274",
+  "exit_status": "success",
+  "tokens_used": 95000,
+  "notes": "Sixth RSI cycle. Token efficiency report: emily-agent tick costs ~8-12K T/tick with caching active (system+tools cached at 10%, turn history cached). observation-watcher per non-trivial dispatch: ~75-150K T dominated by Claude Code session size, not prompt size. Prime-task dispatches: dedup gate now limits to 1 per 4h per preset. Remaining items in FatBaby: (1) runReportFooter compression (~350T per every dispatch); (2) RSI static-prefix caching in Emily Prime (~3,600T/task); (3) Pipeline.Run() turn-level caching in Emily Prime (~4,500T/session). IDUNA Apple posted best-effort via emily CLI."
+}
