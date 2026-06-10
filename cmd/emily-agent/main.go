@@ -403,7 +403,6 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 			"cmd/schd13-watcher", "cmd/form4-watcher", "cmd/observation-watcher",
 			"cmd/dashboard", "cmd/newssite", "cmd/signalapi", "cmd/feedserver",
 			"cmd/jon-agent",
-			"cmd/form4-watcher",
 			"cmd/dividend-watcher",
 			"cmd/buyback-watcher",
 			"cmd/nt-watcher",

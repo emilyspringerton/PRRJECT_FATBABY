@@ -299,6 +299,67 @@ func TestBuildPromptEntityGraph(t *testing.T) {
 	}
 }
 
+func TestBuildPromptEntityGraphSkipsRulesWhenNoGaps(t *testing.T) {
+	// When an entity-graph observation has no gaps, no parse errors, and no
+	// rule-change request, the rules file must NOT be inlined (saves ~320T/dispatch).
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.json")
+	if err := os.WriteFile(rulesPath, []byte(`{"friction_threshold":0.85}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := observation{
+		Timestamp:        "2026-06-10T10:00:00Z",
+		Source:           "entity-graph",
+		Status:           "ok",
+		Subject:          "Entity graph run: 2 filings, 6 directors, 6 signals",
+		FilingsProcessed: 2,
+		DirectorsFound:   6,
+		SignalsGenerated: 6,
+		SignalsByType:    map[string]int{"director_friction": 2, "high_trust_director": 4},
+		// No Gaps, no ParseErrors, no RequestForClaude mentioning rules/thresholds.
+	}
+	p := buildPrompt("var/emily-observations/latest.json", obs, rulesPath)
+
+	if strings.Contains(p, "friction_threshold") {
+		t.Error("rules file must not be inlined when observation has no gaps or parse errors")
+	}
+	if strings.Contains(p, "Current Signal Rules") {
+		t.Error("Current Signal Rules section must be absent when no actionable gaps")
+	}
+	// Core fields must still appear.
+	for _, want := range []string{"entity-graph", "6 signals", "go test"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt missing expected field %q", want)
+		}
+	}
+}
+
+func TestBuildPromptEntityGraphIncludesRulesForRuleChangeRequest(t *testing.T) {
+	// RequestForClaude mentioning "rule" or "threshold" must trigger rules inlining
+	// even without gaps/parse errors.
+	dir := t.TempDir()
+	rulesPath := filepath.Join(dir, "rules.json")
+	if err := os.WriteFile(rulesPath, []byte(`{"friction_threshold":0.85}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	obs := observation{
+		Timestamp:        "2026-06-10T10:00:00Z",
+		Source:           "entity-graph",
+		Status:           "ok",
+		Subject:          "Entity graph run",
+		FilingsProcessed: 1,
+		SignalsGenerated: 2,
+		RequestForClaude: "Should the friction_threshold rule be lowered to 0.80?",
+	}
+	p := buildPrompt("var/emily-observations/latest.json", obs, rulesPath)
+
+	if !strings.Contains(p, "friction_threshold") {
+		t.Error("rules file must be inlined when RequestForClaude mentions rule changes")
+	}
+}
+
 func writePrimeTask(t *testing.T, dir, filename, taskType, description string) {
 	t.Helper()
 	b, _ := json.Marshal(primeTask{TaskID: "t1", TaskType: taskType, Description: description})

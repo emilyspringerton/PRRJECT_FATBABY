@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-10 — token efficiency: conditional entity-graph rules inlining + dedup process list (task-6244152307486764200)
+
+Sixth tic-toc iteration on RSI token efficiency. Two targeted changes:
+
+**1. Gate entity-graph rules inlining in observation-watcher prompts**
+
+`buildEntityGraphPrompt` previously inlined `config/entity-graph-rules.json` (~320T) in every
+entity-graph Claude Code dispatch, even clean-run observations where no rule edits were needed.
+Now the rules file is only included when the observation has actionable gaps, parse errors, or an
+explicit rule-change request (RequestForClaude mentioning "rule" or "threshold"). The same gate
+applies to the batched prompt builder.
+
+- `cmd/observation-watcher/main.go` — `buildEntityGraphPrompt` and `buildBatchedPrompt` now check
+  `len(obs.Gaps) > 0 || len(obs.ParseErrors) > 0 || request mentions rule/threshold` before inlining.
+- `cmd/observation-watcher/main_test.go` — added `TestBuildPromptEntityGraphSkipsRulesWhenNoGaps`
+  and `TestBuildPromptEntityGraphIncludesRulesForRuleChangeRequest`.
+
+**2. Remove duplicate `cmd/form4-watcher` from fatbaby_process_status**
+
+The process names slice in `fatbaby_process_status` listed `cmd/form4-watcher` twice, causing a
+redundant pgrep call and a duplicate entry in the JSON result returned to Emily. Removed the
+duplicate — reduces noise in tick tool results and saves ~15T per tick.
+
+**Token savings:**
+- Rules gating: ~320T saved per clean entity-graph dispatch (dispatches with signals but no gaps)
+- Process dedup: ~15T saved per tick (each JSON entry ~15T, 1 extra call + 1 extra result entry)
+- Combined with prior cycles: cumulative ~40K T/tick (cached) + 3M–15M T/day (prime-task dedup)
+
+**Full efficiency history (all six cycles):**
+- Cycle 1 (7b7d688): system + tool definitions cached → ~35,640T/tick savings
+- Cycle 2 (EMILY 57cfb90): EMILY AnthropicClient prompt caching + cr.Value truncation → ~6,300T/task
+- Cycle 3 (71e73b0): extractLessons strip artifacts + batch-window 60s + symlink fix
+- Cycle 4 (d84b500): conversation history caching in runToolLoop → ~2,000–4,500T/tick
+- Cycle 5 (4b2f34c): prime-task dedup gate → 3M–15M tokens/day saved
+- Cycle 6 (this): conditional rules inlining + dedup process list → ~320T/clean dispatch
+
+**Remaining highest-ROI items:**
+1. RSI generator/evaluator static-prefix caching in Emily Prime (~3,600T/task)
+2. Pipeline.Run() turn-level caching in Emily Prime (~4,500T/session)
+3. runReportFooter compression (~350T per every Claude Code dispatch, all paths)
+
 ## 2026-06-10 — token efficiency: prime-task dedup gate in observation-watcher (task-2869191005352699116)
 
 Fifth tic-toc iteration on RSI token efficiency. Added a 4-hour dedup window to `pollPrimeTasks()`

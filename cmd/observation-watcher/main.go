@@ -545,8 +545,14 @@ func buildEntityGraphPrompt(latestPath string, obs observation, rulesPath string
 		fmt.Fprintf(&sb, "\n## Request from entity-graph\n%s\n", obs.RequestForClaude)
 	}
 
-	// Inline current rules so Claude can propose concrete edits.
-	if rulesPath != "" {
+	// Only inline rules when Claude actually needs to edit them: gaps present,
+	// parse errors detected, or an explicit rule-change request. Clean-run
+	// dispatches (signals fired, no parse failures) don't need the rules
+	// payload, saving ~320T per invocation.
+	needsRules := len(obs.Gaps) > 0 || len(obs.ParseErrors) > 0 ||
+		strings.Contains(strings.ToLower(obs.RequestForClaude), "rule") ||
+		strings.Contains(strings.ToLower(obs.RequestForClaude), "threshold")
+	if needsRules && rulesPath != "" {
 		if rulesJSON, err := os.ReadFile(rulesPath); err == nil {
 			fmt.Fprintf(&sb, "\n## Current Signal Rules (%s)\n```json\n%s\n```\n", rulesPath, rulesJSON)
 		}
@@ -696,15 +702,21 @@ func buildBatchedPrompt(observations []observation, paths []string, rulesPath st
 		}
 	}
 
-	// Inline rules file once for all entity-graph observations.
-	hasEntityGraph := false
+	// Inline rules only when at least one entity-graph observation has actionable
+	// gaps, parse errors, or an explicit rule-change request. Saves ~320T per
+	// batch invocation when all entity-graph entries are clean-run reports.
+	needsRules := false
 	for _, obs := range observations {
 		if obs.Source == "entity-graph" || obs.Subject != "" {
-			hasEntityGraph = true
-			break
+			if len(obs.Gaps) > 0 || len(obs.ParseErrors) > 0 ||
+				strings.Contains(strings.ToLower(obs.RequestForClaude), "rule") ||
+				strings.Contains(strings.ToLower(obs.RequestForClaude), "threshold") {
+				needsRules = true
+				break
+			}
 		}
 	}
-	if hasEntityGraph && rulesPath != "" {
+	if needsRules && rulesPath != "" {
 		if rulesJSON, err := os.ReadFile(rulesPath); err == nil {
 			fmt.Fprintf(&sb, "\n---\n## Current Signal Rules (%s)\n```json\n%s\n```\n", rulesPath, rulesJSON)
 		}
