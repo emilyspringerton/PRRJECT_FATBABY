@@ -88,8 +88,8 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 	return nil
 }
 
-// ForTicker returns all docs for a ticker, newest first. Allocation on each call is intentional
-// (cheap copy; list is short; avoids exposing the internal slice).
+// ForTicker returns all docs for a ticker, newest first by FilingDate.
+// Allocation on each call is intentional (cheap copy; list is short; avoids exposing the internal slice).
 func (idx *Index) ForTicker(ticker string) []*DocSummary {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	idx.mu.RLock()
@@ -97,14 +97,15 @@ func (idx *Index) ForTicker(ticker string) []*DocSummary {
 	cp := make([]*DocSummary, len(src))
 	copy(cp, src)
 	idx.mu.RUnlock()
-	// Reverse to get newest-first (appended oldest-first during scan).
-	for i, j := 0, len(cp)-1; i < j; i, j = i+1, j-1 {
-		cp[i], cp[j] = cp[j], cp[i]
-	}
+	sort.Slice(cp, func(i, j int) bool {
+		return docNewerThan(cp[i], cp[j])
+	})
 	return cp
 }
 
 // AllSummaries returns a snapshot of every doc, newest first.
+// Sort key: FilingDate descending (SEC filing date), falling back to
+// PersistedAt for docs where FilingDate is absent.
 func (idx *Index) AllSummaries() []*DocSummary {
 	idx.mu.RLock()
 	out := make([]*DocSummary, 0, len(idx.byIdentity))
@@ -113,9 +114,26 @@ func (idx *Index) AllSummaries() []*DocSummary {
 	}
 	idx.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].PersistedAt.After(out[j].PersistedAt)
+		return docNewerThan(out[i], out[j])
 	})
 	return out
+}
+
+// docNewerThan returns true when a was filed more recently than b.
+// Compares FilingDate first (lexicographic YYYY-MM-DD comparison is correct),
+// falling back to PersistedAt when FilingDate is absent.
+func docNewerThan(a, b *DocSummary) bool {
+	fa, fb := a.FilingDate, b.FilingDate
+	switch {
+	case fa != "" && fb != "":
+		return fa > fb
+	case fa != "":
+		return true // dated > undated
+	case fb != "":
+		return false
+	default:
+		return a.PersistedAt.After(b.PersistedAt)
+	}
 }
 
 // Recent returns up to n docs across all tickers, newest-first by PersistedAt.

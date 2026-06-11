@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-06-11 — newssite filing date sort fix + obs-watcher rate-limit resilience
+
+**Newssite: sort by FilingDate not ingestion order**  
+Historical filings were appearing as "breaking news" because `docindex.AllSummaries()` and
+`ForTicker()` sorted by `PersistedAt` (ingestion timestamp). Both now sort by `FilingDate`
+descending, falling back to `PersistedAt` for docs without a filing date. Same fix applied
+to `ReadLatest` in `reader.go` (fallback path when docIdx is nil). Two regression tests added:
+`TestRecent_SortsByFilingDateNotIngestionOrder` and `TestForTicker_SortsByFilingDate`.
+
+**obs-watcher: retry/backoff on Claude API rate limits**  
+`invokeWithRetry` wraps all three invocation sites. Captures stderr via `io.MultiWriter`,
+detects rate-limit indicators (429/overloaded/rate_limit), retries up to 3 times with
+30s→90s→270s back-off. Permanent failure posts a warning Apple via `emily observe`.
+
 ## 2026-06-10 — token efficiency: conditional entity-graph rules inlining + dedup process list (task-6244152307486764200)
 
 Sixth tic-toc iteration on RSI token efficiency. Two targeted changes:

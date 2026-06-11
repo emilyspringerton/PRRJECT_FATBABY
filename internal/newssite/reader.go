@@ -3,6 +3,7 @@ package newssite
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -81,6 +82,22 @@ func ReadLatest(ctx context.Context, store eventstore.EventStore, limit int) ([]
 		}
 		cursor = start
 	}
+
+	// Sort by FilingDate descending so historical re-ingested filings don't
+	// appear as breaking news above recent ones.
+	sort.Slice(result, func(i, j int) bool {
+		fi, fj := result[i].FilingDate, result[j].FilingDate
+		switch {
+		case fi != "" && fj != "":
+			return fi > fj
+		case fi != "":
+			return true
+		case fj != "":
+			return false
+		default:
+			return result[i].PersistedAt.After(result[j].PersistedAt)
+		}
+	})
 
 	return result, nil
 }

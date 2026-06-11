@@ -148,6 +148,45 @@ func TestRecent_CapAtCount(t *testing.T) {
 	}
 }
 
+func TestRecent_SortsByFilingDateNotIngestionOrder(t *testing.T) {
+	// A historical filing ingested last should appear AFTER a recent filing,
+	// regardless of ingestion order. This is the "breaking news" regression test.
+	idx := NewIndex()
+	now := time.Now().UTC()
+
+	// Old filing (2019) ingested last (highest sequence = most recently added)
+	_ = idx.Ingest(docRec(3, "AAPL", "old", "2019-01-15", now.Add(-1*time.Hour)))
+	// Recent filing (2025) ingested first
+	_ = idx.Ingest(docRec(1, "AAPL", "recent", "2025-06-01", now.Add(-3*time.Hour)))
+	// Middle filing (2022) ingested second
+	_ = idx.Ingest(docRec(2, "AAPL", "mid", "2022-03-10", now.Add(-2*time.Hour)))
+
+	got := idx.Recent(10)
+	if len(got) != 3 {
+		t.Fatalf("want 3, got %d", len(got))
+	}
+	want := []string{"recent", "mid", "old"} // by FilingDate descending
+	for i, w := range want {
+		if got[i].Identity != w {
+			t.Errorf("index %d: got identity %q, want %q", i, got[i].Identity, w)
+		}
+	}
+}
+
+func TestForTicker_SortsByFilingDate(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	_ = idx.Ingest(docRec(3, "MSFT", "old", "2018-05-01", now))
+	_ = idx.Ingest(docRec(1, "MSFT", "new", "2025-05-01", now.Add(-time.Hour)))
+	got := idx.ForTicker("MSFT")
+	if len(got) != 2 {
+		t.Fatalf("want 2, got %d", len(got))
+	}
+	if got[0].Identity != "new" || got[1].Identity != "old" {
+		t.Errorf("want [new, old], got [%s, %s]", got[0].Identity, got[1].Identity)
+	}
+}
+
 func TestKnownTickers_SortedAlpha(t *testing.T) {
 	idx := NewIndex()
 	base := time.Now().UTC()
