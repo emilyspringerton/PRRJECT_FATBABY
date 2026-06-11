@@ -2,6 +2,7 @@ package newssite
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -162,9 +163,25 @@ func (h *Handler) serveFrontPage(w http.ResponseWriter, r *http.Request) int {
 			entries = append(entries, summaryToEntry(ds))
 		}
 	} else {
+		// docIdx not ready yet. Bound the store scan so a large event store
+		// doesn't cause client-side timeouts (which result in 500s). If the scan
+		// can't complete in 2s, return a self-refreshing loading page.
+		scanCtx, scanCancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer scanCancel()
 		var err error
-		entries, err = ReadLatest(r.Context(), h.store, h.defaultLimit)
+		entries, err = ReadLatest(scanCtx, h.store, h.defaultLimit)
 		if err != nil {
+			if scanCtx.Err() != nil || r.Context().Err() != nil {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Header().Set("Refresh", "5")
+				fmt.Fprintf(w, `<!doctype html><html><head><meta charset=utf-8>
+<meta http-equiv="refresh" content="5"><title>Loading…</title></head>
+<body style="font-family:sans-serif;padding:2em">
+<h2>Newssite is indexing filings…</h2>
+<p>The document index is building. This page will refresh in a few seconds.</p>
+</body></html>`)
+				return http.StatusOK
+			}
 			http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
 			return http.StatusInternalServerError
 		}
