@@ -365,19 +365,19 @@ func buildPrimeTaskPrompt(taskPath string, task primeTask) string {
 
 // runReportFooter returns the mandatory reporting and git-sync section that is
 // appended to every prompt sent to Claude Code. It ensures every autonomous run
-// produces an auditable JSON artifact and a pushed git commit.
+// produces an auditable JSON artifact, a pushed git commit, and an Apple.
 func runReportFooter(summary, observationTimestamp string) string {
 	return `
 ---
-## Mandatory: run report and git sync
+## Mandatory: run report, git sync, and Apple
 
-At the end of this run you MUST complete the following steps — they are not optional.
+At the end of this run you MUST complete ALL of the following steps.
 
 ### 1. Write a run report
 Create the directory claude-runs/ at the repo root if it does not exist, then write
 a JSON file named with the current UTC time to second granularity:
   claude-runs/YYYY-MM-DDTHH:MM:SS.json
-Example: claude-runs/2026-05-31T20:45:32.json
+Example: claude-runs/2026-06-11T20:45:32.json
 (Note: use claude-runs/ NOT var/claude-code/runs/ — var/ is gitignored.)
 
 The file must contain:
@@ -394,23 +394,28 @@ The file must contain:
   "notes":                 "<caveats, skipped steps, follow-up recommendations>"
 }
 
-### 2. Git sync
+### 2. Git sync (required)
 After writing the report, run exactly:
-  git add claude-runs/
+  git add -A
   git commit -m "claude-code: ` + summary + ` [` + observationTimestamp + `]"
   git push
 
 The run report file must be included in this commit.
+If git push fails, retry once. If it still fails, set exit_status to "partial"
+and record the failure in notes. Never silently skip the sync.
 
-### 3. If git push fails
-Retry once. If it still fails, set exit_status to "partial" and record the failure
-in notes. Never silently skip the sync.
+### 3. File a completion Apple (required)
+Post a completion signal to IDUNA using the emily CLI:
+  emily apples post -t completion -repo PRRJECT_FATBABY "` + summary + `"
 
-### 4. File a completion Apple (optional — only if emily CLI is available)
-If the emily CLI is installed and IDUNA is reachable, post a completion signal:
-  emily observe -s success "prime task complete" --findings "run report written to claude-runs/"
-This is best-effort — skip silently if emily is not found or IDUNA is offline.
-The Apple lets rsi-loop.sh detect completion via IDUNA instead of file polling.
+If emily CLI is not installed or IDUNA is offline, record this in notes and
+set exit_status to "partial" — do not silently skip.
+
+### 4. Check BACKLOG.md (required if change addresses a backlog item)
+If this change addresses a known item in EMILY/BACKLOG.md:
+  - Mark it [x] with the Apple ID and today's date
+  - Run: cd /home/fatbaby/EMILY && git add BACKLOG.md && git commit -m "backlog: ✓ <item>" && git push
+  This keeps the golden backlog current and closes the RSI feedback loop.
 `
 }
 
