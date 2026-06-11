@@ -6,6 +6,37 @@ The centrepiece is a **recursive self-improving entity graph** that turns 8-K an
 
 ---
 
+## Environment variables
+
+All variables are optional unless marked **Required**.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | **Required** | — | Anthropic API key; used by emily-agent and observation-watcher |
+| `MODEL` | No | `claude-sonnet-4-6` | LLM model for emily-agent |
+| `VALIDATOR_MODEL` | No | same as `MODEL` | Model used for RSI validation pass |
+| `PORT` | No | `8080` | HTTP server port for emily-agent |
+| `FATBABY_ROOT` | No | `.` | Project root directory; locates `var/` and `config/` |
+| `RATE_LIMIT_RPM` | No | `60` | Requests-per-minute cap for emily-agent HTTP API |
+| `MAX_TOOL_ITERS` | No | `20` | Maximum agentic tool loop iterations per request |
+| `GIT_COMMIT` | No | — | Injected at build time (`-ldflags "-X main.GitCommit=$(git rev-parse --short HEAD)"`); shown in `/status` |
+| `CONVERSATION_DIR` | No | `./emily-memory` | Directory for persisted conversation history |
+| `EMILY_INTEGRATION_DIR` | No | — | Path to Emily Prime signals directory; enables Emily ↔ FatBaby integration |
+| `EMILY_PRIME_TASKS_DIR` | No | `../EMILY/signals/tasks` | Path to Emily Prime directed tasks directory; auto-detected from sibling EMILY repo |
+| `OBSERVATION_CMD` | No | `claude` | Executable invoked by observation-watcher for each new observation |
+| `OBSERVATION_CMD_ARGS` | No | `--dangerously-skip-permissions` | Space-separated extra args passed to `OBSERVATION_CMD` |
+| `OBSERVATION_GATE` | No | `nontrivial` | Gate mode: `none` (always invoke) or `nontrivial` (skip trivial high-trust-only batches) |
+| `ENTITY_GRAPH_RULES` | No | `config/entity-graph-rules.json` | Path to entity-graph rules file; hot-reloaded on each batch |
+| `GITHUB_TOKEN` | No | — | GitHub personal access token (`issues:write` scope); enables GitHub issue creation from observations |
+| `GITHUB_OWNER` | No | — | GitHub org or user for issue creation (required when `GITHUB_TOKEN` is set) |
+| `GITHUB_REPO` | No | — | GitHub repository name for issue creation (required when `GITHUB_TOKEN` is set) |
+| `IDUNA_BASE_URL` | No | — | IDUNA IAM service base URL; enables M2M token acquisition for emily-agent |
+| `IDUNA_AGENT_NAME` | No | — | Agent name for IDUNA M2M authentication |
+| `IDUNA_AGENT_SECRET` | No | — | Agent secret for IDUNA M2M authentication |
+| `IDUNA_JWKS_URL` | No | — | IDUNA JWKS URL for JWT verification in signalapi and dashboard |
+
+---
+
 ## Architecture
 
 ```
@@ -134,80 +165,6 @@ export ANTHROPIC_API_KEY=sk-ant-...
 go run ./cmd/emily-agent
 # → http://localhost:8080
 ```
-
----
-
-## Environment variables
-
-| Variable | Process | Required | Default | Description |
-|---|---|---|---|---|
-| `ANTHROPIC_API_KEY` | emily-agent, processor | **Yes** | — | Anthropic API key for LLM calls |
-| `MODEL` | emily-agent | No | `claude-haiku-4-5-20251001` | Claude model ID |
-| `VALIDATOR_MODEL` | emily-agent | No | `claude-haiku-4-5-20251001` | Validator model ID |
-| `PORT` | emily-agent | No | `8080` | HTTP listen port |
-| `FATBABY_ROOT` | emily-agent | No | `.` | Repo root (used to resolve var/ paths) |
-| `RATE_LIMIT_RPM` | emily-agent, observation-watcher | No | `20` | Anthropic calls per minute |
-| `MAX_TOOL_ITERS` | emily-agent | No | `10` | Max LLM tool-use iterations per request |
-| `GIT_COMMIT` | emily-agent | No | `true` | Set `false` to disable git commits |
-| `CONVERSATION_DIR` | emily-agent | No | `./conversations` | Directory for saved chat history |
-| `EMILY_INTEGRATION_DIR` | emily-agent | No | `../EMILY/signals` | Path to Emily Prime signals directory |
-| `EMILY_PRIME_TASKS_DIR` | observation-watcher | No | auto-detected | Path to Emily Prime `signals/tasks/` directory |
-| `OBSERVATION_CMD` | observation-watcher | No | `claude` | Command to invoke on new observations |
-| `OBSERVATION_CMD_ARGS` | observation-watcher | No | `--dangerously-skip-permissions` | Extra args for observation command |
-| `OBSERVATION_GATE` | observation-watcher | No | `nontrivial` | `none` always invokes; `nontrivial` skips trivial batches |
-| `ENTITY_GRAPH_RULES` | observation-watcher | No | `config/entity-graph-rules.json` | Path to entity-graph rules file |
-| `IDUNA_JWKS_URL` | signalapi, dashboard, newssite, emily-agent | No | — | IDUNA JWKS endpoint; enables JWT auth on all protected edge endpoints |
-| `IDUNA_BASE_URL` | emily-agent | No | — | IDUNA base URL for agent M2M token acquisition (e.g. `https://iam.farthq.internal`) |
-| `IDUNA_AGENT_NAME` | emily-agent | No | — | Agent name registered in IDUNA (e.g. `EMILY`) |
-| `IDUNA_AGENT_SECRET` | emily-agent | No | — | Agent credential (raw secret; never logged) |
-
-A `.env.example` stub:
-
-```bash
-# Required
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Emily agent
-MODEL=claude-haiku-4-5-20251001
-PORT=8080
-FATBABY_ROOT=.
-GIT_COMMIT=true
-
-# Emily Prime integration (optional — auto-detected if ../EMILY/signals/tasks exists)
-# EMILY_INTEGRATION_DIR=../EMILY/signals
-# EMILY_PRIME_TASKS_DIR=../EMILY/signals/tasks
-```
-
----
-
-## Environment variables
-
-All variables are optional unless marked **Required**.
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `ANTHROPIC_API_KEY` | **Required** for AI | — | Anthropic API key; used by emily-agent and observation-watcher |
-| `FATBABY_ROOT` | No | `.` | Project root directory; used by observation-watcher and other processes to locate `var/` and `config/` |
-| `OBSERVATION_CMD` | No | `claude` | Executable invoked by observation-watcher for each new observation |
-| `OBSERVATION_CMD_ARGS` | No | `--dangerously-skip-permissions` | Space-separated extra args passed to `OBSERVATION_CMD` |
-| `OBSERVATION_GATE` | No | `nontrivial` | Gate mode for observation-watcher: `none` (always invoke) or `nontrivial` (skip trivial high-trust-only batches) |
-| `ENTITY_GRAPH_RULES` | No | `config/entity-graph-rules.json` | Path to the entity-graph rules file; loaded on each batch (hot-reload) |
-| `EMILY_INTEGRATION_DIR` | No | — | Path to the Emily Prime signals directory; enables Emily ↔ FatBaby integration |
-| `EMILY_PRIME_TASKS_DIR` | No | `../EMILY/signals/tasks` | Path to Emily Prime directed tasks directory; auto-detected from sibling EMILY repo when unset |
-| `GITHUB_TOKEN` | No | — | GitHub personal access token (issues:write scope); enables GitHub issue creation from observations |
-| `GITHUB_OWNER` | No | — | GitHub org or user for issue creation (required when `GITHUB_TOKEN` is set) |
-| `GITHUB_REPO` | No | — | GitHub repository name for issue creation (required when `GITHUB_TOKEN` is set) |
-| `IDUNA_BASE_URL` | No | — | IDUNA IAM service base URL; enables M2M token acquisition for emily-agent |
-| `IDUNA_AGENT_NAME` | No | — | Agent name for IDUNA M2M authentication |
-| `IDUNA_AGENT_SECRET` | No | — | Agent secret for IDUNA M2M authentication |
-| `IDUNA_JWKS_URL` | No | — | IDUNA JWKS URL for JWT verification in signalapi (`/api/v1/jwks`) |
-| `MODEL` | No | `claude-sonnet-4-6` | LLM model for emily-agent |
-| `VALIDATOR_MODEL` | No | same as `MODEL` | Model used for RSI validation pass |
-| `PORT` | No | `8080` | HTTP server port for emily-agent |
-| `CONVERSATION_DIR` | No | `./emily-memory` | Directory for persisted conversation history |
-| `RATE_LIMIT_RPM` | No | `60` | Requests-per-minute cap for emily-agent HTTP API |
-| `MAX_TOOL_ITERS` | No | `20` | Maximum agentic tool loop iterations per request |
-| `GIT_COMMIT` | No | — | Injected at build time (`-ldflags "-X main.GitCommit=$(git rev-parse --short HEAD)"`); shown in `/status` |
 
 ---
 
