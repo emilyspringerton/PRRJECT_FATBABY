@@ -136,6 +136,15 @@ func main() {
 	)
 	flag.Parse()
 
+	gh := newGithubClient(
+		envOr("GITHUB_TOKEN", ""),
+		envOr("GITHUB_OWNER", ""),
+		envOr("GITHUB_REPO", ""),
+	)
+	if gh != nil {
+		log.Printf("github issues enabled: %s/%s", gh.owner, gh.repo)
+	}
+
 	if *rulesPath == "" {
 		*rulesPath = filepath.Join(*root, "config", "entity-graph-rules.json")
 	}
@@ -173,9 +182,9 @@ func main() {
 		var processed bool
 		var pollErr error
 		if *batchWindow > 0 {
-			processed, pollErr = pollBatched(dir, batchCursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode, *batchWindow)
+			processed, pollErr = pollBatched(dir, batchCursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode, *batchWindow, gh)
 		} else {
-			processed, pollErr = pollOnce(latest, cursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode)
+			processed, pollErr = pollOnce(latest, cursor, *cmdName, *extraArg, *dryRun, *rulesPath, *gateMode, gh)
 		}
 		if pollErr != nil {
 			log.Printf("poll error: %v", pollErr)
@@ -471,7 +480,7 @@ func isTrivialObservation(obs observation) bool {
 // pollOnce checks latest.json and, if its content hash differs from the cursor,
 // invokes the configured command and updates the cursor. Returns true if an
 // observation was processed.
-func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath, gateMode string) (bool, error) {
+func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath, gateMode string, gh *githubClient) (bool, error) {
 	b, err := os.ReadFile(latestPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -505,6 +514,22 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, ru
 			return false, fmt.Errorf("update cursor: %w", err)
 		}
 		return true, nil
+	}
+
+	title := obs.Summary
+	if obs.Subject != "" {
+		title = obs.Subject
+	}
+	if gh != nil && !dryRun {
+		issueURL, issueErr := gh.createIssue(
+			"[Emily observation] "+title,
+			issueBodyForObservation(obs, latestPath),
+		)
+		if issueErr != nil {
+			log.Printf("github issue create failed: %v", issueErr)
+		} else if issueURL != "" {
+			log.Printf("github issue created: %s", issueURL)
+		}
 	}
 
 	prompt := buildPrompt(latestPath, obs, rulesPath)
@@ -620,7 +645,7 @@ func buildEntityGraphPrompt(latestPath string, obs observation, rulesPath string
 // entire batch. Files within batchWindow of each other are treated as one batch.
 // Trivial observations are filtered out by the gate mode before batching.
 // Returns true if at least one non-trivial batch was dispatched.
-func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath, gateMode string, batchWindow time.Duration) (bool, error) {
+func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesPath, gateMode string, batchWindow time.Duration, gh *githubClient) (bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -696,6 +721,21 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 	for _, c := range nontrivial {
 		obsList = append(obsList, c.obs)
 		paths = append(paths, c.path)
+		if gh != nil && !dryRun {
+			title := c.obs.Summary
+			if c.obs.Subject != "" {
+				title = c.obs.Subject
+			}
+			issueURL, issueErr := gh.createIssue(
+				"[Emily observation] "+title,
+				issueBodyForObservation(c.obs, c.path),
+			)
+			if issueErr != nil {
+				log.Printf("github issue create failed: %v", issueErr)
+			} else if issueURL != "" {
+				log.Printf("github issue created: %s", issueURL)
+			}
+		}
 	}
 	prompt := buildBatchedPrompt(obsList, paths, rulesPath, batchWindow)
 
