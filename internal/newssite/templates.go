@@ -563,6 +563,9 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
     {{end}}
   </main>
   <aside>
+    <div style="margin-bottom:1.25rem;">
+      <img src="/api/chart/{{.Symbol}}" alt="{{.Symbol}} 3-month price chart" style="width:100%;max-width:400px;height:auto;display:block;border:1px solid #e5e7eb;border-radius:4px;" loading="lazy">
+    </div>
     <div class="fact-box" style="margin-bottom:1.25rem;">
       <h4>Fact Box</h4><dl>
         <dt>Total signals</dt><dd>{{.Facts.TotalSignals}}</dd>

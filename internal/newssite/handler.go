@@ -16,6 +16,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
+	"github.com/example/prrject-fatbaby/internal/newssite/chart"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
@@ -125,6 +126,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveAPITickers(w, r)
 	case strings.HasPrefix(path, "/doc/"):
 		status = h.serveDoc(w, r)
+	case strings.HasPrefix(path, "/api/chart/"):
+		sym := catalog.Normalize(strings.TrimPrefix(path, "/api/chart/"))
+		status = h.serveChart(w, r, sym)
 	case strings.HasPrefix(path, "/ticker/") && strings.HasSuffix(path, "/feed.xml"):
 		sym := strings.TrimSuffix(strings.TrimPrefix(path, "/ticker/"), "/feed.xml")
 		status = h.serveTickerRSS(w, r, sym)
@@ -769,4 +773,22 @@ func (h *Handler) servePostCommentary(w http.ResponseWriter, r *http.Request) in
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"status": "created", "id": art.ID})
 	return http.StatusCreated
+}
+
+// serveChart returns a 3-month SVG price sparkline for the given ticker.
+// Responds with SVG content-type so it can be embedded as <img src="/api/chart/AAPL">.
+func (h *Handler) serveChart(w http.ResponseWriter, r *http.Request, sym string) int {
+	if sym == "" {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+	svg := chart.SVGCached(sym)
+	if svg == "" {
+		// No data — return a transparent 1×1 SVG placeholder.
+		svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	fmt.Fprint(w, svg)
+	return http.StatusOK
 }
