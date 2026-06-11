@@ -10,11 +10,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -22,6 +24,50 @@ import (
 	"strings"
 	"time"
 )
+
+// invokeWithRetry runs cmdName with args and retries if the output indicates a
+// Claude API rate-limit or overload error. Retries up to 3 times with
+// exponential back-off (30s → 90s → 270s). stderr is streamed live AND
+// captured so rate-limit detection does not require disabling stderr output.
+// After exhausting retries it fires a best-effort emily observe warning Apple.
+func invokeWithRetry(cmdName string, args []string) error {
+	const maxRetries = 3
+	const retryBase = 30 * time.Second
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := retryBase * time.Duration(attempt)
+			log.Printf("invoke retry %d/%d in %s (rate limit)", attempt, maxRetries, delay)
+			time.Sleep(delay)
+		}
+		var buf bytes.Buffer
+		cmd := exec.Command(cmdName, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+		if err := cmd.Run(); err != nil {
+			lastErr = err
+			if isRateLimitOutput(buf.String()) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	log.Printf("invoke: permanent failure after %d retries: %v", maxRetries, lastErr)
+	_ = exec.Command("emily", "observe", "-s", "warning",
+		"obs-watcher: claude invoke failed after retries",
+		"--findings", lastErr.Error()).Run()
+	return fmt.Errorf("invoke failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func isRateLimitOutput(s string) bool {
+	lower := strings.ToLower(s)
+	return strings.Contains(lower, "rate limit") ||
+		strings.Contains(lower, "rate_limit") ||
+		strings.Contains(lower, "429") ||
+		strings.Contains(lower, "overloaded") ||
+		strings.Contains(lower, "too many requests")
+}
 
 // resolveCmd finds the absolute path of a command. If cmdName contains a
 // path separator it is returned unchanged. Otherwise exec.LookPath is tried
@@ -271,10 +317,7 @@ func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool
 		if !dryRun {
 			args := splitArgs(extraArgs)
 			args = append(args, prompt)
-			cmd := exec.Command(cmdName, args...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+			if err := invokeWithRetry(cmdName, args); err != nil {
 				log.Printf("prime task invoke %s failed: %v", cmdName, err)
 				continue
 			}
@@ -464,10 +507,7 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, ru
 	if !dryRun {
 		args := splitArgs(extraArgs)
 		args = append(args, prompt)
-		cmd := exec.Command(cmdName, args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err := invokeWithRetry(cmdName, args); err != nil {
 			return false, fmt.Errorf("invoke %s: %w", cmdName, err)
 		}
 	}
@@ -657,10 +697,7 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 	if !dryRun {
 		args := splitArgs(extraArgs)
 		args = append(args, prompt)
-		cmd := exec.Command(cmdName, args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err := invokeWithRetry(cmdName, args); err != nil {
 			return false, fmt.Errorf("invoke %s: %w", cmdName, err)
 		}
 	}
