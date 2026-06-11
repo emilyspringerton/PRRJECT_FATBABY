@@ -113,10 +113,11 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		return cfg.cursor
 	}
 
-	// Build a filing-date index from all filing_discovered events so we can
-	// recover the SEC filing date for source documents that pre-date the
-	// filing_date field in source_document_persisted payloads.
-	filingDates := buildFilingDateIndex(ctx, store, logger)
+	// Build indexes from all filing_discovered events so we can:
+	// 1. Recover the SEC filing date for source documents that pre-date FilingDate.
+	// 2. Detect the form type (8-K vs other) for docs where form="" source_type="press_release"
+	//    due to a historical processor bug (legacy docs persisted before the form_type→form fix).
+	filingDates, filingForms := buildFilingIndexes(ctx, store, logger)
 
 	// Compact nodes.ndjson before loading to remove accumulated duplicates.
 	if err := entitygraph.CompactNodes(cfg.graphDir); err != nil {
@@ -181,15 +182,17 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			logger.Printf("unmarshal source_document seq=%d err=%v", r.Sequence, err)
 			continue
 		}
-		// Accept documents labelled as 8-K via any of three signals:
+		// Accept documents labelled as 8-K via any of four signals:
 		// 1. doc.Form set correctly by the processor (preferred, going forward)
 		// 2. doc.SourceType == "sec_8k" (set by processor when form_type is populated)
-		// 3. URL contains "8-k" (fallback for historical docs persisted before the
-		//    form_type → form fix — all those docs have form="" source_type="press_release"
-		//    even though they are genuine 8-K filings)
+		// 3. URL contains "8-k" (rarely set for EDGAR docs — kept for completeness)
+		// 4. filing_discovered event for this identity has EffectiveForm() == "8-K"
+		//    (recovers 1104+ historical docs where processor emitted form="" source_type="press_release"
+		//    due to a legacy bug before the form_type→form fix)
 		is8K := doc.Form == "8-K" ||
 			doc.SourceType == "sec_8k" ||
-			strings.Contains(strings.ToUpper(doc.DocumentURL), "8-K")
+			strings.Contains(strings.ToUpper(doc.DocumentURL), "8-K") ||
+			filingForms[doc.Identity] == "8-K"
 		if !is8K {
 			continue
 		}
@@ -621,12 +624,14 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	return newCursor
 }
 
-// buildFilingDateIndex scans all filing_discovered events in the store and
-// returns a map from filing identity (CIK:ACCESSION) to SEC filing date.
-// This is used to recover the correct filing date for source_document_persisted
-// records that pre-date the FilingDate field.
-func buildFilingDateIndex(ctx context.Context, store eventstore.EventStore, logger *log.Logger) map[string]string {
-	index := make(map[string]string)
+// buildFilingIndexes scans all filing_discovered events in the store and returns
+// two maps keyed by filing identity (CIK:ACCESSION):
+//   - dates: identity → SEC filing date (for recovering FilingDate on old docs)
+//   - forms: identity → effective form type (for detecting 8-K on legacy docs
+//     where form="" source_type="press_release" due to a historical processor bug)
+func buildFilingIndexes(ctx context.Context, store eventstore.EventStore, logger *log.Logger) (dates map[string]string, forms map[string]string) {
+	dates = make(map[string]string)
+	forms = make(map[string]string)
 	from := uint64(1)
 	for {
 		recs, err := store.ReadFrom(ctx, from, 512)
@@ -641,18 +646,25 @@ func buildFilingDateIndex(ctx context.Context, store eventstore.EventStore, logg
 			if err := json.Unmarshal(r.Event.Data, &ev); err != nil {
 				continue
 			}
-			if ev.FilingDate == "" || ev.CIK == "" || ev.AccessionNumber == "" {
+			if ev.CIK == "" || ev.AccessionNumber == "" {
 				continue
 			}
 			id := secwatch.FilingIdentity(ev.CIK, ev.AccessionNumber)
-			if _, exists := index[id]; !exists {
-				index[id] = ev.FilingDate
+			if ev.FilingDate != "" {
+				if _, exists := dates[id]; !exists {
+					dates[id] = ev.FilingDate
+				}
+			}
+			if form := ev.EffectiveForm(); form != "" {
+				if _, exists := forms[id]; !exists {
+					forms[id] = form
+				}
 			}
 		}
 		from = recs[len(recs)-1].Sequence + 1
 	}
-	logger.Printf("filing_date_index loaded entries=%d", len(index))
-	return index
+	logger.Printf("filing_indexes loaded entries=%d", len(dates))
+	return dates, forms
 }
 
 // collectTickers returns the set of unique tickers present in a signal slice.
