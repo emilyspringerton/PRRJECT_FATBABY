@@ -283,31 +283,20 @@ const sharedFragments = `
 <script>(function(){
   var input = document.getElementById('q');
   if (!input) return;
-  function tickerSet() {
-    var s = new Set();
-    document.querySelectorAll('#ticker-list option').forEach(function(o){ s.add(o.value.toUpperCase()); });
-    return s;
+  function navigate(val) {
+    if (!val) return;
+    window.location.href = '/ticker/' + encodeURIComponent(val.trim().toUpperCase());
   }
-  function navigateIfMatch(val) {
-    if (!val) return false;
-    if (tickerSet().has(val)) {
-      window.location.href = '/ticker/' + encodeURIComponent(val);
-      return true;
-    }
-    return false;
-  }
-  // 'input' fires immediately on datalist click-selection and arrow+Enter —
-  // more reliable than 'change' which waits for focus loss.
-  input.addEventListener('input', function() {
-    navigateIfMatch(this.value.trim().toUpperCase());
-  });
-  // Form submit: navigate directly to ticker page when value is an exact match,
-  // bypassing the /search redirect step for the common "type + Enter/Go" case.
+  // Auto-navigate on datalist click-selection (fires on any input change).
+  input.addEventListener('input', function() { navigate(this.value); });
+  // Also catch 'change' for browsers that don't fire 'input' on datalist pick.
+  input.addEventListener('change', function() { navigate(this.value); });
+  // Form submit always goes to /ticker/{q} — no /search intermediate step.
   var form = input.closest('form');
   if (form) {
     form.addEventListener('submit', function(e) {
-      var val = input.value.trim().toUpperCase();
-      if (navigateIfMatch(val)) { e.preventDefault(); }
+      e.preventDefault();
+      navigate(input.value);
     });
   }
 }());</script>
