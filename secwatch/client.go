@@ -172,7 +172,9 @@ func (c *Client) doOnce(ctx context.Context, reqURL string) ([]byte, int, error)
 	}
 	defer resp.Body.Close()
 
-	const maxBodyBytes = 64 << 20 // 64 MB; large-filer submissions can exceed 32 MB
+	// Major-filer primary submissions files (BAC, JPM, C, GS, MS) can exceed 64MB.
+	// 256 MB covers all known EDGAR submissions files; streaming parse is a future TODO.
+	const maxBodyBytes = 256 << 20 // 256 MB
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		return nil, resp.StatusCode, err
