@@ -26,8 +26,11 @@ import (
 	"syscall"
 	"time"
 
+	"go.mongodb.org/mongo-driver/mongo"
+
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
+	"github.com/example/prrject-fatbaby/internal/mongowriter"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 	"github.com/example/prrject-fatbaby/secwatch"
 )
@@ -43,6 +46,8 @@ func main() {
 	batchSize := flag.Int("batch-size", 256, "max events to read per poll")
 	cursorPath := flag.String("cursor", filepath.Join("var", "entity-graph", ".cursor"), "file storing last-processed sequence number")
 	oneShot := flag.Bool("one-shot", false, "process one batch and exit (useful for cron or Emily's one-shot runner)")
+	mongoURL := flag.String("mongo-url", os.Getenv("MONGODB_URL"), "MongoDB connection string (default: $MONGODB_URL); empty = no MongoDB write")
+	mongoDB := flag.String("mongo-db", envOr("MONGODB_DB", "fatbaby"), "MongoDB database name")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "entity-graph ", log.LstdFlags|log.LUTC)
@@ -60,7 +65,20 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	logger.Printf("starting poll_interval=%s store=%s graph_dir=%s one_shot=%v", *pollInterval, *storeRoot, *graphDir, *oneShot)
+	// Optional MongoDB write (S20-04). Nil client = graceful no-op.
+	var mongoClient *mongo.Client
+	if *mongoURL != "" {
+		mc, err := mongowriter.Connect(ctx, *mongoURL)
+		if err != nil {
+			logger.Printf("WARNING: MongoDB connect failed (%v); continuing without MongoDB write", err)
+		} else {
+			mongoClient = mc
+			defer mongoClient.Disconnect(ctx) //nolint:errcheck
+			logger.Printf("MongoDB connected db=%s", *mongoDB)
+		}
+	}
+
+	logger.Printf("starting poll_interval=%s store=%s graph_dir=%s one_shot=%v mongo=%v", *pollInterval, *storeRoot, *graphDir, *oneShot, mongoClient != nil)
 
 	cursor := loadCursor(*cursorPath, logger)
 
@@ -74,6 +92,8 @@ func main() {
 			cursorPath:   *cursorPath,
 			batchSize:    *batchSize,
 			cursor:       cursor,
+			mongoClient:  mongoClient,
+			mongoDB:      *mongoDB,
 		})
 
 		if *oneShot {
@@ -99,6 +119,8 @@ type runConfig struct {
 	cursorPath   string
 	batchSize    int
 	cursor       uint64
+	mongoClient  *mongo.Client
+	mongoDB      string
 }
 
 func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logger, cfg runConfig) uint64 {
@@ -610,6 +632,11 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 				logger.Printf("write signals err=%v", err)
 			}
 		}
+		if cfg.mongoClient != nil {
+			if err := mongowriter.WriteEntities(ctx, cfg.mongoClient, cfg.mongoDB, graph, allSignals, logger); err != nil {
+				logger.Printf("mongowriter err=%v", err)
+			}
+		}
 		logger.Printf("batch complete processed=%d directors=%d signals=%d parse_errors=%d", processed, len(graph.Nodes), len(allSignals), len(parseErrors))
 
 		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes), totalProposals, accuracyReports)
@@ -732,4 +759,11 @@ func saveCursor(path string, seq uint64, logger *log.Logger) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		logger.Printf("cursor write err=%v", err)
 	}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
