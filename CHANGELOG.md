@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-12
+- feat(s20-02): MySQL projector — cmd/projector tails secwatch eventstore, projects signal_generated events into governance_signals + entity_timeline tables; migrations/mysql/ with 4 SQL files; go-sql-driver/mysql dependency added; feedserver/session.go vet fix
 - docs(s20): MySQL read model schema + MongoDB entity schema specs for Ask Emily queryability layer (S20-01, S20-03)
 - GTM Phase 1: IP rate limiting (10 queries/day) + paywall page for free tier on newssite ticker/search/doc pages --no-apple
 

@@ -124,7 +124,7 @@ func (s *Session) sendError(code, msg string) error {
 	b, _ := json.Marshal(map[string]any{"code": code, "message": msg})
 	_ = WriteFrame(s.cfg.Conn, TypeError, b)
 	_ = s.cfg.Conn.Close()
-	return fmt.Errorf(msg)
+	return fmt.Errorf("%s", msg)
 }
 func (s *Session) tailLoop() {
 	defer s.wg.Done()

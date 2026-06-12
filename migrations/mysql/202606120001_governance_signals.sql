@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS governance_signals (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    ticker          VARCHAR(20)     NOT NULL,
+    event_type      VARCHAR(64)     NOT NULL COMMENT 'auditor_change|director_nomination|eps_surprise|activist_13d|proxy_vote|...',
+    filing_id       VARCHAR(128)    NOT NULL COMMENT 'EDGAR accession number or PR source ID',
+    entity_name     VARCHAR(255)    NOT NULL DEFAULT '' COMMENT 'director/auditor/activist name if applicable',
+    signal_score    FLOAT           NOT NULL DEFAULT 0 COMMENT 'strategic relevance 0.0–1.0',
+    headline        VARCHAR(512)    NOT NULL DEFAULT '',
+    raw_json        JSON            NULL COMMENT 'full signal payload for Ask Emily context',
+    filing_date     DATE            NOT NULL,
+    ingested_at     TIMESTAMP(6)    NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    eventstore_seq  BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'source event sequence number — dedup key',
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_seq (eventstore_seq),
+    INDEX idx_ticker_date (ticker, filing_date DESC),
+    INDEX idx_ticker_type (ticker, event_type),
+    INDEX idx_event_type (event_type),
+    INDEX idx_filing_date (filing_date DESC),
+    INDEX idx_signal_score (signal_score DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
