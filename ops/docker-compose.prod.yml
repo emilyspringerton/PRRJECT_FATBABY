@@ -1,0 +1,65 @@
+version: '3.9'
+
+# Production compose for FatBaby pipeline + dependencies.
+# Run: docker compose -f ops/docker-compose.prod.yml up -d
+#
+# This file handles ONLY:
+#   - MySQL 8.4 (projector read model)
+#   - MongoDB 7 (entity graph)
+#   - Nginx (reverse proxy)
+#
+# The Go binaries run as systemd services (see ops/systemd/).
+# Mount the same var/ dir into the container if you want to run Go inside Docker.
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE:      fatbaby
+      MYSQL_USER:          fatbaby
+      MYSQL_PASSWORD:      "${MYSQL_PASSWORD}"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "${MONGO_USER}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGO_PASSWORD}"
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+      - /etc/ssl:/etc/ssl:ro
+      - nginx_cache:/var/cache/nginx
+    depends_on: []
+    network_mode: host  # gives nginx access to Go services on 127.0.0.1
+
+volumes:
+  mysql_data:
+  mongo_data:
+  nginx_cache:
