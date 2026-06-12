@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-12
+- docs(s20): MySQL read model schema + MongoDB entity schema specs for Ask Emily queryability layer (S20-01, S20-03)
 - GTM Phase 1: IP rate limiting (10 queries/day) + paywall page for free tier on newssite ticker/search/doc pages --no-apple
 
 - GTM funnel spec written: Ask Emily Free + Emily+ subscription + Community Editorial + Merkle Query API at docs/GTM_FUNNEL.md --no-apple
