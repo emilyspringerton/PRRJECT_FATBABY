@@ -378,11 +378,18 @@ func buildPrimeTaskPrompt(taskPath string, task primeTask) string {
 func runReportFooter(summary, observationTimestamp string) string {
 	return `
 ---
-## Mandatory: run report, git sync, and Apple
+## Mandatory: run report, CHANGELOG, git sync, and Apple
 
 At the end of this run you MUST complete ALL of the following steps.
 
-### 1. Write a run report
+### 1. Update CHANGELOG.md (required for any code change)
+If you changed any source file, append a dated entry to CHANGELOG.md at the repo root:
+  ## YYYY-MM-DD
+  - <plain-English description of what changed and why>
+Do this BEFORE the git commit so the entry is included in the same commit as the code change.
+If no source files were changed (read-only or analysis run), skip this step.
+
+### 2. Write a run report
 Create the directory claude-runs/ at the repo root if it does not exist, then write
 a JSON file named with the current UTC time to second granularity:
   claude-runs/YYYY-MM-DDTHH:MM:SS.json
@@ -403,7 +410,7 @@ The file must contain:
   "notes":                 "<caveats, skipped steps, follow-up recommendations>"
 }
 
-### 2. Git sync (required)
+### 3. Git sync (required)
 After writing the report, run exactly:
   git add -A
   git commit -m "claude-code: ` + summary + ` [` + observationTimestamp + `]"
@@ -413,14 +420,14 @@ The run report file must be included in this commit.
 If git push fails, retry once. If it still fails, set exit_status to "partial"
 and record the failure in notes. Never silently skip the sync.
 
-### 3. File a completion Apple (required)
+### 4. File a completion Apple (required)
 Post a completion signal to IDUNA using the emily CLI:
   emily apples post -t completion -repo PRRJECT_FATBABY "` + summary + `"
 
 If emily CLI is not installed or IDUNA is offline, record this in notes and
 set exit_status to "partial" — do not silently skip.
 
-### 4. Check BACKLOG.md (required if change addresses a backlog item)
+### 5. Check BACKLOG.md (required if change addresses a backlog item)
 If this change addresses a known item in EMILY/BACKLOG.md:
   - Mark it [x] with the Apple ID and today's date
   - Run: cd /home/fatbaby/EMILY && git add BACKLOG.md && git commit -m "backlog: ✓ <item>" && git push
