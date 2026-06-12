@@ -2,12 +2,15 @@ package apiserver
 
 import (
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
@@ -29,6 +32,13 @@ type ServerConfig struct {
 	// API keys. Callers with an IDUNA JWT and no API key are admitted if the
 	// token carries the "fatbaby.read" permission.
 	IDUNAVerifier *idunaauth.Verifier
+	// MySQL is an optional *sql.DB for the CQRS read model (governance_signals, eps_results).
+	// When nil, /v1/governance-signals and /v1/eps/* return 503.
+	MySQL *sql.DB
+	// Mongo is an optional *mongo.Client for the entity graph read model.
+	// When nil, /v1/entities/* returns 503.
+	Mongo   *mongo.Client
+	MongoDB string // database name; defaults to "fatbaby"
 }
 
 type server struct {
@@ -47,6 +57,9 @@ func New(cfg ServerConfig) *http.Server {
 	if cfg.MaxLimit <= 0 {
 		cfg.MaxLimit = 100
 	}
+	if cfg.MongoDB == "" {
+		cfg.MongoDB = "fatbaby"
+	}
 	s := &server{cfg: cfg, started: time.Now().UTC()}
 	if cfg.Logger != nil && len(cfg.APIKeys) == 0 && cfg.IDUNAVerifier == nil {
 		cfg.Logger.Printf("WARNING: signal API running without authentication")
@@ -56,6 +69,10 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/signals", s.withMiddleware(s.handleSummary))
 	mux.HandleFunc("/v1/signals/", s.withMiddleware(s.dispatchSignals))
 	mux.HandleFunc("/v1/earnings-calendar", s.withMiddleware(s.handleEarningsCalendar))
+	// CQRS read model endpoints (S20-05).
+	mux.HandleFunc("/v1/governance-signals", s.withMiddleware(s.handleGovernanceSignals))
+	mux.HandleFunc("/v1/eps/{ticker}", s.withMiddleware(s.handleEPS))
+	mux.HandleFunc("/v1/entities/{ticker}", s.withMiddleware(s.handleEntity))
 	return &http.Server{Addr: cfg.Addr, Handler: mux, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
 }
 

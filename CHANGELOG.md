@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-06-12
+- docs(s20-06): docs/local-dev-setup.md — MySQL + MongoDB local dev runbook (Docker, env vars, reset/reseed, docker-compose, troubleshooting)
+- feat(s20-05): signalapi CQRS query endpoints — GET /v1/governance-signals (MySQL, filter by ticker/type/since/until/limit), /v1/eps/{ticker}, /v1/entities/{ticker} (MongoDB); MYSQL_URL + MONGODB_URL env activation; graceful 503 when DB not configured
 - feat(s20-04): MongoDB entity writer — internal/mongowriter writes flattened EntityDocument per ticker to MongoDB `entities` collection after each entity-graph batch; --mongo-url flag on entity-graph; graceful no-op when MONGODB_URL unset; go.mongodb.org/mongo-driver added
 - feat(s20-02): MySQL projector — cmd/projector tails secwatch eventstore, projects signal_generated events into governance_signals + entity_timeline tables; migrations/mysql/ with 4 SQL files; go-sql-driver/mysql dependency added; feedserver/session.go vet fix
 - docs(s20): MySQL read model schema + MongoDB entity schema specs for Ask Emily queryability layer (S20-01, S20-03)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"log"
 	"net/http"
@@ -10,6 +11,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/apiserver"
@@ -61,6 +66,35 @@ func main() {
 			logger.Printf("IDUNA JWT auth enabled jwks_url=%s", jwksURL)
 		}
 	}
+	// Optional MySQL read model — activated when MYSQL_URL is set.
+	if mysqlURL := os.Getenv("MYSQL_URL"); mysqlURL != "" {
+		db, err := sql.Open("mysql", mysqlURL+"?parseTime=true")
+		if err != nil {
+			logger.Printf("WARNING: MySQL open failed (%v); governance-signals + eps endpoints disabled", err)
+		} else if err := db.PingContext(ctx); err != nil {
+			logger.Printf("WARNING: MySQL ping failed (%v); governance-signals + eps endpoints disabled", err)
+			db.Close()
+		} else {
+			cfg.MySQL = db
+			defer db.Close()
+			logger.Printf("MySQL connected: governance-signals + eps endpoints enabled")
+		}
+	}
+	// Optional MongoDB entity graph — activated when MONGODB_URL is set.
+	if mongoURL := os.Getenv("MONGODB_URL"); mongoURL != "" {
+		mc, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURL))
+		if err != nil {
+			logger.Printf("WARNING: MongoDB connect failed (%v); entities endpoint disabled", err)
+		} else if err := mc.Ping(ctx, nil); err != nil {
+			logger.Printf("WARNING: MongoDB ping failed (%v); entities endpoint disabled", err)
+			mc.Disconnect(ctx) //nolint:errcheck
+		} else {
+			cfg.Mongo = mc
+			cfg.MongoDB = envOr("MONGODB_DB", "fatbaby")
+			defer mc.Disconnect(ctx) //nolint:errcheck
+			logger.Printf("MongoDB connected db=%s: entities endpoint enabled", cfg.MongoDB)
+		}
+	}
 	srv := apiserver.New(cfg)
 	go func() {
 		<-ctx.Done()
@@ -72,6 +106,13 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
 	}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func splitCSV(s string) []string {
