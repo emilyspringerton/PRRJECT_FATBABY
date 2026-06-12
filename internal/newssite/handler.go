@@ -55,6 +55,7 @@ type Handler struct {
 	commentaryDir   string                 // path for POST /api/commentary writes
 	guidanceStore   *guidanceread.Store    // nil if guidance-dir not configured
 	earningsCalStore *earningscal.Store    // nil if earnings-cal-dir not configured
+	emilyBaseURL    string                 // Emily Prime base URL for /api/ask; empty disables
 	logger          *log.Logger
 	defaultLimit    int
 	rateLimiter     *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
@@ -104,6 +105,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// POST /api/commentary — Emily publishes a governance article.
 	if path == "/api/commentary" && r.Method == http.MethodPost {
 		status = h.servePostCommentary(w, r)
+		return
+	}
+
+	// POST /api/ask — Ask Emily chat (S21-01).
+	if path == "/api/ask" && r.Method == http.MethodPost {
+		status = h.serveAsk(w, r)
 		return
 	}
 

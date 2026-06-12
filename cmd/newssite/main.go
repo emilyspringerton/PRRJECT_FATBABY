@@ -31,6 +31,7 @@ func main() {
 	commentaryDir    := flag.String("commentary-dir", "var/commentary", "path to Emily commentary directory (empty to disable)")
 	guidanceDir      := flag.String("guidance-dir", "var/guidance", "path to guidance articles directory (empty to disable)")
 	earningsCalDir   := flag.String("earnings-cal-dir", "var/earnings-calendar", "path to earnings calendar directory (empty to disable)")
+	emilyURL         := flag.String("emily-url", os.Getenv("EMILY_BASE_URL"), "Emily Prime base URL for /api/ask (default: $EMILY_BASE_URL)")
 	addr             := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
@@ -48,6 +49,10 @@ func main() {
 	defer stop()
 
 	h := newssite.NewHandler(store, logger)
+	if *emilyURL != "" {
+		h.SetEmilyBaseURL(*emilyURL)
+		logger.Printf("Ask Emily enabled: emily_url=%s → POST /api/ask", *emilyURL)
+	}
 
 	// ── Entity-graph store (fast: just reads NDJSON files) ────────────────────
 	var gs *graphread.Store

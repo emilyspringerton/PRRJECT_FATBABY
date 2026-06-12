@@ -422,6 +422,17 @@ const frontTemplate = `{{define "front"}}<!doctype html>
     <div class="sidebar-box"><h4>Signals</h4>
       <p style="font-size:0.8rem;color:#888;margin:0;">Governance signals surface here once the processor has run. <a href="/breaking">Breaking →</a></p>
     </div>
+    <div class="sidebar-box" id="ask-emily-box">
+      <h4 style="margin-bottom:0.5rem;">Ask Emily</h4>
+      <p style="font-size:0.78rem;color:#666;margin:0 0 0.6rem;">Ask a governance intelligence question. Free tier: 5/day.</p>
+      <form id="ask-emily-form" onsubmit="askEmily(event)">
+        <input type="text" id="ask-emily-ticker" placeholder="Ticker (optional)" style="width:100%;box-sizing:border-box;padding:0.3rem 0.4rem;font-size:0.8rem;border:1px solid #ccc;border-radius:3px;margin-bottom:0.4rem;font-family:system-ui;">
+        <textarea id="ask-emily-q" rows="3" placeholder="e.g. What governance risks does JPM have?" style="width:100%;box-sizing:border-box;padding:0.3rem 0.4rem;font-size:0.8rem;border:1px solid #ccc;border-radius:3px;font-family:system-ui;resize:vertical;"></textarea>
+        <button type="submit" style="margin-top:0.4rem;width:100%;padding:0.35rem;font-size:0.8rem;font-family:system-ui;font-weight:600;background:#1a1a1a;color:#fff;border:none;border-radius:3px;cursor:pointer;">Ask →</button>
+      </form>
+      <div id="ask-emily-answer" style="display:none;margin-top:0.7rem;padding:0.5rem;background:#f7f7f7;border-radius:3px;font-size:0.8rem;font-family:system-ui;line-height:1.5;color:#222;white-space:pre-wrap;"></div>
+      <div id="ask-emily-error" style="display:none;margin-top:0.5rem;font-size:0.78rem;color:#dc2626;font-family:system-ui;"></div>
+    </div>
   </aside>
 </div>
 {{else}}
@@ -429,7 +440,43 @@ const frontTemplate = `{{define "front"}}<!doctype html>
   <p>No source documents have been persisted yet. The processor has not run or no filings have been discovered.</p>
 </main>
 {{end}}
-</div>{{template "footer" .}}</body></html>{{end}}`
+</div>{{template "footer" .}}
+<script>
+async function askEmily(e) {
+  e.preventDefault();
+  const q = document.getElementById('ask-emily-q').value.trim();
+  const ticker = document.getElementById('ask-emily-ticker').value.trim();
+  if (!q) return;
+  const btn = e.target.querySelector('button');
+  const answerEl = document.getElementById('ask-emily-answer');
+  const errEl = document.getElementById('ask-emily-error');
+  btn.disabled = true;
+  btn.textContent = 'Asking…';
+  answerEl.style.display = 'none';
+  errEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: q, ticker: ticker || undefined})
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      errEl.textContent = data.error || 'Ask Emily is unavailable right now.';
+      errEl.style.display = 'block';
+    } else {
+      answerEl.textContent = data.answer;
+      answerEl.style.display = 'block';
+    }
+  } catch(err) {
+    errEl.textContent = 'Network error — is the server running?';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Ask →';
+}
+</script>
+</body></html>{{end}}`
 
 const detailTemplate = `{{define "detail"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
