@@ -57,12 +57,16 @@ type Handler struct {
 	earningsCalStore *earningscal.Store    // nil if earnings-cal-dir not configured
 	logger          *log.Logger
 	defaultLimit    int
+	rateLimiter     *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
 }
 
 // NewHandler returns a new Handler.
 func NewHandler(store eventstore.EventStore, logger *log.Logger) *Handler {
-	return &Handler{store: store, logger: logger, defaultLimit: 50}
+	return &Handler{store: store, logger: logger, defaultLimit: 50, rateLimiter: newIPRateLimiter()}
 }
+
+// SetRateLimiter replaces the rate limiter. Pass nil to disable rate limiting (e.g. in tests).
+func (h *Handler) SetRateLimiter(rl *ipRateLimiter) { h.rateLimiter = rl }
 
 func (h *Handler) SetGraphStore(gs *graphread.Store)          { h.graph = gs }
 func (h *Handler) SetSignalIndex(si *signalindex.Index)       { h.sigIdx = si }
@@ -85,6 +89,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	path := r.URL.Path
+
+	// Free-tier IP rate limiting: 10 queries/day per IP for content pages.
+	if h.rateLimiter != nil && r.Method == http.MethodGet && isRateLimitedPath(path) {
+		ip := remoteIP(r)
+		ok, _ := h.rateLimiter.check(ip)
+		if !ok {
+			status = http.StatusTooManyRequests
+			h.servePaywall(w, r)
+			return
+		}
+	}
 
 	// POST /api/commentary — Emily publishes a governance article.
 	if path == "/api/commentary" && r.Method == http.MethodPost {
@@ -777,6 +792,15 @@ func (h *Handler) servePostCommentary(w http.ResponseWriter, r *http.Request) in
 
 // serveChart returns a 3-month SVG price sparkline for the given ticker.
 // Responds with SVG content-type so it can be embedded as <img src="/api/chart/AAPL">.
+// servePaywall renders the free-tier query limit page with Emily+ upsell.
+func (h *Handler) servePaywall(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Retry-After", "86400")
+	var buf bytes.Buffer
+	RenderPaywallPage(&buf)
+	_, _ = w.Write(buf.Bytes())
+}
+
 func (h *Handler) serveChart(w http.ResponseWriter, r *http.Request, sym string) int {
 	if sym == "" {
 		http.NotFound(w, r)

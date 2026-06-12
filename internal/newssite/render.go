@@ -1502,6 +1502,38 @@ func RenderGuidancePage(w io.Writer, items []GuidanceItemView, symbols []string)
 	}
 }
 
+// RenderPaywallPage writes the free-tier rate limit page with Emily+ upsell.
+func RenderPaywallPage(w io.Writer) {
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Query Limit Reached — Ask Emily</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f9f9f9;margin:0;padding:2rem;}
+.paywall{max-width:520px;margin:4rem auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:2.5rem;}
+h1{font-size:1.5rem;font-weight:800;margin:0 0 1rem;}
+p{color:#444;line-height:1.6;}
+.badge{display:inline-block;background:#0ea5e9;color:#fff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:1rem;}
+.cta{display:inline-block;margin-top:1.5rem;background:#0ea5e9;color:#fff;font-weight:700;padding:0.7rem 1.5rem;border-radius:6px;text-decoration:none;}
+.cta:hover{background:#0284c7;}
+.limit{font-size:0.85rem;color:#888;margin-top:1.5rem;}
+</style>
+</head>
+<body>
+<div class="paywall">
+<span class="badge">EMILY+</span>
+<h1>Daily query limit reached</h1>
+<p>You've used your <strong>10 free queries</strong> for today. Free access resets at midnight UTC.</p>
+<p>Upgrade to <strong>Emily+</strong> for unlimited access to governance intelligence, portfolio alerts, and Jon Agent options signals.</p>
+<a class="cta" href="mailto:emilyspringerton@gmail.com?subject=Emily%%2B%%20Subscription">Get Emily+ — $29/month</a>
+<p class="limit">Free tier: 10 queries/day. No account required. Resets daily at 00:00 UTC.</p>
+</div>
+</body>
+</html>`)
+}
+
 // ── JSON API ──────────────────────────────────────────────────────────────────
 
 // TickerAPIResult is the JSON shape for /api/tickers.
