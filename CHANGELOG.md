@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-12
+
+- GTM funnel spec written: Ask Emily Free + Emily+ subscription + Community Editorial + Merkle Query API at docs/GTM_FUNNEL.md --no-apple
+
+
 All notable changes to this project are documented in this file.
 
 ## 2026-06-11 — newssite filing date sort fix + obs-watcher rate-limit resilience
