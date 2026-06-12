@@ -20,8 +20,9 @@ var (
 	aboutTmpl   = mustLookup("about")
 	personTmpl   = mustLookup("person")
 	liveTmpl     = mustLookup("live")
-	earningsTmpl  = mustLookup("earnings")
-	guidanceTmpl  = mustLookup("guidance")
+	earningsTmpl    = mustLookup("earnings")
+	guidanceTmpl    = mustLookup("guidance")
+	askLandingTmpl  = mustLookup("ask-landing")
 )
 
 func mustLookup(name string) *template.Template {
@@ -338,7 +339,7 @@ const sharedFragments = `
 const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate + guidanceTemplate +
 	sectionTemplate + tickerTemplate + ticker404Template +
 	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate +
-	personTemplate + liveTemplate + earningsTemplate
+	personTemplate + liveTemplate + earningsTemplate + askLandingTemplate
 
 const frontTemplate = `{{define "front"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -872,6 +873,101 @@ const guidanceTemplate = `{{define "guidance"}}<!doctype html>
 {{end}}
 </main>
 </div>{{template "footer" .}}</body></html>{{end}}`
+
+const askLandingTemplate = `{{define "ask-landing"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ask Emily — Governance Intelligence</title>
+<style>` + siteCSS + `
+.ask-hero{max-width:640px;margin:3rem auto 2rem;text-align:center;padding:0 1rem;}
+.ask-hero h1{font-size:2.2rem;line-height:1.15;margin-bottom:0.8rem;}
+.ask-hero .sub{font-family:system-ui;font-size:1.05rem;color:#555;margin-bottom:2rem;line-height:1.6;}
+.ask-demo{background:#f8f8f8;border:1px solid #e0e0e0;border-radius:6px;padding:1.5rem;max-width:520px;margin:0 auto 2.5rem;text-align:left;}
+.ask-demo textarea{width:100%;box-sizing:border-box;padding:0.5rem 0.6rem;font-size:0.95rem;border:1px solid #ccc;border-radius:4px;font-family:system-ui;resize:vertical;min-height:80px;}
+.ask-demo input[type=text]{width:100%;box-sizing:border-box;padding:0.45rem 0.6rem;font-size:0.9rem;border:1px solid #ccc;border-radius:4px;font-family:system-ui;margin-bottom:0.6rem;}
+.ask-demo button{width:100%;padding:0.5rem;font-size:0.95rem;font-family:system-ui;font-weight:700;background:#111;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-top:0.5rem;}
+.ask-demo button:disabled{background:#888;}
+.ask-answer{margin-top:1rem;padding:0.75rem;background:#fff;border:1px solid #ddd;border-radius:4px;font-size:0.88rem;font-family:system-ui;white-space:pre-wrap;line-height:1.6;color:#222;display:none;}
+.ask-tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;max-width:640px;margin:0 auto 2rem;}
+.tier-card{border:1px solid #e0e0e0;border-radius:6px;padding:1.2rem;font-family:system-ui;}
+.tier-card h3{margin:0 0 0.5rem;font-size:1rem;}
+.tier-card .price{font-size:1.4rem;font-weight:800;margin-bottom:0.5rem;}
+.tier-card ul{margin:0;padding-left:1.2rem;font-size:0.85rem;color:#444;line-height:1.8;}
+.waitlist-form{max-width:420px;margin:0 auto 3rem;text-align:center;}
+.waitlist-form input[type=email]{width:100%;box-sizing:border-box;padding:0.5rem 0.7rem;font-size:0.95rem;border:1px solid #ccc;border-radius:4px;font-family:system-ui;margin-bottom:0.5rem;}
+.waitlist-form button{padding:0.5rem 2rem;font-size:0.95rem;font-family:system-ui;font-weight:700;background:#111;color:#fff;border:none;border-radius:4px;cursor:pointer;}
+</style></head>
+<body><div class="wrap">
+{{template "masthead" .}}
+<div class="ask-hero">
+  <h1>Ask Emily</h1>
+  <p class="sub">Governance intelligence for active investors.<br>Directors, auditors, earnings, activist positions — ask anything.</p>
+  <div class="ask-demo">
+    <input type="text" id="lp-ticker" placeholder="Ticker (optional, e.g. JPM)">
+    <textarea id="lp-q" placeholder="What governance risks does this company have?"></textarea>
+    <button onclick="askLanding()">Ask Emily →</button>
+    <div class="ask-answer" id="lp-answer"></div>
+    <div id="lp-error" style="display:none;color:#dc2626;font-size:0.82rem;font-family:system-ui;margin-top:0.5rem;"></div>
+    <p style="font-size:0.75rem;color:#999;font-family:system-ui;margin:0.5rem 0 0;text-align:center;">Free tier: 5 questions/day · No account required</p>
+  </div>
+  <div class="ask-tiers">
+    <div class="tier-card">
+      <h3>Free</h3>
+      <div class="price">$0</div>
+      <ul>
+        <li>5 questions/day</li>
+        <li>Governance signals</li>
+        <li>Director &amp; auditor data</li>
+        <li>No account needed</li>
+      </ul>
+    </div>
+    <div class="tier-card" style="border-color:#111;">
+      <h3>Emily+ <span style="font-size:0.75rem;font-weight:400;color:#888;">(coming soon)</span></h3>
+      <div class="price">$29/mo</div>
+      <ul>
+        <li>Unlimited questions</li>
+        <li>EPS history &amp; surprises</li>
+        <li>Activist position tracking</li>
+        <li>Daily email digest</li>
+      </ul>
+    </div>
+  </div>
+  <div class="waitlist-form">
+    <h3 style="font-family:system-ui;font-size:1rem;margin-bottom:0.5rem;">Join the Emily+ waitlist</h3>
+    <input type="email" id="waitlist-email" placeholder="your@email.com">
+    <button onclick="joinWaitlist()">Join Waitlist</button>
+    <div id="waitlist-confirm" style="display:none;color:#16a34a;font-family:system-ui;font-size:0.9rem;margin-top:0.5rem;">You're on the list! We'll be in touch.</div>
+  </div>
+</div>
+</div>
+<script>
+async function askLanding() {
+  const q = document.getElementById('lp-q').value.trim();
+  const ticker = document.getElementById('lp-ticker').value.trim();
+  if (!q) return;
+  const btn = document.querySelector('.ask-demo button');
+  const answerEl = document.getElementById('lp-answer');
+  const errEl = document.getElementById('lp-error');
+  btn.disabled=true; btn.textContent='Asking…';
+  answerEl.style.display='none'; errEl.style.display='none';
+  try {
+    const res = await fetch('/api/ask', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,ticker:ticker||undefined})});
+    const data = await res.json();
+    if (!res.ok||data.error){errEl.textContent=data.error||'Ask Emily is unavailable.';errEl.style.display='block';}
+    else{answerEl.textContent=data.answer;answerEl.style.display='block';}
+  } catch(e){errEl.textContent='Network error.';errEl.style.display='block';}
+  btn.disabled=false; btn.textContent='Ask Emily →';
+}
+async function joinWaitlist() {
+  const email = document.getElementById('waitlist-email').value.trim();
+  if (!email) return;
+  const btn = document.querySelector('.waitlist-form button');
+  btn.disabled=true; btn.textContent='Joining…';
+  try { await fetch('/api/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})}); } catch(e){}
+  document.getElementById('waitlist-confirm').style.display='block';
+  btn.textContent='Joined!';
+}
+</script>
+</body></html>{{end}}`
 
 const earningsTemplate = `{{define "earnings"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

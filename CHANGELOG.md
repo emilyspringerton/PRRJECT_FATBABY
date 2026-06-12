@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-12
+- feat(s21-06): Ask Emily landing page — GET /ask renders product landing page with demo form, Free/$0 + Emily+/$29 pricing tiers, and email waitlist capture; POST /api/waitlist appends to var/waitlist.txt
 - feat(s21-03+04): Ask Emily signal context + rate limiting — fetchTickerContext fetches governance_signals + entity doc from signalapi for ticker; injected as [FatBaby context] prefix to Emily prompt; 5 questions/day per-IP rate limit (askRateLimiter); --signalapi-url flag + SIGNALAPI_URL env
 - feat(s21-01+02): Ask Emily — POST /api/ask on newssite proxies to Emily Prime /chat; chat widget in homepage sidebar (text input, ticker field, async fetch, answer display); --emily-url flag + EMILY_BASE_URL env; graceful 503 when not configured
 - docs(s20-06): docs/local-dev-setup.md — MySQL + MongoDB local dev runbook (Docker, env vars, reset/reseed, docker-compose, troubleshooting)

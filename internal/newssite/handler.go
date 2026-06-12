@@ -122,6 +122,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// POST /api/waitlist — email capture for Emily+ waitlist (S21-06).
+	if path == "/api/waitlist" && r.Method == http.MethodPost {
+		status = h.serveWaitlist(w, r)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		status = http.StatusMethodNotAllowed
 		http.Error(w, "method not allowed", status)
@@ -131,6 +137,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "/":
 		status = h.serveFrontPage(w, r)
+	case path == "/ask":
+		status = h.serveAskLanding(w, r)
 	case path == "/healthz":
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, "ok")

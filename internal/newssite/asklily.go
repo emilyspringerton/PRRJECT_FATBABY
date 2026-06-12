@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -229,4 +231,52 @@ func truncate512(s string) string {
 		return s
 	}
 	return s[:512]
+}
+
+// serveAskLanding renders GET /ask — the Ask Emily product landing page.
+func (h *Handler) serveAskLanding(w http.ResponseWriter, r *http.Request) int {
+	var buf bytes.Buffer
+	if err := RenderAskLanding(&buf); err != nil {
+		http.Error(w, "template error", http.StatusInternalServerError)
+		return http.StatusInternalServerError
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+// serveWaitlist handles POST /api/waitlist — captures email into var/waitlist.txt.
+func (h *Handler) serveWaitlist(w http.ResponseWriter, r *http.Request) int {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return http.StatusBadRequest
+	}
+	email := strings.TrimSpace(req.Email)
+	if email == "" || !strings.Contains(email, "@") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "valid email required"})
+		return http.StatusBadRequest
+	}
+
+	// Best-effort append to var/waitlist.txt; log on failure but don't 500.
+	if err := appendWaitlist(email); err != nil {
+		h.logger.Printf("waitlist append err: %v", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "You're on the list!"})
+	return http.StatusOK
+}
+
+func appendWaitlist(email string) error {
+	if err := os.MkdirAll("var", 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join("var", "waitlist.txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "%s\t%s\n", time.Now().UTC().Format(time.RFC3339), email)
+	return err
 }

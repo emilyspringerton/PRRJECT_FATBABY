@@ -1534,6 +1534,11 @@ p{color:#444;line-height:1.6;}
 </html>`)
 }
 
+// RenderAskLanding renders GET /ask — the Ask Emily product landing page.
+func RenderAskLanding(w io.Writer) error {
+	return askLandingTmpl.Execute(w, nil)
+}
+
 // ── JSON API ──────────────────────────────────────────────────────────────────
 
 // TickerAPIResult is the JSON shape for /api/tickers.
