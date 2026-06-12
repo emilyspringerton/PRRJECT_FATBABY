@@ -32,6 +32,7 @@ func main() {
 	guidanceDir      := flag.String("guidance-dir", "var/guidance", "path to guidance articles directory (empty to disable)")
 	earningsCalDir   := flag.String("earnings-cal-dir", "var/earnings-calendar", "path to earnings calendar directory (empty to disable)")
 	emilyURL         := flag.String("emily-url", os.Getenv("EMILY_BASE_URL"), "Emily Prime base URL for /api/ask (default: $EMILY_BASE_URL)")
+	signalapiURL     := flag.String("signalapi-url", os.Getenv("SIGNALAPI_URL"), "signalapi base URL for ticker context injection (default: $SIGNALAPI_URL)")
 	addr             := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
@@ -52,6 +53,10 @@ func main() {
 	if *emilyURL != "" {
 		h.SetEmilyBaseURL(*emilyURL)
 		logger.Printf("Ask Emily enabled: emily_url=%s → POST /api/ask", *emilyURL)
+	}
+	if *signalapiURL != "" {
+		h.SetSignalapiURL(*signalapiURL)
+		logger.Printf("Ask Emily signal context enabled: signalapi_url=%s", *signalapiURL)
 	}
 
 	// ── Entity-graph store (fast: just reads NDJSON files) ────────────────────

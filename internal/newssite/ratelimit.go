@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	freeQueryLimit = 10 // free tier: max queries per IP per day
+	freeQueryLimit    = 10 // free tier: max page queries per IP per day
+	freeAskEmilyLimit = 5  // free tier: max Ask Emily questions per IP per day
 )
 
 // ipRateLimiter tracks per-IP query counts with daily reset.
@@ -17,12 +18,22 @@ type ipRateLimiter struct {
 	mu      sync.Mutex
 	counts  map[string]int
 	resetAt time.Time
+	limit   int
 }
 
 func newIPRateLimiter() *ipRateLimiter {
 	return &ipRateLimiter{
 		counts:  make(map[string]int),
 		resetAt: nextMidnightUTC(),
+		limit:   freeQueryLimit,
+	}
+}
+
+func newAskRateLimiter() *ipRateLimiter {
+	return &ipRateLimiter{
+		counts:  make(map[string]int),
+		resetAt: nextMidnightUTC(),
+		limit:   freeAskEmilyLimit,
 	}
 }
 
@@ -39,10 +50,14 @@ func (rl *ipRateLimiter) check(ip string) (allowed bool, remaining int) {
 
 	rl.counts[ip]++
 	n := rl.counts[ip]
-	if n > freeQueryLimit {
+	lim := rl.limit
+	if lim <= 0 {
+		lim = freeQueryLimit
+	}
+	if n > lim {
 		return false, 0
 	}
-	return true, freeQueryLimit - n
+	return true, lim - n
 }
 
 // remoteIP extracts the client IP, respecting X-Forwarded-For for proxied deployments.

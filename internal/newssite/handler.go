@@ -56,14 +56,22 @@ type Handler struct {
 	guidanceStore   *guidanceread.Store    // nil if guidance-dir not configured
 	earningsCalStore *earningscal.Store    // nil if earnings-cal-dir not configured
 	emilyBaseURL    string                 // Emily Prime base URL for /api/ask; empty disables
+	signalapiURL    string                 // signalapi base URL for ticker context injection; empty skips
 	logger          *log.Logger
 	defaultLimit    int
 	rateLimiter     *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
+	askRateLimiter  *ipRateLimiter // Ask Emily rate limiter (5/day); nil disables
 }
 
 // NewHandler returns a new Handler.
 func NewHandler(store eventstore.EventStore, logger *log.Logger) *Handler {
-	return &Handler{store: store, logger: logger, defaultLimit: 50, rateLimiter: newIPRateLimiter()}
+	return &Handler{
+		store:          store,
+		logger:         logger,
+		defaultLimit:   50,
+		rateLimiter:    newIPRateLimiter(),
+		askRateLimiter: newAskRateLimiter(),
+	}
 }
 
 // SetRateLimiter replaces the rate limiter. Pass nil to disable rate limiting (e.g. in tests).
