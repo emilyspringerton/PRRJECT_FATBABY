@@ -25,12 +25,72 @@ func (h *Handler) SetSignalapiURL(url string) {
 	h.signalapiURL = strings.TrimRight(url, "/")
 }
 
+// SetGoogleClientID sets the Google OAuth client ID for Sign in with Google (S21-05).
+func (h *Handler) SetGoogleClientID(id string) {
+	h.googleClientID = id
+}
+
+// SetIdunaBaseURL sets the IDUNA base URL used to proxy Google ID token → IDUNA JWT (S21-05).
+func (h *Handler) SetIdunaBaseURL(url string) {
+	h.idunaBaseURL = strings.TrimRight(url, "/")
+}
+
+// SetAskJWTVerifier configures the JWT verifier used to identify authenticated Ask Emily users.
+func (h *Handler) SetAskJWTVerifier(v askVerifier) {
+	h.askJWTVerifier = v
+}
+
+// serveAuthGoogle handles POST /api/auth/google.
+// Proxies the Google ID token to IDUNA /api/v1/auth/google and returns the IDUNA JWT.
+// This avoids CORS issues: the browser sends the token to the same origin.
+func (h *Handler) serveAuthGoogle(w http.ResponseWriter, r *http.Request) int {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST required"})
+		return http.StatusMethodNotAllowed
+	}
+	if h.idunaBaseURL == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "auth not configured"})
+		return http.StatusServiceUnavailable
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 8192))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read body failed"})
+		return http.StatusBadRequest
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		h.idunaBaseURL+"/api/v1/auth/google", bytes.NewReader(body))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "proxy request failed"})
+		return http.StatusInternalServerError
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "IDUNA unavailable"})
+		return http.StatusBadGateway
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(respBody)
+	return resp.StatusCode
+}
+
 // serveAsk handles POST /api/ask.
 //
 //	Request:  { "question": string, "ticker"?: string, "session_id"?: string }
 //	Response: { "answer": string, "ticker"?: string }
 //
 // Proxies to Emily Prime /chat. Returns 503 if Emily is not configured.
+// Authenticated users (Bearer JWT) get 20 questions/day; anonymous gets 5/day.
 func (h *Handler) serveAsk(w http.ResponseWriter, r *http.Request) int {
 	if h.emilyBaseURL == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Ask Emily not configured"})
@@ -41,12 +101,22 @@ func (h *Handler) serveAsk(w http.ResponseWriter, r *http.Request) int {
 		return http.StatusMethodNotAllowed
 	}
 
-	// Rate limit: 5 questions per IP per day (free tier).
-	if h.askRateLimiter != nil {
+	// Rate limit: authenticated users get 20/day by user_id; anonymous get 5/day by IP.
+	userSub := h.extractUserSub(r)
+	if userSub != "" {
+		if h.authedAskRateLimiter != nil {
+			if ok, _ := h.authedAskRateLimiter.check(userSub); !ok {
+				writeJSON(w, http.StatusTooManyRequests, map[string]string{
+					"error": "Daily limit reached (20 questions/day). Upgrade to Emily+ for unlimited access.",
+				})
+				return http.StatusTooManyRequests
+			}
+		}
+	} else if h.askRateLimiter != nil {
 		ip := remoteIP(r)
 		if ok, _ := h.askRateLimiter.check(ip); !ok {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{
-				"error": "Daily limit reached (5 questions/day). Upgrade to Emily+ for unlimited access.",
+				"error": "Daily limit reached (5 questions/day). Sign in for 20 questions/day.",
 			})
 			return http.StatusTooManyRequests
 		}
@@ -233,10 +303,28 @@ func truncate512(s string) string {
 	return s[:512]
 }
 
+// extractUserSub returns the IDUNA JWT sub claim from the Bearer token in the
+// Authorization header, or empty string if missing/invalid.
+func (h *Handler) extractUserSub(r *http.Request) string {
+	if h.askJWTVerifier == nil {
+		return ""
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return ""
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	sub, err := h.askJWTVerifier.VerifyTokenSub(token)
+	if err != nil {
+		return ""
+	}
+	return sub
+}
+
 // serveAskLanding renders GET /ask — the Ask Emily product landing page.
 func (h *Handler) serveAskLanding(w http.ResponseWriter, r *http.Request) int {
 	var buf bytes.Buffer
-	if err := RenderAskLanding(&buf); err != nil {
+	if err := RenderAskLanding(&buf, AskLandingData{GoogleClientID: h.googleClientID}); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return http.StatusInternalServerError
 	}

@@ -33,6 +33,8 @@ func main() {
 	earningsCalDir   := flag.String("earnings-cal-dir", "var/earnings-calendar", "path to earnings calendar directory (empty to disable)")
 	emilyURL         := flag.String("emily-url", os.Getenv("EMILY_BASE_URL"), "Emily Prime base URL for /api/ask (default: $EMILY_BASE_URL)")
 	signalapiURL     := flag.String("signalapi-url", os.Getenv("SIGNALAPI_URL"), "signalapi base URL for ticker context injection (default: $SIGNALAPI_URL)")
+	googleClientID   := flag.String("google-client-id", os.Getenv("GOOGLE_CLIENT_ID"), "Google OAuth client ID for Sign in with Google (default: $GOOGLE_CLIENT_ID)")
+	idunaBaseURL     := flag.String("iduna-url", os.Getenv("IDUNA_BASE_URL"), "IDUNA base URL for Google→JWT exchange + JWT validation (default: $IDUNA_BASE_URL)")
 	addr             := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
@@ -57,6 +59,21 @@ func main() {
 	if *signalapiURL != "" {
 		h.SetSignalapiURL(*signalapiURL)
 		logger.Printf("Ask Emily signal context enabled: signalapi_url=%s", *signalapiURL)
+	}
+	if *googleClientID != "" {
+		h.SetGoogleClientID(*googleClientID)
+		logger.Printf("Ask Emily auth enabled: google_client_id configured")
+	}
+	if *idunaBaseURL != "" {
+		h.SetIdunaBaseURL(*idunaBaseURL)
+		if jwksURL := *idunaBaseURL + "/.well-known/jwks.json"; *googleClientID != "" {
+			if g, err := iamguard.New(jwksURL); err == nil {
+				h.SetAskJWTVerifier(g)
+				logger.Printf("Ask Emily JWT verification enabled: jwks_url=%s", jwksURL)
+			} else {
+				logger.Printf("iamguard: ask-emily JWKS init failed (%v) — JWT verification disabled", err)
+			}
+		}
 	}
 
 	// ── Entity-graph store (fast: just reads NDJSON files) ────────────────────

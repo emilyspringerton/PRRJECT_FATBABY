@@ -22,6 +22,7 @@ package iamguard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -138,6 +139,19 @@ func (g *Guard) RequirePermission(requiredPermission string) func(http.Handler) 
 func ClaimsFromContext(ctx context.Context) (idunaauth.Claims, bool) {
 	v, ok := ctx.Value(contextKey{}).(idunaauth.Claims)
 	return v, ok
+}
+
+// VerifyTokenSub verifies the JWT and returns the sub claim.
+// Returns empty string and an error when the guard is in no-op mode or verification fails.
+func (g *Guard) VerifyTokenSub(token string) (string, error) {
+	if !g.IsActive() {
+		return "", fmt.Errorf("guard: no-op mode")
+	}
+	claims, err := g.verifier.Verify(token)
+	if err != nil {
+		return "", err
+	}
+	return claims.Sub, nil
 }
 
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {

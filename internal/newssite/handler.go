@@ -55,22 +55,32 @@ type Handler struct {
 	commentaryDir   string                 // path for POST /api/commentary writes
 	guidanceStore   *guidanceread.Store    // nil if guidance-dir not configured
 	earningsCalStore *earningscal.Store    // nil if earnings-cal-dir not configured
-	emilyBaseURL    string                 // Emily Prime base URL for /api/ask; empty disables
-	signalapiURL    string                 // signalapi base URL for ticker context injection; empty skips
-	logger          *log.Logger
-	defaultLimit    int
-	rateLimiter     *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
-	askRateLimiter  *ipRateLimiter // Ask Emily rate limiter (5/day); nil disables
+	emilyBaseURL        string         // Emily Prime base URL for /api/ask; empty disables
+	signalapiURL        string         // signalapi base URL for ticker context injection; empty skips
+	googleClientID      string         // Google OAuth client ID for Sign in with Google; empty disables auth flow
+	idunaBaseURL        string         // IDUNA base URL for Google→IDUNA JWT exchange; empty disables
+	askJWTVerifier      askVerifier    // JWT verifier for authenticated /api/ask; nil → no auth
+	logger              *log.Logger
+	defaultLimit        int
+	rateLimiter         *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
+	askRateLimiter      *ipRateLimiter // Ask Emily rate limiter (5/day); nil disables
+	authedAskRateLimiter *ipRateLimiter // authenticated Ask Emily rate limiter (20/day); nil disables
+}
+
+// askVerifier is a minimal interface so we can swap in iamguard.Guard without importing it directly.
+type askVerifier interface {
+	VerifyTokenSub(token string) (sub string, err error)
 }
 
 // NewHandler returns a new Handler.
 func NewHandler(store eventstore.EventStore, logger *log.Logger) *Handler {
 	return &Handler{
-		store:          store,
-		logger:         logger,
-		defaultLimit:   50,
-		rateLimiter:    newIPRateLimiter(),
-		askRateLimiter: newAskRateLimiter(),
+		store:                store,
+		logger:               logger,
+		defaultLimit:         50,
+		rateLimiter:          newIPRateLimiter(),
+		askRateLimiter:       newAskRateLimiter(),
+		authedAskRateLimiter: newAuthedAskRateLimiter(),
 	}
 }
 
@@ -119,6 +129,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// POST /api/ask — Ask Emily chat (S21-01).
 	if path == "/api/ask" && r.Method == http.MethodPost {
 		status = h.serveAsk(w, r)
+		return
+	}
+
+	// POST /api/auth/google — proxy Google ID token → IDUNA JWT (S21-05).
+	if path == "/api/auth/google" && r.Method == http.MethodPost {
+		status = h.serveAuthGoogle(w, r)
 		return
 	}
 

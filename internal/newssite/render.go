@@ -1534,9 +1534,14 @@ p{color:#444;line-height:1.6;}
 </html>`)
 }
 
+// AskLandingData is the template data for GET /ask.
+type AskLandingData struct {
+	GoogleClientID string
+}
+
 // RenderAskLanding renders GET /ask — the Ask Emily product landing page.
-func RenderAskLanding(w io.Writer) error {
-	return askLandingTmpl.Execute(w, nil)
+func RenderAskLanding(w io.Writer, data AskLandingData) error {
+	return askLandingTmpl.Execute(w, data)
 }
 
 // ── JSON API ──────────────────────────────────────────────────────────────────

@@ -11,7 +11,16 @@ import (
 const (
 	freeQueryLimit    = 10 // free tier: max page queries per IP per day
 	freeAskEmilyLimit = 5  // free tier: max Ask Emily questions per IP per day
+	authedAskLimit    = 20 // logged-in tier: max Ask Emily questions per user per day
 )
+
+func newAuthedAskRateLimiter() *ipRateLimiter {
+	return &ipRateLimiter{
+		counts:  make(map[string]int),
+		resetAt: nextMidnightUTC(),
+		limit:   authedAskLimit,
+	}
+}
 
 // ipRateLimiter tracks per-IP query counts with daily reset.
 type ipRateLimiter struct {

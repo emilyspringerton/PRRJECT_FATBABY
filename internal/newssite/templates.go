@@ -892,6 +892,7 @@ const guidanceTemplate = `{{define "guidance"}}<!doctype html>
 const askLandingTemplate = `{{define "ask-landing"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ask Emily — Governance Intelligence</title>
+{{if .GoogleClientID}}<script src="https://accounts.google.com/gsi/client" async></script>{{end}}
 <style>` + siteCSS + `
 .ask-hero{max-width:640px;margin:3rem auto 2rem;text-align:center;padding:0 1rem;}
 .ask-hero h1{font-size:2.2rem;line-height:1.15;margin-bottom:0.8rem;}
@@ -910,6 +911,9 @@ const askLandingTemplate = `{{define "ask-landing"}}<!doctype html>
 .waitlist-form{max-width:420px;margin:0 auto 3rem;text-align:center;}
 .waitlist-form input[type=email]{width:100%;box-sizing:border-box;padding:0.5rem 0.7rem;font-size:0.95rem;border:1px solid #ccc;border-radius:4px;font-family:system-ui;margin-bottom:0.5rem;}
 .waitlist-form button{padding:0.5rem 2rem;font-size:0.95rem;font-family:system-ui;font-weight:700;background:#111;color:#fff;border:none;border-radius:4px;cursor:pointer;}
+.auth-bar{display:flex;align-items:center;gap:0.6rem;justify-content:flex-end;margin-bottom:0.7rem;min-height:32px;}
+.auth-user{font-size:0.82rem;font-family:system-ui;color:#444;}
+.auth-signout{font-size:0.75rem;font-family:system-ui;color:#888;cursor:pointer;text-decoration:underline;border:none;background:none;padding:0;}
 </style></head>
 <body><div class="wrap">
 {{template "masthead" .}}
@@ -917,12 +921,17 @@ const askLandingTemplate = `{{define "ask-landing"}}<!doctype html>
   <h1>Ask Emily</h1>
   <p class="sub">Governance intelligence for active investors.<br>Directors, auditors, earnings, activist positions — ask anything.</p>
   <div class="ask-demo">
+    {{if .GoogleClientID}}
+    <div class="auth-bar" id="auth-bar">
+      <div id="gsi-button"></div>
+    </div>
+    {{end}}
     <input type="text" id="lp-ticker" placeholder="Ticker (optional, e.g. JPM)">
     <textarea id="lp-q" placeholder="What governance risks does this company have?"></textarea>
     <button onclick="askLanding()">Ask Emily →</button>
     <div class="ask-answer" id="lp-answer"></div>
     <div id="lp-error" style="display:none;color:#dc2626;font-size:0.82rem;font-family:system-ui;margin-top:0.5rem;"></div>
-    <p style="font-size:0.75rem;color:#999;font-family:system-ui;margin:0.5rem 0 0;text-align:center;">Free tier: 5 questions/day · No account required</p>
+    <p id="lp-quota" style="font-size:0.75rem;color:#999;font-family:system-ui;margin:0.5rem 0 0;text-align:center;">Free tier: 5 questions/day · No account required</p>
   </div>
   <div class="ask-tiers">
     <div class="tier-card">
@@ -936,13 +945,13 @@ const askLandingTemplate = `{{define "ask-landing"}}<!doctype html>
       </ul>
     </div>
     <div class="tier-card" style="border-color:#111;">
-      <h3>Emily+ <span style="font-size:0.75rem;font-weight:400;color:#888;">(coming soon)</span></h3>
-      <div class="price">$29/mo</div>
+      <h3>Signed in</h3>
+      <div class="price" style="font-size:1rem;font-weight:600;">Google account</div>
       <ul>
-        <li>Unlimited questions</li>
-        <li>EPS history &amp; surprises</li>
-        <li>Activist position tracking</li>
-        <li>Daily email digest</li>
+        <li>20 questions/day</li>
+        <li>Governance signals</li>
+        <li>Director &amp; auditor data</li>
+        <li>Free — just sign in</li>
       </ul>
     </div>
   </div>
@@ -955,6 +964,65 @@ const askLandingTemplate = `{{define "ask-landing"}}<!doctype html>
 </div>
 </div>
 <script>
+const GOOGLE_CLIENT_ID = '{{.GoogleClientID}}';
+let _idunaJWT = localStorage.getItem('emily_jwt') || '';
+let _userEmail = localStorage.getItem('emily_user_email') || '';
+
+function renderAuthBar() {
+  if (!GOOGLE_CLIENT_ID) return;
+  const bar = document.getElementById('auth-bar');
+  if (!bar) return;
+  if (_idunaJWT) {
+    bar.innerHTML = '<span class="auth-user">' + (_userEmail||'Signed in') + '</span>'
+      + '<button class="auth-signout" onclick="signOut()">Sign out</button>';
+    document.getElementById('lp-quota').textContent = 'Signed in: 20 questions/day';
+  } else {
+    bar.innerHTML = '<div id="gsi-button"></div>';
+    renderGoogleButton();
+    document.getElementById('lp-quota').textContent = 'Free tier: 5 questions/day · Sign in for 20/day';
+  }
+}
+
+function renderGoogleButton() {
+  if (!GOOGLE_CLIENT_ID || !window.google) return;
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleCredential,
+    auto_select: false,
+  });
+  google.accounts.id.renderButton(document.getElementById('gsi-button'), {
+    theme: 'outline', size: 'small', text: 'signin_with', shape: 'rectangular',
+  });
+}
+
+async function handleGoogleCredential(response) {
+  try {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id_token: response.credential}),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.token) throw new Error(data.message || 'auth failed');
+    _idunaJWT = data.token;
+    const payload = JSON.parse(atob(data.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    _userEmail = payload.email || '';
+    localStorage.setItem('emily_jwt', _idunaJWT);
+    localStorage.setItem('emily_user_email', _userEmail);
+    renderAuthBar();
+  } catch(e) {
+    console.error('Google sign-in failed:', e);
+  }
+}
+
+function signOut() {
+  _idunaJWT = ''; _userEmail = '';
+  localStorage.removeItem('emily_jwt');
+  localStorage.removeItem('emily_user_email');
+  if (window.google) google.accounts.id.disableAutoSelect();
+  renderAuthBar();
+}
+
 async function askLanding() {
   const q = document.getElementById('lp-q').value.trim();
   const ticker = document.getElementById('lp-ticker').value.trim();
@@ -965,13 +1033,17 @@ async function askLanding() {
   btn.disabled=true; btn.textContent='Asking…';
   answerEl.style.display='none'; errEl.style.display='none';
   try {
-    const res = await fetch('/api/ask', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,ticker:ticker||undefined})});
+    const headers = {'Content-Type': 'application/json'};
+    if (_idunaJWT) headers['Authorization'] = 'Bearer ' + _idunaJWT;
+    const res = await fetch('/api/ask', {method:'POST',headers,body:JSON.stringify({question:q,ticker:ticker||undefined})});
     const data = await res.json();
+    if (res.status === 401) { _idunaJWT=''; localStorage.removeItem('emily_jwt'); renderAuthBar(); }
     if (!res.ok||data.error){errEl.textContent=data.error||'Ask Emily is unavailable.';errEl.style.display='block';}
     else{answerEl.textContent=data.answer;answerEl.style.display='block';}
   } catch(e){errEl.textContent='Network error.';errEl.style.display='block';}
   btn.disabled=false; btn.textContent='Ask Emily →';
 }
+
 async function joinWaitlist() {
   const email = document.getElementById('waitlist-email').value.trim();
   if (!email) return;
@@ -980,6 +1052,11 @@ async function joinWaitlist() {
   try { await fetch('/api/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})}); } catch(e){}
   document.getElementById('waitlist-confirm').style.display='block';
   btn.textContent='Joined!';
+}
+
+// Init: render auth bar once GSI library loads (or immediately if no client ID).
+if (GOOGLE_CLIENT_ID) {
+  window.addEventListener('load', function() { renderAuthBar(); });
 }
 </script>
 </body></html>{{end}}`
