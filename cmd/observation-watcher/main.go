@@ -232,6 +232,19 @@ type primeTask struct {
 // queues an independent Claude Code session (~100K–200K tokens each).
 const primeDedupWindow = 4 * time.Hour
 
+// rsiReportDedupWindow is the dedup window for rsi_report tasks specifically.
+// rsi-token-report presets run frequently; 8h prevents redundant analysis cycles
+// that produce near-identical reports and consume ~150K tokens each.
+const rsiReportDedupWindow = 8 * time.Hour
+
+// dedupWindowFor returns the appropriate dedup window for the given task type.
+func dedupWindowFor(taskType string) time.Duration {
+	if taskType == "rsi_report" {
+		return rsiReportDedupWindow
+	}
+	return primeDedupWindow
+}
+
 // primeTaskDuplicateExists returns true when another task file in tasksDir
 // (excluding currentFile) has the same task_type and description and was
 // written within lookback. Filenames are timestamp-prefixed so the cutoff
@@ -311,8 +324,9 @@ func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool
 
 		// Dedup: skip identical task type+description seen within the dedup window.
 		// Advances the cursor so the file is not re-evaluated on the next poll.
-		if primeTaskDuplicateExists(tasksDir, e.Name(), task.TaskType, task.Description, primeDedupWindow) {
-			log.Printf("prime task dedup: skipping %s (type=%s dispatched within %s)", e.Name(), task.TaskType, primeDedupWindow)
+		dedupWindow := dedupWindowFor(task.TaskType)
+		if primeTaskDuplicateExists(tasksDir, e.Name(), task.TaskType, task.Description, dedupWindow) {
+			log.Printf("prime task dedup: skipping %s (type=%s dispatched within %s)", e.Name(), task.TaskType, dedupWindow)
 			if err := os.WriteFile(cursorPath, []byte(e.Name()), 0o644); err != nil {
 				return processed, fmt.Errorf("update prime task cursor (dedup skip): %w", err)
 			}
