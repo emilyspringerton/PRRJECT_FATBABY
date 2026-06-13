@@ -1,0 +1,20 @@
+# /etc/logrotate.d/fatbaby
+# Install: sudo cp ops/logrotate/fatbaby /etc/logrotate.d/fatbaby
+#
+# Rotates all FatBaby process logs daily, retains 14 days, compresses.
+# All services use StandardOutput=append:...log so USR1 signal is not needed;
+# postrotate is a no-op but left for reference.
+
+/home/fatbaby/PRRJECT_FATBABY/var/logs/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    maxsize 500M
+    dateext
+    dateformat -%Y%m%d
+    su fatbaby fatbaby
+}
