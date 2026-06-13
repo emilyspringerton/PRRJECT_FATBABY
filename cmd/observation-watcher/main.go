@@ -446,6 +446,12 @@ If this change addresses a known item in EMILY/BACKLOG.md:
   - Mark it [x] with the Apple ID and today's date
   - Run: cd /home/fatbaby/EMILY && git add BACKLOG.md && git commit -m "backlog: ✓ <item>" && git push
   This keeps the golden backlog current and closes the RSI feedback loop.
+
+### 6. Register new golden docs (required if you created a mission-critical doc)
+If you created a new NORTHSTAR.md, architecture spec, or mission-critical design doc, append
+a row to EMILY/context/golden-docs-index.md so Emily Prime picks it up on the next cron cycle:
+  | NAME | repo/path/to/doc.md | 1 | <budget-chars-or-0> | one-line description |
+Then: cd /home/fatbaby/EMILY && git add context/golden-docs-index.md && git commit -m "golden-index: add NAME" && git push
 `
 }
 
