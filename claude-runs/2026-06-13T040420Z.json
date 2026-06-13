@@ -1,0 +1,13 @@
+{
+  "observation_summary": "web-audit-newssite: newssite and signalapi stopped, pipeline partially running",
+  "observation_timestamp": "2026-06-13T04:03:23Z",
+  "task_id": "task-8684023860273634884",
+  "run_started_at": "2026-06-13T04:03:30Z",
+  "run_completed_at": "2026-06-13T04:04:20Z",
+  "files_changed": [],
+  "actions_taken": "Checked newssite (port 8082): connection refused, not running. Last log entry 2026-06-07. Checked signalapi (port 8083): also not running. Running pipeline processes: processor, prwatch, prwatch-body (started Jun 12). Stopped: newssite, signalapi, secwatch, dashboard. Posted warn observation via emily observe. Apple #424 filed.",
+  "git_commit_hash": "",
+  "exit_status": "success",
+  "tokens_used": 3000,
+  "notes": "No code changes made — this was an audit/observation task. Newssite restart is a human action (requires running: cd /home/fatbaby/PRRJECT_FATBABY && go run ./cmd/newssite). Signalapi similarly. The obs-watcher may pick up the warn observation and invoke another Claude session to investigate further."
+}
