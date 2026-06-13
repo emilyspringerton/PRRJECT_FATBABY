@@ -1,0 +1,17 @@
+{
+  "observation_summary": "Review EDIS Digital Immune System (DIS) and determine what to build FIRST for our WordPress site going live on nginx. We built: Go ring buffer (internal/dis/ring.go), fingerprint engine (header-order hash + session HMAC + threat scoring), HTTP middleware harvester, 4-state posture engine (healthy/elevated/attack/degraded with 30s rolling windows), ad mode selector (svg/text/pow_captcha/none), collector daemon (cmd/dis) tailing nginx access logs + exposing :9099/dis/health. WordPress plugin edis-dis: reads collector health via WP transients (10s TTL, fail-open to svg), [edis_dis_ad] shortcode, admin posture panel. Full spec: EDIS/docs/digital-immune-system.md. Site not live yet — S23-01 (deploy WordPress) is next. Think hard: minimum DIS stack to ship NOW for real protection? What can wait? Hidden failure modes? First 24h watch list? One design mistake to fix before deploying?",
+  "observation_timestamp": "2026-06-12T21:33:07Z",
+  "run_started_at": "2026-06-13T05:15:00Z",
+  "run_completed_at": "2026-06-13T05:30:00Z",
+  "files_changed": [
+    "EDIS/cmd/dis/main.go",
+    "EDIS/plugins/edis-dis/edis-dis.php",
+    "EDIS/docs/dis-deployment-analysis.md",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "1) Read full DIS stack: ring.go, fingerprint.go, posture.go, harvester.go, adengine.go, cmd/dis/main.go, edis-dis.php. 2) Identified critical bug in tailFile: after bufio.Scanner hit EOF, the function closed the file, slept 500ms, reopened with Seek(EOF) — any lines written in the gap were permanently lost. Under attack this causes systematic hostile-count underreporting and possible failure to escalate posture. 3) Fixed tailFile by introducing tailPoll() which keeps the file descriptor open, polls at current offset every 100ms on EOF, and only reopens when fileRotated() detects an inode change (logrotate). The stdin path (tailReader via -stdin flag) unchanged. 4) Fixed duplicate 'case svg' in edis-dis.php shortcode switch (cosmetic). 5) Wrote full deployment analysis doc: ranked ship order (collector first, plugin second, nginx limits + ForceState button third), log-tailing assessment (right approach for WP+nginx at launch, gaps noted), top 3 failure modes (log-loss race FIXED, window reset race, EDIS_DIS_COLLECTOR_URL constant timing), first-24h monitoring checklist, and pre-launch fix rationale. 6) EDIS tests pass (go build + go vet clean). 7) PRRJECT_FATBABY go test ./... all pass.",
+  "git_commit_hash": "46fffc1",
+  "exit_status": "success",
+  "tokens_used": 28000,
+  "notes": "EDIS is a separate git repo at /home/fatbaby/EDIS — changes committed and pushed there (commit 46fffc1). PRRJECT_FATBABY CHANGELOG.md updated to record the analysis run. The three secondary failure modes (window reset race, EDIS_DIS_COLLECTOR_URL constant timing, missing per-IP delta scoring) are documented in the analysis but not fixed — they are second-pass items, not launch blockers. The ForceState admin endpoint (recommended as ship-third item) does not exist yet; that is a future EDIS task."
+}

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-13
+- analysis(edis-dis): reviewed full DIS stack for WordPress+nginx pre-launch; fixed critical tailFile log-loss race in EDIS cmd/dis — old code closed and re-sought to EOF every 500ms losing lines between cycles; replaced with poll-loop that keeps fd open and only reopens on inode change; removed duplicate PHP case in edis-dis plugin; wrote deployment analysis doc (EDIS/docs/dis-deployment-analysis.md) with ranked ship order, log-tail assessment, top 3 failure modes, first-24h checklist, and pre-launch fix rationale [task-7028146271343963862]
 - fix(entity-graph): observer gap false positives eliminated — `detectGaps` now uses `directorsThisBatch` (director votes found in current batch) instead of `len(graph.Nodes)` (accumulated total) for the "0 proposals" and "no directors" gap conditions; batches processing non-proxy 8-Ks (earnings, officer appointments, M&A) no longer spuriously trigger `needs_attention` observations; `BuildObservation` takes new `directorsThisBatch int` parameter
 - fix(newssite): ticker search auto-navigate only on exact symbol match — `input`/`change` listeners now check the typed value against the datalist options set before navigating, preventing mid-typing redirects while still auto-navigating when a datalist option is clicked or keyboard-selected
 
