@@ -1,0 +1,70 @@
+{
+  "observation_summary": "RSI token efficiency report: goldenbuild per-source cache + RSI history limit",
+  "observation_timestamp": "2026-06-13T03:36:58Z",
+  "run_started_at": "2026-06-13T04:00:00Z",
+  "run_completed_at": "2026-06-13T04:01:56Z",
+  "task_id": "task-6475890256512932360",
+  "files_changed": [
+    "EMILY/emily-agent/goldenbuild.go",
+    "EMILY/emily-agent/rsi.go",
+    "EMILY/CHANGELOG.md",
+    "EMILY/signals/observations/2026-06-13T040156Z-rsi-token-report.json"
+  ],
+  "actions_taken": "Analyzed token spend across emily-agent RSI loop, obs-watcher, and prime-task dispatch. Found two high-ROI improvements: (1) goldenbuild.go was recompressing all 16 golden sources on every rebuild even when only 1-2 changed — added per-source SHA-256 content cache (golden-cache.json) so unchanged sources skip the haiku call, saving ~13-14 haiku calls per rebuild; (2) rsi.go buildGenerationPrompt was including all N-1 iteration records in the prompt for iteration N — capped history at last 3 iterations, saving ~150 tokens per omitted record on long tasks.",
+  "git_commit_hash": "",
+  "exit_status": "success",
+  "tokens_used": 85000,
+  "rsi_token_report": {
+    "current_spend_analysis": {
+      "emily_agent_rsi_loop_per_cycle": {
+        "goldenbuild_rebuild": "16 sources × (500 input + 400 output) = ~14,400 haiku tokens per rebuild; fires when any source changes (mtime-based). Estimated 3-5 rebuilds/day = 43K-72K haiku tokens/day.",
+        "rsi_iteration_per_iter": "4096 max gen output + 3072 max eval output = 7168 max output/iter. Actual typically 500-2000. Input grows ~150 tokens per prior iteration record.",
+        "extract_lessons": "~512 max output + ~1500 input; fires only on multi-iteration task completion.",
+        "prime_triage_per_cycle": "haiku call via runPrimeTriage; cost depends on observation count. Estimated 500-2000 tokens/cycle."
+      },
+      "observation_watcher_per_dispatch": {
+        "claude_code_session": "100K-200K tokens per session (Claude Code loads CLAUDE.md, reads files, runs tools, commits). Dominant cost center.",
+        "prompt_overhead": "~450 tokens runReportFooter + ~200 task context per dispatch. Negligible vs session cost.",
+        "dedup_guard": "primeDedupWindow=4h prevents same type+description from firing more than once per 4h. Already effective."
+      },
+      "prime_task_dispatch": "Same as obs-watcher: 100K-200K tokens per Claude Code session."
+    },
+    "improvements": [
+      {
+        "rank": 1,
+        "title": "Goldenbuild per-source content cache",
+        "where": "EMILY/emily-agent/goldenbuild.go — MaybeRebuild + Build",
+        "description": "Previously: every rebuild recompressed all 16 golden sources via haiku regardless of what changed. Fixed: per-source SHA-256 hash stored in context/golden-cache.json; only sources with changed content trigger a haiku call. Unchanged sources reuse their cached compressed section.",
+        "estimated_savings": "14 haiku calls avoided per rebuild when 1-2 sources change. At 5 rebuilds/day: ~70 haiku calls/day × (500 input + 400 output tokens) = ~63K haiku tokens/day saved. Monthly: ~1.9M haiku tokens.",
+        "status": "implemented"
+      },
+      {
+        "rank": 2,
+        "title": "RSI iteration history limit (last 3)",
+        "where": "EMILY/emily-agent/rsi.go — buildGenerationPrompt",
+        "description": "Previously: all N-1 prior iteration records were included in the generation prompt for iteration N, growing ~150 tokens per record. Fixed: only the last 3 iterations are included; older ones are summarized as '[N omitted]'. The last iteration's NextFocus is the only actionable signal; older records have diminishing returns.",
+        "estimated_savings": "~150 tokens per omitted iteration. For a 10-iter task: saves ~900 input tokens (iterations 5-10 each carry fewer records). At 50 RSI tasks/month with avg 7 iters: ~150K tokens/month.",
+        "status": "implemented"
+      },
+      {
+        "rank": 3,
+        "title": "Extend rsi_report prime-task dedup window to 8h",
+        "where": "PRRJECT_FATBABY/cmd/observation-watcher/main.go — primeDedupWindow",
+        "description": "rsi_report tasks are expensive (100K-200K tokens/session) and the report output is unlikely to differ significantly if re-run within 8h. Extending from 4h to 8h halves the frequency of redundant rsi_report dispatches.",
+        "estimated_savings": "~100K-200K tokens per avoided session. At 1 avoided session/2 days: ~50K-100K tokens/day.",
+        "status": "not_yet_implemented"
+      },
+      {
+        "rank": 4,
+        "title": "Compress runReportFooter in obs-watcher",
+        "where": "PRRJECT_FATBABY/cmd/observation-watcher/main.go — runReportFooter",
+        "description": "The runReportFooter adds ~450 tokens of boilerplate to every Claude Code dispatch. Many instructions (CHANGELOG, git commit, Apple) are also in CLAUDE.md. Could be reduced to ~150 tokens with a concise reference-style footer.",
+        "estimated_savings": "~300 tokens × 4 dispatches/day = ~1,200 tokens/day. Low priority given 100K+ session size.",
+        "status": "not_yet_implemented"
+      }
+    ],
+    "top_item_implemented": "goldenbuild_per_source_cache",
+    "second_item_implemented": "rsi_iteration_history_limit"
+  },
+  "notes": "goldenbuild cache is stored at EMILY/context/golden-cache.json (gitignored recommended — it contains compressed content but not source material). The RSI history limit uses maxHistoryIters=3 which is tunable. Both changes are backwards-compatible."
+}
