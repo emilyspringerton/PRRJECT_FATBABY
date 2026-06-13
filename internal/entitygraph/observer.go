@@ -56,6 +56,8 @@ type SignalSummary struct {
 // proposalsProcessed is the total number of non-director proposals parsed across
 // all filings in the batch; it is included in the observation so Claude can
 // distinguish "proposals not found in text" from "proposals found but no signal fired".
+// directorsThisBatch is the count of director votes extracted from this batch only
+// (not total graph nodes); it drives gap detection for the "0 proposals" condition.
 // accuracyReports (optional) carries retrospective accuracy summaries from
 // CorrelateActivistRisk / BuildAccuracyReports; pass nil when no records exist.
 func BuildObservation(
@@ -64,6 +66,7 @@ func BuildObservation(
 	parseErrors []ParseError,
 	nodeCount int,
 	proposalsProcessed int,
+	directorsThisBatch int,
 	accuracyReports []AccuracyReport,
 ) Observation {
 	// Zero-fill all known signal types so the observation always shows complete coverage,
@@ -88,7 +91,7 @@ func BuildObservation(
 		}
 	}
 
-	gaps := detectGaps(signals, nodeCount, byType, processed, proposalsProcessed, accuracyReports)
+	gaps := detectGaps(signals, nodeCount, byType, processed, proposalsProcessed, directorsThisBatch, accuracyReports)
 
 	status := "ok"
 	if len(parseErrors) > 0 || len(gaps) > 0 {
@@ -153,16 +156,28 @@ func buildRefinementRequest(parseErrors, gapCount, nodeCount, signalCount, highS
 // detectGaps inspects parsing completeness and returns gap descriptions for actual
 // pipeline failures. Signal absences (no friction, no entrenchment, no family control)
 // are not gaps — they are expected outcomes for well-governed companies.
+// directorsThisBatch is the number of director votes found in THIS batch only (not
+// accumulated graph total); gap conditions use this so that batches of non-proxy 8-Ks
+// (earnings, officer appointments) do not spuriously trigger the "0 proposals" gap.
 // accuracyReports (optional) drives RSI gap reporting: signal types with poor empirical
 // precision are flagged so the observation-watcher/Claude can recommend recalibration.
-func detectGaps(signals []Signal, nodeCount int, byType map[string]int, processed int, proposalsProcessed int, accuracyReports []AccuracyReport) []string {
+func detectGaps(signals []Signal, nodeCount int, byType map[string]int, processed int, proposalsProcessed int, directorsThisBatch int, accuracyReports []AccuracyReport) []string {
 	var gaps []string
-	if nodeCount == 0 {
-		gaps = append(gaps, "No directors extracted — Item 5.07 parsing may have failed for this filing")
+	// "No directors" gap fires only when we actually processed proxy filings (Item 5.07
+	// present) but extracted zero director votes — a genuine parser failure. Using
+	// processed>0 instead of nodeCount==0 avoids false positives when all 8-Ks in
+	// the batch are non-proxy (earnings, 5.02-only, M&A) and the historical graph
+	// already has nodes from previous runs.
+	if processed > 0 && directorsThisBatch == 0 {
+		gaps = append(gaps, "No directors extracted from proxy filings — Item 5.07 vote table parsing may have failed; inspect extractDirectorVotes() in parser.go")
 	}
-	if nodeCount > 0 && proposalsProcessed == 0 {
+	// "0 proposals" gap fires only when this batch found directors (proxy filings with
+	// vote data) but no non-director proposals. Using directorsThisBatch ensures the
+	// gap only fires when the current batch actually contained proxy filings, not
+	// whenever the accumulated graph has historical nodes.
+	if directorsThisBatch > 0 && proposalsProcessed == 0 {
 		gaps = append(gaps, "0 proposals parsed despite directors found — proposal-splitter regex likely did not match filing text format; inspect extractProposals() in parser.go")
-	} else if nodeCount > 0 && processed >= 2 && float64(proposalsProcessed)/float64(processed) < 0.5 {
+	} else if directorsThisBatch > 0 && processed >= 2 && float64(proposalsProcessed)/float64(processed) < 0.5 {
 		gaps = append(gaps, fmt.Sprintf(
 			"Low proposal yield: %d of %d proxy filings yielded non-director proposals (%.0f%% rate) — possible unrecognized proposal header format; inspect extractProposals() in parser.go",
 			proposalsProcessed, processed, float64(proposalsProcessed)/float64(processed)*100,

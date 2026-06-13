@@ -288,11 +288,26 @@ const sharedFragments = `
     if (!val) return;
     window.location.href = '/ticker/' + encodeURIComponent(val.trim().toUpperCase());
   }
-  // Auto-navigate on datalist click-selection (fires on any input change).
-  input.addEventListener('input', function() { navigate(this.value); });
-  // Also catch 'change' for browsers that don't fire 'input' on datalist pick.
-  input.addEventListener('change', function() { navigate(this.value); });
-  // Form submit always goes to /ticker/{q} — no /search intermediate step.
+  // Build a set of valid symbols from the datalist so we can distinguish
+  // "user selected from dropdown" (exact match) from "user is still typing".
+  // Auto-navigating on every keystroke would redirect the user mid-input.
+  var validSymbols = (function() {
+    var s = new Set();
+    var dl = document.getElementById('ticker-list');
+    if (dl) { for (var i = 0; i < dl.options.length; i++) s.add(dl.options[i].value); }
+    return s;
+  }());
+  function maybeNavigate(val) {
+    var v = val.trim().toUpperCase();
+    if (v && validSymbols.has(v)) { navigate(v); }
+  }
+  // Auto-navigate when the input value exactly matches a known ticker.
+  // This fires when a user clicks or keyboard-selects a datalist option,
+  // or manually types a full ticker and pauses/blurs.
+  input.addEventListener('input', function() { maybeNavigate(this.value); });
+  input.addEventListener('change', function() { maybeNavigate(this.value); });
+  // Form submit (Enter key or → button) navigates unconditionally — lets users
+  // type a full ticker and press Enter even without using the autocomplete.
   var form = input.closest('form');
   if (form) {
     form.addEventListener('submit', function(e) {

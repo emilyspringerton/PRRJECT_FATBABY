@@ -187,11 +187,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	}
 
 	var (
-		allSignals         []entitygraph.Signal
-		parseErrors        []entitygraph.ParseError
-		processed          int
-		totalProposals     int
-		seenSourceDocs     int
+		allSignals          []entitygraph.Signal
+		parseErrors         []entitygraph.ParseError
+		processed           int
+		totalProposals      int
+		seenSourceDocs      int
+		directorsThisBatch  int
 	)
 
 	for _, r := range recs {
@@ -309,6 +310,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			continue
 		}
 
+		directorsThisBatch += len(result.DirectorVotes)
 		var canonIDs []string
 
 		for _, vote := range result.DirectorVotes {
@@ -639,7 +641,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		}
 		logger.Printf("batch complete processed=%d directors=%d signals=%d parse_errors=%d", processed, len(graph.Nodes), len(allSignals), len(parseErrors))
 
-		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes), totalProposals, accuracyReports)
+		obs := entitygraph.BuildObservation(processed, allSignals, parseErrors, len(graph.Nodes), totalProposals, directorsThisBatch, accuracyReports)
 		if err := entitygraph.PublishObservation(obs, cfg.obsDir); err != nil {
 			logger.Printf("publish observation err=%v", err)
 		} else {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-13
+- fix(entity-graph): observer gap false positives eliminated — `detectGaps` now uses `directorsThisBatch` (director votes found in current batch) instead of `len(graph.Nodes)` (accumulated total) for the "0 proposals" and "no directors" gap conditions; batches processing non-proxy 8-Ks (earnings, officer appointments, M&A) no longer spuriously trigger `needs_attention` observations; `BuildObservation` takes new `directorsThisBatch int` parameter
+- fix(newssite): ticker search auto-navigate only on exact symbol match — `input`/`change` listeners now check the typed value against the datalist options set before navigating, preventing mid-typing redirects while still auto-navigating when a datalist option is clicked or keyboard-selected
+
 ## 2026-06-12
 - feat(s21-06): Ask Emily landing page — GET /ask renders product landing page with demo form, Free/$0 + Emily+/$29 pricing tiers, and email waitlist capture; POST /api/waitlist appends to var/waitlist.txt
 - feat(s21-03+04): Ask Emily signal context + rate limiting — fetchTickerContext fetches governance_signals + entity doc from signalapi for ticker; injected as [FatBaby context] prefix to Emily prompt; 5 questions/day per-IP rate limit (askRateLimiter); --signalapi-url flag + SIGNALAPI_URL env
