@@ -204,6 +204,17 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	if signal.Timestamp.IsZero() {
 		signal.Timestamp = time.Now().UTC()
 	}
+	// Stamp the original source document date so the projector can populate
+	// source_published_at without re-parsing event store records.
+	if signal.RawMetadata == nil {
+		signal.RawMetadata = make(map[string]string)
+	}
+	if filing.FilingDate != "" {
+		signal.RawMetadata["source_published_at"] = filing.FilingDate
+		if signal.RawMetadata["filing_date"] == "" {
+			signal.RawMetadata["filing_date"] = filing.FilingDate
+		}
+	}
 	payload, _ := json.Marshal(signal)
 	_, err = cfg.Store.Append(ctx, eventstore.Event{ID: "signal_generated:" + identity, Type: "signal_generated", PartitionKey: identity, Source: "processor", Data: payload})
 	if err != nil {

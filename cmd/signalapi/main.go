@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -19,7 +21,9 @@ import (
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/apiserver"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
+	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
+	"github.com/example/prrject-fatbaby/internal/store"
 )
 
 func main() {
@@ -47,9 +51,16 @@ func main() {
 	scanTook := time.Since(scanStart)
 	ready := signalindex.Tail(ctx, store, idx, *pollInterval, logger)
 	<-ready
+	docIdx := docindex.NewIndex()
+	if err := docindex.Build(ctx, store, docIdx, logger); err != nil {
+		logger.Fatalf("build docindex: %v", err)
+	}
+	docReady := docindex.Tail(ctx, store, docIdx, *pollInterval, logger)
+	<-docReady
 	cfg := apiserver.ServerConfig{
 		Addr:         *addr,
 		Index:        idx,
+		DocIndex:     docIdx,
 		Logger:       logger,
 		APIKeys:      splitCSV(*apiKeys),
 		ReadTimeout:  *readTimeout,
@@ -66,18 +77,28 @@ func main() {
 			logger.Printf("IDUNA JWT auth enabled jwks_url=%s", jwksURL)
 		}
 	}
-	// Optional MySQL read model — activated when MYSQL_URL is set.
+	// MySQL read model — use real MySQL when MYSQL_URL is set, SQLite otherwise.
 	if mysqlURL := os.Getenv("MYSQL_URL"); mysqlURL != "" {
 		db, err := sql.Open("mysql", mysqlURL+"?parseTime=true")
 		if err != nil {
-			logger.Printf("WARNING: MySQL open failed (%v); governance-signals + eps endpoints disabled", err)
+			logger.Printf("WARNING: MySQL open failed (%v); falling back to SQLite", err)
 		} else if err := db.PingContext(ctx); err != nil {
-			logger.Printf("WARNING: MySQL ping failed (%v); governance-signals + eps endpoints disabled", err)
+			logger.Printf("WARNING: MySQL ping failed (%v); falling back to SQLite", err)
 			db.Close()
 		} else {
 			cfg.MySQL = db
 			defer db.Close()
-			logger.Printf("MySQL connected: governance-signals + eps endpoints enabled")
+			logger.Printf("MySQL connected: using real MySQL for governance-signals + eps + signals endpoints")
+		}
+	}
+	if cfg.MySQL == nil {
+		sqliteDB, err := openSQLiteReadModel(*storeRoot, logger)
+		if err != nil {
+			logger.Printf("WARNING: SQLite fallback failed (%v); governance-signals + signals endpoints will return 503", err)
+		} else {
+			cfg.MySQL = sqliteDB
+			defer sqliteDB.Close()
+			logger.Printf("SQLite read model ready (no MYSQL_URL set)")
 		}
 	}
 	// Optional MongoDB entity graph — activated when MONGODB_URL is set.
@@ -106,6 +127,26 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
 	}
+}
+
+// openSQLiteReadModel opens (or creates) a SQLite read model at
+// <storeRoot>/../signalapi.db and runs the MySQL migrations through the
+// regex translator. It is the zero-ops fallback when MYSQL_URL is not set.
+func openSQLiteReadModel(storeRoot string, logger *log.Logger) (*sql.DB, error) {
+	// Place the SQLite file one level above the event store root so it
+	// survives event store rotations.
+	dbPath := filepath.Join(filepath.Dir(storeRoot), "signalapi.db")
+	db, err := store.OpenSQLite(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	migrationsDir := filepath.Join("migrations", "mysql")
+	if err := store.RunSQLiteMigrations(db, migrationsDir); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("run sqlite migrations: %w", err)
+	}
+	logger.Printf("SQLite read model at %s", dbPath)
+	return db, nil
 }
 
 func envOr(key, fallback string) string {

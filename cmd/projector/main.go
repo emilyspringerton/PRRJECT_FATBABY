@@ -230,6 +230,7 @@ func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, si
 	}
 
 	entityName := ""
+	sourcePublishedAt := ""
 	if sig.RawMetadata != nil {
 		entityName = sig.RawMetadata["entity_name"]
 		if entityName == "" {
@@ -238,18 +239,28 @@ func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, si
 		if entityName == "" {
 			entityName = sig.RawMetadata["auditor_name"]
 		}
+		// Prefer the explicit source_published_at stamp; fall back to filing_date.
+		sourcePublishedAt = sig.RawMetadata["source_published_at"]
+		if sourcePublishedAt == "" {
+			sourcePublishedAt = sig.RawMetadata["filing_date"]
+		}
+	}
+	// Last resort: use the signal timestamp date.
+	if sourcePublishedAt == "" {
+		sourcePublishedAt = filingDate.Format("2006-01-02")
 	}
 
 	score := signalScore(sig.Importance)
 
 	_, err := p.db.ExecContext(ctx, `
 		INSERT INTO governance_signals
-		    (ticker, event_type, filing_id, entity_name, signal_score, headline, raw_json, filing_date, eventstore_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		    (ticker, event_type, filing_id, entity_name, signal_score, headline, raw_json, filing_date, source_published_at, eventstore_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
-		    signal_score = VALUES(signal_score),
-		    headline     = VALUES(headline),
-		    raw_json     = VALUES(raw_json)
+		    signal_score       = VALUES(signal_score),
+		    headline           = VALUES(headline),
+		    raw_json           = VALUES(raw_json),
+		    source_published_at = VALUES(source_published_at)
 	`,
 		sig.Ticker,
 		sig.SignalType,
@@ -259,6 +270,7 @@ func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, si
 		truncate(sig.Summary, 511),
 		rawJSON,
 		filingDate.Format("2006-01-02"),
+		sourcePublishedAt,
 		rec.Sequence,
 	)
 	if err != nil {

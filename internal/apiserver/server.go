@@ -14,6 +14,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
+	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -22,6 +23,7 @@ type ServerConfig struct {
 	Addr            string
 	Index           *signalindex.Index
 	EarningsCal     *earningscal.Store  // optional; enables /v1/earnings-calendar
+	DocIndex        *docindex.Index     // optional; enables /v1/press-releases/{ticker}
 	Logger          *log.Logger
 	APIKeys         []string
 	ReadTimeout     time.Duration
@@ -69,6 +71,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/signals", s.withMiddleware(s.handleSummary))
 	mux.HandleFunc("/v1/signals/", s.withMiddleware(s.dispatchSignals))
 	mux.HandleFunc("/v1/earnings-calendar", s.withMiddleware(s.handleEarningsCalendar))
+	mux.HandleFunc("/v1/press-releases/", s.withMiddleware(s.handlePressReleases))
 	// CQRS read model endpoints (S20-05).
 	mux.HandleFunc("/v1/governance-signals", s.withMiddleware(s.handleGovernanceSignals))
 	mux.HandleFunc("/v1/eps/{ticker}", s.withMiddleware(s.handleEPS))
@@ -114,6 +117,10 @@ func (s *server) dispatchSignals(w http.ResponseWriter, r *http.Request) (int, a
 	}
 	if strings.HasSuffix(path, "/latest") {
 		return s.handleLatestSignal(strings.TrimSuffix(path, "/latest"))
+	}
+	// When MySQL is available, serve from governance_signals (source_published_at ordering).
+	if s.cfg.MySQL != nil {
+		return s.handleSignalsByTickerMySQL(path, r)
 	}
 	return s.handleSignalsByTicker(path, r)
 }
@@ -238,6 +245,56 @@ func (s *server) handleEarningsCalendar(_ http.ResponseWriter, r *http.Request) 
 		"count":    len(results),
 		"calendar": results,
 	}
+}
+
+// handlePressReleases serves GET /v1/press-releases/{ticker}.
+// Query params:
+//
+//	limit — max results (default 20, capped at MaxLimit)
+//
+// Returns 503 when the DocIndex is not configured.
+func (s *server) handlePressReleases(_ http.ResponseWriter, r *http.Request) (int, any) {
+	if s.cfg.DocIndex == nil {
+		return http.StatusServiceUnavailable, map[string]string{"error": "press release index not configured"}
+	}
+	ticker := strings.ToUpper(strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/v1/press-releases/")))
+	if ticker == "" {
+		return http.StatusBadRequest, map[string]string{"error": "ticker required"}
+	}
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > s.cfg.MaxLimit {
+		limit = s.cfg.MaxLimit
+	}
+	all := s.cfg.DocIndex.ForTicker(ticker)
+	type prItem struct {
+		Identity    string    `json:"identity"`
+		DocumentURL string    `json:"document_url"`
+		Snippet     string    `json:"snippet"`
+		FilingDate  string    `json:"filing_date,omitempty"`
+		PersistedAt time.Time `json:"persisted_at"`
+	}
+	out := make([]prItem, 0, min(limit, len(all)))
+	for _, ds := range all {
+		if ds.SourceType != "press_release" {
+			continue
+		}
+		out = append(out, prItem{
+			Identity:    ds.Identity,
+			DocumentURL: ds.DocumentURL,
+			Snippet:     ds.BodyPreview,
+			FilingDate:  ds.FilingDate,
+			PersistedAt: ds.PersistedAt,
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return http.StatusOK, map[string]any{"ticker": ticker, "count": len(out), "press_releases": out}
 }
 
 func (s *server) handleHealth(http.ResponseWriter, *http.Request) (int, any) {
