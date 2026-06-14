@@ -131,10 +131,18 @@ func main() {
 		oneShot     = flag.Bool("one-shot", false, "process at most one observation, then exit")
 		dryRun      = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
 		gateMode    = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
-		primeDir    = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
-		batchWindow = flag.Duration("batch-window", 60*time.Second, "when >0, collect all new observations within this window and invoke Claude once for the batch; set to 0 to process each observation individually")
+		primeDir         = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
+		batchWindow      = flag.Duration("batch-window", 60*time.Second, "when >0, collect all new observations within this window and invoke Claude once for the batch; set to 0 to process each observation individually")
+		continueSession  = flag.Bool("continue", envOr("OBSERVATION_CONTINUE", "") == "true", "pass --continue to claude so each RSI cycle continues the prior session (AGI loop mode)")
 	)
 	flag.Parse()
+
+	// AGI loop mode: append --continue so every claude invocation resumes the
+	// most recent session from this directory, building context across RSI cycles.
+	if *continueSession {
+		*extraArg = strings.TrimSpace(*extraArg + " --continue")
+		log.Printf("AGI loop mode: --continue enabled (sessions persist across RSI cycles)")
+	}
 
 	gh := newGithubClient(
 		envOr("GITHUB_TOKEN", ""),

@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-06-14
+- feat(obs-watcher): --continue flag (OBSERVATION_CONTINUE=true) enables AGI loop mode; claude invocations pass --continue so each RSI cycle continues the prior session and builds persistent context across iterations
+
 ## 2026-06-13
 - feat(press-releases): /v1/press-releases/{ticker} endpoint — handler reads from in-memory docindex.Index (filtered to SourceType=="press_release"), returns {identity, document_url, snippet, filing_date, persisted_at}; DocIndex wired into ServerConfig + signalapi main (Build+Tail alongside signalindex)
 - feat(source-published-at): track original source document date through pipeline — processor stamps signal.RawMetadata["source_published_at"] from FilingDiscoveredEvent.FilingDate; migration 202606130001 adds source_published_at DATE NULL + index to governance_signals; projector populates it with fallback chain (RawMetadata→filing_date→signal timestamp)
