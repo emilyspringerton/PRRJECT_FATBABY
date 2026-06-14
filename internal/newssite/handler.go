@@ -70,6 +70,7 @@ type Handler struct {
 // askVerifier is a minimal interface so we can swap in iamguard.Guard without importing it directly.
 type askVerifier interface {
 	VerifyTokenSub(token string) (sub string, err error)
+	VerifyTokenPermissions(token string) (sub string, permissions []string, err error)
 }
 
 // NewHandler returns a new Handler.

@@ -101,9 +101,14 @@ func (h *Handler) serveAsk(w http.ResponseWriter, r *http.Request) int {
 		return http.StatusMethodNotAllowed
 	}
 
-	// Rate limit: authenticated users get 20/day by user_id; anonymous get 5/day by IP.
-	userSub := h.extractUserSub(r)
-	if userSub != "" {
+	// Rate limit:
+	//   cap.query.full (Emily+): unlimited — bypass all rate limiters
+	//   authenticated (logged in): 20/day by user_id
+	//   anonymous: 5/day by IP
+	userSub, userPerms := h.extractUserSubAndPermissions(r)
+	if hasPermission(userPerms, "cap.query.full") {
+		// Emily+ subscriber — no rate limit
+	} else if userSub != "" {
 		if h.authedAskRateLimiter != nil {
 			if ok, _ := h.authedAskRateLimiter.check(userSub); !ok {
 				writeJSON(w, http.StatusTooManyRequests, map[string]string{
@@ -306,19 +311,36 @@ func truncate512(s string) string {
 // extractUserSub returns the IDUNA JWT sub claim from the Bearer token in the
 // Authorization header, or empty string if missing/invalid.
 func (h *Handler) extractUserSub(r *http.Request) string {
-	if h.askJWTVerifier == nil {
-		return ""
-	}
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return ""
-	}
-	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-	sub, err := h.askJWTVerifier.VerifyTokenSub(token)
-	if err != nil {
-		return ""
-	}
+	sub, _ := h.extractUserSubAndPermissions(r)
 	return sub
+}
+
+// extractUserSubAndPermissions returns the sub claim and permissions slice from the Bearer JWT.
+// Returns empty values when no valid token is present.
+func (h *Handler) extractUserSubAndPermissions(r *http.Request) (string, []string) {
+	if h.askJWTVerifier == nil {
+		return "", nil
+	}
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return "", nil
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	sub, perms, err := h.askJWTVerifier.VerifyTokenPermissions(token)
+	if err != nil {
+		return "", nil
+	}
+	return sub, perms
+}
+
+// hasPermission returns true if perm is in the permissions slice.
+func hasPermission(perms []string, perm string) bool {
+	for _, p := range perms {
+		if p == perm {
+			return true
+		}
+	}
+	return false
 }
 
 // serveAskLanding renders GET /ask — the Ask Emily product landing page.

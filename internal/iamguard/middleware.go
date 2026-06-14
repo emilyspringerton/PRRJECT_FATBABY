@@ -154,6 +154,19 @@ func (g *Guard) VerifyTokenSub(token string) (string, error) {
 	return claims.Sub, nil
 }
 
+// VerifyTokenPermissions verifies the JWT and returns the sub claim and the permissions slice.
+// Returns empty values and an error when the guard is in no-op mode or verification fails.
+func (g *Guard) VerifyTokenPermissions(token string) (string, []string, error) {
+	if !g.IsActive() {
+		return "", nil, fmt.Errorf("guard: no-op mode")
+	}
+	claims, err := g.verifier.Verify(token)
+	if err != nil {
+		return "", nil, err
+	}
+	return claims.Sub, claims.Permissions, nil
+}
+
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
