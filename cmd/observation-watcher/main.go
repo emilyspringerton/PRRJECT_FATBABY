@@ -691,6 +691,14 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 	lastProcessed := ""
 	if b, err := os.ReadFile(cursorPath); err == nil {
 		lastProcessed = strings.TrimSpace(string(b))
+		// Old cursor format used YYYYMMDDTHHMMSSZ (no hyphens). Observation files
+		// use YYYY-MM-DDTHH-MM-SSZ (with hyphens). Hyphen sorts before digits in
+		// ASCII, so a no-hyphen cursor silently skips all hyphenated files.
+		// Reset to empty if cursor predates the hyphenated naming convention.
+		if lastProcessed != "" && !strings.Contains(lastProcessed, "-") {
+			log.Printf("batch: resetting stale no-hyphen cursor %q → starting fresh", lastProcessed)
+			lastProcessed = ""
+		}
 	}
 
 	// Collect all new observation files in filename order (timestamp-sorted).
