@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-16
+- chore(backlog): curate FatBaby observations into golden backlog — promoted 2 intake items (SHANKPIT display/fullscreen→S04, web-audit newssite/signalapi→S03), removed 1 noise item; added S35 EDIS DIS hardening section (ForceState endpoint, EDIS_DIS_COLLECTOR_URL fix, per-IP delta scoring); updated S23-06 Apple TBD; EMILY BACKLOG.md pushed. Apple #592 [task-1781616390135415763]
 - fix(edis-dis): 3 pre-deploy DIS bugs — nginx parser field-index shift (all 400-class lines silently dropped when $request="-"), posture window race (hostile_ratio inflated), missing hostile_ratio from /dis/health and admin panel; 13 tests added [task-1781616390102456285]
 - S30: signalapi binary built (bin/signalapi); emily start --signalapi flag wired
 - perf(obs-watcher): compress runReportFooter ~30% (S34-02) — same 6 steps, fewer tokens per session
