@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-16
+- perf(obs-watcher): compress runReportFooter ~30% (S34-02) — same 6 steps, fewer tokens per session
 
 - perf(obs-watcher): primeDedupWindow 4h → 8h — saves 100K–200K tokens/day on repeated prime tasks
 
