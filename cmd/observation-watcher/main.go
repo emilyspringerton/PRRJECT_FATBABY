@@ -48,7 +48,9 @@ func invokeWithRetry(cmdName string, args []string) error {
 		}
 		var buf bytes.Buffer
 		cmd := exec.Command(cmdName, args...)
-		cmd.Stdout = os.Stdout
+		// Capture both stdout and stderr into buf so isContextTooLongOutput can
+		// detect "Prompt is too long" regardless of which stream claude uses.
+		cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
 		cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
 		if err := cmd.Run(); err != nil {
 			lastErr = err
