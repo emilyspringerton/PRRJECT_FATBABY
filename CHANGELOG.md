@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-16
+
+- perf(obs-watcher): primeDedupWindow 4h → 8h — saves 100K–200K tokens/day on repeated prime tasks
+
+
 ## 2026-06-14
 - feat(newssite): Emily+ rate limit bypass — cap.query.full permission (from IDUNA subscription) bypasses all Ask Emily rate limits; askVerifier interface extended with VerifyTokenPermissions; iamguard.Guard implements it; extractUserSubAndPermissions replaces extractUserSub internally
 - feat(obs-watcher): --continue flag (OBSERVATION_CONTINUE=true) enables AGI loop mode; claude invocations pass --continue so each RSI cycle continues the prior session and builds persistent context across iterations
