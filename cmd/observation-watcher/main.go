@@ -30,10 +30,16 @@ import (
 // exponential back-off (30s → 90s → 270s). stderr is streamed live AND
 // captured so rate-limit detection does not require disabling stderr output.
 // After exhausting retries it fires a best-effort emily observe warning Apple.
+//
+// Context-too-long handling (AGI loop): if the output indicates the accumulated
+// --continue session is too long, one recovery attempt is made without --continue
+// so the session resets. This prevents the AGI loop from getting stuck in a
+// permanent context-overflow snowball.
 func invokeWithRetry(cmdName string, args []string) error {
 	const maxRetries = 3
 	const retryBase = 30 * time.Second
 	var lastErr error
+	contextResetDone := false
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			delay := retryBase * time.Duration(attempt)
@@ -46,7 +52,16 @@ func invokeWithRetry(cmdName string, args []string) error {
 		cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
 		if err := cmd.Run(); err != nil {
 			lastErr = err
-			if isRateLimitOutput(buf.String()) {
+			output := buf.String()
+			if isRateLimitOutput(output) {
+				continue
+			}
+			if !contextResetDone && isContextTooLongOutput(output) {
+				// AGI loop context overflow: drop --continue and retry fresh.
+				args = dropFlag(args, "--continue")
+				contextResetDone = true
+				log.Printf("invoke: context too long — dropping --continue, retrying with fresh session")
+				attempt-- // don't count this as a retry
 				continue
 			}
 			return err
@@ -58,6 +73,28 @@ func invokeWithRetry(cmdName string, args []string) error {
 		"obs-watcher: claude invoke failed after retries",
 		"--findings", lastErr.Error()).Run()
 	return fmt.Errorf("invoke failed after %d retries: %w", maxRetries, lastErr)
+}
+
+// isContextTooLongOutput returns true when claude's output signals the prompt
+// exceeds the model's context window (AGI --continue session overflow).
+func isContextTooLongOutput(s string) bool {
+	lower := strings.ToLower(s)
+	return strings.Contains(lower, "prompt is too long") ||
+		strings.Contains(lower, "context length") ||
+		strings.Contains(lower, "context_length_exceeded") ||
+		strings.Contains(lower, "maximum context") ||
+		strings.Contains(lower, "too many tokens")
+}
+
+// dropFlag removes all occurrences of flag from args (exact string match).
+func dropFlag(args []string, flag string) []string {
+	out := args[:0:len(args)]
+	for _, a := range args {
+		if a != flag {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func isRateLimitOutput(s string) bool {
