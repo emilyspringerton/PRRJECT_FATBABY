@@ -376,6 +376,11 @@ func (g *Graph) mergeNameVariants() {
 				kNode.LastAppearance = dNode.LastAppearance
 			}
 			delete(g.Nodes, dropped)
+			if dropped == ids[i] {
+				// ids[i] was merged away; all remaining j iterations
+				// would dereference the now-deleted node — stop.
+				break
+			}
 		}
 	}
 }
