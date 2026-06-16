@@ -238,7 +238,7 @@ type primeTask struct {
 // identical prime tasks (same task_type + description). The rsi-loop.sh preset
 // rotation fires the same preset every 30s; without this guard each firing
 // queues an independent Claude Code session (~100K–200K tokens each).
-const primeDedupWindow = 4 * time.Hour
+const primeDedupWindow = 8 * time.Hour
 
 // rsiReportDedupWindow is the dedup window for rsi_report tasks specifically.
 // rsi-token-report presets run frequently; 8h prevents redundant analysis cycles
