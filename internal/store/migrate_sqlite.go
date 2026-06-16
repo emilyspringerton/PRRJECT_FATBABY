@@ -31,6 +31,7 @@ import (
 // 18. ADD INDEX IF NOT EXISTS → (dropped; CREATE INDEX IF NOT EXISTS is handled separately)
 // 19. Trailing commas before closing paren cleaned up
 // 20. COLLATE utf8mb4_unicode_ci stripped
+// 21. AFTER <col> in ADD COLUMN stripped (MySQL positional; SQLite always appends)
 func mysqlToSQLite(sql string) string {
 	stmts := splitStatements(sql)
 	out := make([]string, 0, len(stmts))
@@ -109,6 +110,10 @@ func translateStatement(s string) string {
 	// Remove CONSTRAINT ... FOREIGN KEY lines and inline KEY/INDEX lines.
 	s = removeForeignKeyLines(s)
 
+	// AFTER <col> in ALTER TABLE ADD COLUMN — MySQL positional syntax; SQLite
+	// always appends to the end. Strip so the statement is valid SQLite.
+	s = reAlterAfterCol.ReplaceAllString(s, "")
+
 	// Remove trailing commas before closing paren.
 	s = cleanTrailingCommas(s)
 
@@ -147,6 +152,9 @@ var (
 
 	// Strip DESC/ASC from index column lists (SQLite ignores ordering anyway).
 	reDescInCols = regexp.MustCompile(`(?i)\s+(?:DESC|ASC)\b`)
+
+	// AFTER <identifier> in ADD COLUMN — MySQL column positioning; not supported by SQLite.
+	reAlterAfterCol = regexp.MustCompile(`(?i)\s+AFTER\s+\S+`)
 )
 
 func removeForeignKeyLines(s string) string {
