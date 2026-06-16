@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-16
+- fix(store): SQLite migration translator now strips AFTER <col> — signalapi SQLite fallback was failing on migration 202606130001, returning 503 for all signal queries
 - obs-watcher: 3 AGI loop fixes — batch cursor no-hyphen format reset, context-overflow recovery (stdout capture for Prompt-too-long detection), stdout capture in invokeWithRetry
 - chore(backlog): curate FatBaby observations into golden backlog — promoted 2 intake items (SHANKPIT display/fullscreen→S04, web-audit newssite/signalapi→S03), removed 1 noise item; added S35 EDIS DIS hardening section (ForceState endpoint, EDIS_DIS_COLLECTOR_URL fix, per-IP delta scoring); updated S23-06 Apple TBD; EMILY BACKLOG.md pushed. Apple #592 [task-1781616390135415763]
 - fix(edis-dis): 3 pre-deploy DIS bugs — nginx parser field-index shift (all 400-class lines silently dropped when $request="-"), posture window race (hostile_ratio inflated), missing hostile_ratio from /dis/health and admin panel; 13 tests added [task-1781616390102456285]
