@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-16
+- fix(edis-dis): 3 pre-deploy DIS bugs — nginx parser field-index shift (all 400-class lines silently dropped when $request="-"), posture window race (hostile_ratio inflated), missing hostile_ratio from /dis/health and admin panel; 13 tests added [task-1781616390102456285]
 - S30: signalapi binary built (bin/signalapi); emily start --signalapi flag wired
 - perf(obs-watcher): compress runReportFooter ~30% (S34-02) — same 6 steps, fewer tokens per session
 

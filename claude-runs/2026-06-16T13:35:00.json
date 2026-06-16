@@ -1,0 +1,20 @@
+{
+  "observation_summary": "EDIS DIS pre-deploy analysis: found and fixed 3 bugs (broken nginx parser, posture window race, missing hostile_ratio). Collector was ingesting zero records due to wrong field indices.",
+  "observation_timestamp": "2026-06-16T13:26:30Z",
+  "run_started_at": "2026-06-16T13:26:30Z",
+  "run_completed_at": "2026-06-16T13:35:00Z",
+  "files_changed": [
+    "EDIS/cmd/dis/main.go",
+    "EDIS/cmd/dis/main_test.go",
+    "EDIS/internal/dis/posture.go",
+    "EDIS/internal/dis/posture_test.go",
+    "EDIS/plugins/edis-dis/edis-dis.php",
+    "EDIS/CHANGELOG.md",
+    "CHANGELOG.md"
+  ],
+  "actions_taken": "Bug 1 (nginx parser zero-records): Rewrote parseNginxCombined to locate $request by its surrounding double-quotes instead of fixed SplitN(line,' ',9) indices. The old approach shifted STATUS from parts[8] to parts[6] when nginx logged '-' for bad/malformed requests (which have no internal spaces in the request field), causing ParseUint on the referer '-' to fail and silently drop all 400-class lines — exactly the scanner/bot traffic DIS most needs. New approach: find reqOpen=first '\"', reqClose=first '\"' after that, parse suffix status/bytes from line[reqClose+2:]. Bug 2 (posture window race): In Posture.recompute(), swapped hostileN.Swap(0) before totalN.Swap(0) (was reversed). Old order let goroutines racing across the window boundary increment totalN after it was captured (not in denominator) but hostileN before it was captured (in numerator), inflating hostile_ratio toward false attack escalation. New order keeps ratio conservative: racing goroutines counted in total (denominator) not hostile. Bug 3 (missing hostile_ratio): Added HostileRatio float64 json:hostile_ratio to healthResponse struct; wired to p.HostileRatio() in handleHealth; added Hostile Ratio row to WordPress admin posture panel table in edis-dis.php. Tests: wrote cmd/dis/main_test.go (8 parser tests incl. bad-request-dash regression, 3 scorer tests) and internal/dis/posture_test.go (5 posture tests covering ratio, state escalation, swap-order correctness, ForceState, String). All 13 tests pass. PRRJECT_FATBABY go test ./... all pass.",
+  "git_commit_hash": "fad4f6d",
+  "exit_status": "success",
+  "tokens_used": 32000,
+  "notes": "All changes in EDIS repo (separate git repo at /home/fatbaby/EDIS), committed as fad4f6d and pushed to main. The bad-request-dash parser bug is the most impactful: scanners probing /wp-login.php, /xmlrpc.php, etc. often trigger 400s with malformed request lines — these are now scored and ingested into the posture engine for hostile_ratio computation."
+}
