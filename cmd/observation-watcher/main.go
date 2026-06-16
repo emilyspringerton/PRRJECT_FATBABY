@@ -400,66 +400,28 @@ func buildPrimeTaskPrompt(taskPath string, task primeTask) string {
 func runReportFooter(summary, observationTimestamp string) string {
 	return `
 ---
-## Mandatory: run report, CHANGELOG, git sync, and Apple
+## MANDATORY END-OF-RUN STEPS (all required)
 
-At the end of this run you MUST complete ALL of the following steps.
+**1. CHANGELOG** — if any source file changed, prepend a dated bullet to CHANGELOG.md before committing.
 
-### 1. Update CHANGELOG.md (required for any code change)
-If you changed any source file, append a dated entry to CHANGELOG.md at the repo root:
-  ## YYYY-MM-DD
-  - <plain-English description of what changed and why>
-Do this BEFORE the git commit so the entry is included in the same commit as the code change.
-If no source files were changed (read-only or analysis run), skip this step.
+**2. Run report** — write claude-runs/YYYY-MM-DDTHH:MM:SS.json (create dir if absent):
+{"observation_summary":"` + summary + `","observation_timestamp":"` + observationTimestamp + `","run_started_at":"<ISO>","run_completed_at":"<ISO>","files_changed":["<path>"],"actions_taken":"<summary>","git_commit_hash":"<hash>","exit_status":"success|partial|failed","tokens_used":<int>,"notes":"<caveats>"}
 
-### 2. Write a run report
-Create the directory claude-runs/ at the repo root if it does not exist, then write
-a JSON file named with the current UTC time to second granularity:
-  claude-runs/YYYY-MM-DDTHH:MM:SS.json
-Example: claude-runs/2026-06-11T20:45:32.json
-(Note: use claude-runs/ NOT var/claude-code/runs/ — var/ is gitignored.)
-
-The file must contain:
-{
-  "observation_summary":   "` + summary + `",
-  "observation_timestamp": "` + observationTimestamp + `",
-  "run_started_at":        "<ISO timestamp when you began>",
-  "run_completed_at":      "<ISO timestamp when you finished>",
-  "files_changed":         ["<path>", ...],
-  "actions_taken":         "<plain-English description of every edit and why>",
-  "git_commit_hash":       "<hash of the commit made below>",
-  "exit_status":           "success" | "partial" | "failed",
-  "tokens_used":           <approximate total tokens consumed this run (input+output, integer)>,
-  "notes":                 "<caveats, skipped steps, follow-up recommendations>"
-}
-
-### 3. Git sync (required)
-After writing the report, run exactly:
+**3. Git sync** — include the run report in the commit:
   git add -A
   git commit -m "claude-code: ` + summary + ` [` + observationTimestamp + `]"
   git push
+Retry push once on failure; record failure in notes, set exit_status "partial". Never skip.
 
-The run report file must be included in this commit.
-If git push fails, retry once. If it still fails, set exit_status to "partial"
-and record the failure in notes. Never silently skip the sync.
-
-### 4. File a completion Apple (required)
-Post a completion signal to IDUNA using the emily CLI:
+**4. Apple** — file completion to IDUNA:
   emily apples post -t completion -repo PRRJECT_FATBABY "` + summary + `"
+If IDUNA offline, record in notes, set exit_status "partial".
 
-If emily CLI is not installed or IDUNA is offline, record this in notes and
-set exit_status to "partial" — do not silently skip.
+**5. Backlog** — if this addresses EMILY/BACKLOG.md item, mark [x] with Apple ID + date, then:
+  cd /home/fatbaby/EMILY && git add BACKLOG.md && git commit -m "backlog: ✓ <item>" && git push
 
-### 5. Check BACKLOG.md (required if change addresses a backlog item)
-If this change addresses a known item in EMILY/BACKLOG.md:
-  - Mark it [x] with the Apple ID and today's date
-  - Run: cd /home/fatbaby/EMILY && git add BACKLOG.md && git commit -m "backlog: ✓ <item>" && git push
-  This keeps the golden backlog current and closes the RSI feedback loop.
-
-### 6. Register new golden docs (required if you created a mission-critical doc)
-If you created a new NORTHSTAR.md, architecture spec, or mission-critical design doc, append
-a row to EMILY/context/golden-docs-index.md so Emily Prime picks it up on the next cron cycle:
-  | NAME | repo/path/to/doc.md | 1 | <budget-chars-or-0> | one-line description |
-Then: cd /home/fatbaby/EMILY && git add context/golden-docs-index.md && git commit -m "golden-index: add NAME" && git push
+**6. Golden docs** — if you created a NORTHSTAR.md or mission-critical spec, add a row to
+EMILY/context/golden-docs-index.md and commit+push EMILY.
 `
 }
 
