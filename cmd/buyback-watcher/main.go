@@ -122,6 +122,9 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerMap ma
 		}
 
 		ticker := tickerMap[body.PRDiscoveryID]
+		if ticker == "" {
+			continue
+		}
 
 		ev := buyback.Classify(body.Headline, body.Body)
 		if ev == nil || ev.EventType == buyback.EventUpdate {

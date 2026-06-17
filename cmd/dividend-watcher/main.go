@@ -133,6 +133,9 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerMap ma
 		}
 
 		ticker := tickerMap[body.PRDiscoveryID]
+		if ticker == "" {
+			continue
+		}
 
 		ev := dividend.Classify(body.Headline, body.Body)
 		if ev == nil || ev.EventType == dividend.EventRegular {

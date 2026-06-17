@@ -29,7 +29,7 @@ func main() {
 	workers := flag.Int("workers", 4, "processor worker count")
 	pollInterval := flag.Duration("poll-interval", 15*time.Second, "polling interval")
 	ua := flag.String("user-agent", "prrject-fatbaby-secwatch/0.1 (contact: secops@example.com)", "SEC-compliant user-agent")
-	maxDocBytes := flag.Int64("max-doc-bytes", 4<<20, "max filing document bytes to ingest")
+	maxDocBytes := flag.Int64("max-doc-bytes", 16<<20, "max filing document bytes to ingest")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)

@@ -67,6 +67,8 @@ func (s *seenSet) markSource(id string) {
 
 // loadSeenIdentities does a single O(n) scan of the store at startup to build
 // the in-memory seen set, replacing per-filing O(n) calls inside handleOne.
+// signal_failed events are also loaded into seen.signals so permanently-failed
+// filings (e.g. empty URL, exhausted 429 retries) are not re-attempted on restart.
 func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger *log.Logger) *seenSet {
 	seen := newSeenSet()
 	from := uint64(1)
@@ -77,7 +79,7 @@ func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger
 		}
 		for _, r := range recs {
 			switch r.Event.Type {
-			case "signal_generated":
+			case "signal_generated", "signal_failed":
 				seen.signals[r.Event.PartitionKey] = struct{}{}
 			case "source_document_persisted":
 				seen.sources[r.Event.PartitionKey] = struct{}{}
@@ -165,6 +167,12 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	cfg.Logger.Printf("processor handle start identity=%s form=%s doc=%s", identity, form, filing.PrimaryDocument)
 	if seen.hasSignal(identity) {
 		cfg.Logger.Printf("processor handle skip identity=%s reason=signal_exists", identity)
+		return nil
+	}
+	if !IsValidDocURL(filing.PrimaryDocument) {
+		cfg.Logger.Printf("processor handle skip identity=%s reason=invalid_url doc=%q", identity, filing.PrimaryDocument)
+		appendFailure(ctx, cfg.Store, filing, fmt.Errorf("unsupported document URL: %q", filing.PrimaryDocument))
+		seen.markSignal(identity)
 		return nil
 	}
 	cfg.Logger.Printf("processor fetch start identity=%s", identity)

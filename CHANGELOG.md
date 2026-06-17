@@ -2,6 +2,11 @@
 
 ## 2026-06-17
 
+- fix(processor): S36-01 EDGAR 429 retry — per-host 150ms throttle (~6 req/s), up to 3 retries on 429 with 30s/60s/300s backoffs; prevents 9K+/day signal_failed spam from rate-limit hammering
+- fix(processor): S36-02 skip empty-URL filings — signal_failed loaded into seen set at startup; early guard in handleOne for non-http(s) URLs; stops pre-2000 filing re-fails accumulating on every restart
+- fix(processor): S36-03 raise max-doc-bytes default 4MB→16MB; proxy statements and large 8-Ks no longer fail with "document too large"
+- fix(guidance-watcher,dividend-watcher,buyback-watcher): S36-05 guard ticker=="" — skip PR events with no resolvable ticker; eliminates empty-ticker signals
+
 - fix(migrate-sqlite): strip table-level COMMENT='...' options — SQLite rejected market_data_daily migration with "near '=': syntax error"; reTableComment regex now removes table-option COMMENT= (distinct from column-level COMMENT which was already handled)
 - fix(form4-watcher): strip XSL stylesheet prefix from EDGAR primaryDocument path — submissions API returns "xslF345X06/form4.xml" which resolved to rendered HTML, not raw XML; causes 0 insider transactions; stripped to "form4.xml" for correct XML; raised body read limit 4MB→32MB for JPM truncation; 30s 429-retry for Form 4 XML fetches
 - fix(eventstore): per-file max-sequence cache in ReadFrom — signalapi was O(N) decoding all 82K records every 2s (86% CPU for 24h); closed files with max_seq < cursor now skipped; CPU drops to ~0% in steady state

@@ -110,6 +110,10 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerByID m
 			continue
 		}
 		ticker := tickerByID[ev.PRDiscoveryID]
+		if ticker == "" {
+			skipped++
+			continue
+		}
 		if len(ev.Body) < 200 {
 			skipped++
 			continue
