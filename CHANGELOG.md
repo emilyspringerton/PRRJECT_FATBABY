@@ -2,7 +2,8 @@
 
 ## 2026-06-17
 
-- fix(form4-watcher): strip XSL stylesheet prefix from EDGAR primaryDocument path — submissions API returns "xslF345X06/form4.xml" which resolved to rendered HTML, not raw XML; causes 0 insider transactions; stripped to "form4.xml" for correct XML; raised body read limit 4MB→32MB for JPM truncation
+- fix(migrate-sqlite): strip table-level COMMENT='...' options — SQLite rejected market_data_daily migration with "near '=': syntax error"; reTableComment regex now removes table-option COMMENT= (distinct from column-level COMMENT which was already handled)
+- fix(form4-watcher): strip XSL stylesheet prefix from EDGAR primaryDocument path — submissions API returns "xslF345X06/form4.xml" which resolved to rendered HTML, not raw XML; causes 0 insider transactions; stripped to "form4.xml" for correct XML; raised body read limit 4MB→32MB for JPM truncation; 30s 429-retry for Form 4 XML fetches
 - fix(eventstore): per-file max-sequence cache in ReadFrom — signalapi was O(N) decoding all 82K records every 2s (86% CPU for 24h); closed files with max_seq < cursor now skipped; CPU drops to ~0% in steady state
 - feat(market-data): cmd/market-data-watcher — Yahoo Finance v8 chart API scraper; emits market_data_tick events to var/market-data/ eventstore; per-ticker cursor; 2y backfill on first run then 5d incremental; 600ms inter-request delay
 - feat(projector): -market-store flag tails var/market-data/ and projects market_data_tick → market_data_daily; named cursors (main/market) in projector_cursors table; both governance and market loops run per poll cycle

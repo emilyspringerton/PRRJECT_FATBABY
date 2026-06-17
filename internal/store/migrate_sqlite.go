@@ -24,7 +24,7 @@ import (
 // 11. ENUM(...) → TEXT
 // 12. TINYINT(1) → INTEGER
 // 13. MEDIUMTEXT → TEXT
-// 14. MySQL COMMENT 'text' on columns removed
+// 14. MySQL COMMENT 'text' on columns and COMMENT='text' table options removed
 // 15. CONSTRAINT ... FOREIGN KEY lines removed
 // 16. Inline KEY / INDEX lines removed
 // 17. ADD COLUMN IF NOT EXISTS → ADD COLUMN (SQLite doesn't support IF NOT EXISTS on ALTER)
@@ -104,8 +104,9 @@ func translateStatement(s string) string {
 	// TINYINT(1) → INTEGER.
 	s = reTinyint1.ReplaceAllString(s, "INTEGER")
 
-	// MySQL column COMMENT 'text' removed.
+	// MySQL column COMMENT 'text' and table-level COMMENT='text' removed.
 	s = reColumnComment.ReplaceAllString(s, "")
+	s = reTableComment.ReplaceAllString(s, "")
 
 	// Remove CONSTRAINT ... FOREIGN KEY lines and inline KEY/INDEX lines.
 	s = removeForeignKeyLines(s)
@@ -138,6 +139,7 @@ var (
 	reEnum              = regexp.MustCompile(`(?i)\bENUM\([^)]+\)`)
 	reTinyint1          = regexp.MustCompile(`(?i)\bTINYINT\(1\)`)
 	reColumnComment     = regexp.MustCompile(`(?i)\s+COMMENT\s+'[^']*'`)
+	reTableComment      = regexp.MustCompile(`(?im)\s*COMMENT\s*=\s*'[^']*'\s*$`)
 
 	reConstraintFK = regexp.MustCompile(`(?i)^\s*CONSTRAINT\s+\S+\s+FOREIGN\s+KEY\b.*$`)
 	reInlineKey    = regexp.MustCompile(`(?i)^\s*(?:(?:UNIQUE\s+)?KEY|INDEX)\s+\S+\s*\(.*\)\s*,?\s*$`)
