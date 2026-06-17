@@ -238,7 +238,7 @@ func fetchForm4s(ctx context.Context, client *http.Client, ticker, cik string, s
 		}
 
 		docURL := secwatch.DocumentURL(cik, accession, primaryDoc)
-		xmlBytes, err := getJSON(ctx, client, docURL)
+		xmlBytes, err := getJSONWithRetry(ctx, client, docURL)
 		if err != nil {
 			// Non-fatal: skip this filing.
 			continue
@@ -277,6 +277,24 @@ func getJSON(ctx context.Context, client *http.Client, rawURL string) ([]byte, e
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+}
+
+// getJSONWithRetry wraps getJSON with a single 429-aware retry (30s backoff).
+// Used for individual Form 4 XML fetches; EDGAR rate-limits aggressively.
+func getJSONWithRetry(ctx context.Context, client *http.Client, rawURL string) ([]byte, error) {
+	b, err := getJSON(ctx, client, rawURL)
+	if err == nil {
+		return b, nil
+	}
+	if !strings.Contains(err.Error(), "HTTP 429") {
+		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(30 * time.Second):
+	}
+	return getJSON(ctx, client, rawURL)
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
