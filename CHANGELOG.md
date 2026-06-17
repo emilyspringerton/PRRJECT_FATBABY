@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-17
+
+- feat(market-data): cmd/market-data-watcher — Yahoo Finance v8 chart API scraper; emits market_data_tick events to var/market-data/ eventstore; per-ticker cursor; 2y backfill on first run then 5d incremental; 600ms inter-request delay
+- feat(projector): -market-store flag tails var/market-data/ and projects market_data_tick → market_data_daily; named cursors (main/market) in projector_cursors table; both governance and market loops run per poll cycle
+- feat(migration): 202606170001_market_data.sql — market_data_daily table (ticker, trade_date, OHLCV, adj_close, volume); uq_ticker_date dedup; SQLite auto-translated by existing store.RunSQLiteMigrations
+
 ## 2026-06-16
 - fix(store): SQLite migration translator now strips AFTER <col> — signalapi SQLite fallback was failing on migration 202606130001, returning 503 for all signal queries
 - obs-watcher: 3 AGI loop fixes — batch cursor no-hyphen format reset, context-overflow recovery (stdout capture for Prompt-too-long detection), stdout capture in invokeWithRetry

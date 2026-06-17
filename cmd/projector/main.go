@@ -5,6 +5,8 @@
 //   governance_signals — one row per signal_generated event
 //   entity_timeline    — one row per signal that represents a named-entity change
 //                        (auditor_change, leadership_departure, cfo_departure, etc.)
+//   market_data_daily  — one row per market_data_tick event (Yahoo Finance OHLCV)
+//                        populated when -market-store is set
 //
 // The projector is idempotent: it uses eventstore_seq as a dedup key, so
 // replaying from cursor 0 produces the same MySQL state.
@@ -33,10 +35,11 @@ import (
 )
 
 func main() {
-	storeRoot := flag.String("store", filepath.Join("var", "secwatch"), "secwatch eventstore root")
+	storeRoot    := flag.String("store", filepath.Join("var", "secwatch"), "secwatch eventstore root")
+	marketRoot   := flag.String("market-store", "", "market-data eventstore root (optional; enables market_data_daily projection)")
 	pollInterval := flag.Duration("poll-interval", 2*time.Second, "eventstore poll interval")
-	batchSize := flag.Int("batch-size", 256, "max events per poll")
-	oneShot := flag.Bool("one-shot", false, "process one batch and exit")
+	batchSize    := flag.Int("batch-size", 256, "max events per poll")
+	oneShot      := flag.Bool("one-shot", false, "process one batch and exit")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "projector ", log.LstdFlags|log.LUTC)
@@ -69,24 +72,49 @@ func main() {
 
 	p := &projector{db: db, logger: logger}
 
-	cursor, err := p.loadCursor(ctx)
+	cursor, err := p.loadCursor(ctx, "main")
 	if err != nil {
 		logger.Fatalf("load cursor: %v", err)
 	}
-	logger.Printf("starting cursor=%d poll=%s batch=%d", cursor, *pollInterval, *batchSize)
+	logger.Printf("starting governance cursor=%d poll=%s batch=%d", cursor, *pollInterval, *batchSize)
+
+	// Optional: tail market-data eventstore for OHLCV projection.
+	var marketStore eventstore.EventStore
+	var marketCursor uint64
+	if *marketRoot != "" {
+		ms, err := eventstore.NewFileStore(*marketRoot)
+		if err != nil {
+			logger.Fatalf("open market-store: %v", err)
+		}
+		defer ms.Close()
+		marketStore = ms
+		marketCursor, err = p.loadCursor(ctx, "market")
+		if err != nil {
+			logger.Fatalf("load market cursor: %v", err)
+		}
+		logger.Printf("market-data store enabled cursor=%d", marketCursor)
+	}
 
 	for {
 		cursor, err = p.runBatch(ctx, store, cursor, *batchSize)
 		if err != nil {
-			logger.Printf("batch error: %v", err)
+			logger.Printf("governance batch error: %v", err)
 		}
+
+		if marketStore != nil {
+			marketCursor, err = p.runMarketBatch(ctx, marketStore, marketCursor, *batchSize)
+			if err != nil {
+				logger.Printf("market batch error: %v", err)
+			}
+		}
+
 		if *oneShot {
-			logger.Printf("one-shot complete cursor=%d", cursor)
+			logger.Printf("one-shot complete governance=%d market=%d", cursor, marketCursor)
 			return
 		}
 		select {
 		case <-ctx.Done():
-			logger.Printf("shutdown cursor=%d", cursor)
+			logger.Printf("shutdown governance=%d market=%d", cursor, marketCursor)
 			return
 		case <-time.After(*pollInterval):
 		}
@@ -122,10 +150,10 @@ type projector struct {
 	logger *log.Logger
 }
 
-func (p *projector) loadCursor(ctx context.Context) (uint64, error) {
+func (p *projector) loadCursor(ctx context.Context, name string) (uint64, error) {
 	var seq uint64
 	err := p.db.QueryRowContext(ctx,
-		"SELECT last_seq FROM projector_cursors WHERE projector_name = 'main'",
+		"SELECT last_seq FROM projector_cursors WHERE projector_name = ?", name,
 	).Scan(&seq)
 	if err == sql.ErrNoRows {
 		return 0, nil
@@ -133,11 +161,11 @@ func (p *projector) loadCursor(ctx context.Context) (uint64, error) {
 	return seq, err
 }
 
-func (p *projector) saveCursor(ctx context.Context, seq uint64) error {
+func (p *projector) saveCursor(ctx context.Context, name string, seq uint64) error {
 	_, err := p.db.ExecContext(ctx,
-		"INSERT INTO projector_cursors (projector_name, last_seq) VALUES ('main', ?)"+
+		"INSERT INTO projector_cursors (projector_name, last_seq) VALUES (?, ?)"+
 			" ON DUPLICATE KEY UPDATE last_seq = VALUES(last_seq)",
-		seq,
+		name, seq,
 	)
 	return err
 }
@@ -173,12 +201,83 @@ func (p *projector) runBatch(ctx context.Context, store eventstore.EventStore, c
 	}
 
 	if projected > 0 {
-		if err := p.saveCursor(ctx, cursor); err != nil {
+		if err := p.saveCursor(ctx, "main", cursor); err != nil {
 			return cursor, fmt.Errorf("save cursor: %w", err)
 		}
-		p.logger.Printf("projected=%d cursor=%d", projected, cursor)
+		p.logger.Printf("governance projected=%d cursor=%d", projected, cursor)
 	}
 	return cursor, nil
+}
+
+// runMarketBatch projects market_data_tick events into market_data_daily.
+func (p *projector) runMarketBatch(ctx context.Context, store eventstore.EventStore, cursor uint64, batchSize int) (uint64, error) {
+	recs, err := store.ReadFrom(ctx, cursor, batchSize)
+	if err != nil {
+		return cursor, fmt.Errorf("read from market store: %w", err)
+	}
+	if len(recs) == 0 {
+		return cursor, nil
+	}
+
+	projected := 0
+	for _, rec := range recs {
+		if rec.Event.Type != "market_data_tick" {
+			cursor = rec.Sequence
+			continue
+		}
+		if err := p.projectMarketBar(ctx, rec); err != nil {
+			p.logger.Printf("market project seq=%d: %v", rec.Sequence, err)
+			break
+		}
+		cursor = rec.Sequence
+		projected++
+	}
+
+	if projected > 0 {
+		if err := p.saveCursor(ctx, "market", cursor); err != nil {
+			return cursor, fmt.Errorf("save market cursor: %w", err)
+		}
+		p.logger.Printf("market projected=%d cursor=%d", projected, cursor)
+	}
+	return cursor, nil
+}
+
+type marketBar struct {
+	Ticker   string  `json:"ticker"`
+	Date     string  `json:"date"`
+	Open     float64 `json:"open"`
+	High     float64 `json:"high"`
+	Low      float64 `json:"low"`
+	Close    float64 `json:"close"`
+	AdjClose float64 `json:"adj_close"`
+	Volume   int64   `json:"volume"`
+}
+
+func (p *projector) projectMarketBar(ctx context.Context, rec eventstore.Record) error {
+	var bar marketBar
+	if err := json.Unmarshal(rec.Event.Data, &bar); err != nil {
+		return fmt.Errorf("unmarshal market bar: %w", err)
+	}
+	_, err := p.db.ExecContext(ctx, `
+		INSERT INTO market_data_daily
+		    (ticker, trade_date, open, high, low, close, adj_close, volume, eventstore_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+		    open           = VALUES(open),
+		    high           = VALUES(high),
+		    low            = VALUES(low),
+		    close          = VALUES(close),
+		    adj_close      = VALUES(adj_close),
+		    volume         = VALUES(volume)
+	`,
+		bar.Ticker, bar.Date,
+		bar.Open, bar.High, bar.Low, bar.Close, bar.AdjClose, bar.Volume,
+		rec.Sequence,
+	)
+	if err != nil {
+		return fmt.Errorf("insert market_data_daily: %w", err)
+	}
+	return nil
 }
 
 // signalScore maps importance (1-10) to a 0.0–1.0 float.
