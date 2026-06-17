@@ -28,10 +28,11 @@ type FileStore struct {
 	stateDir  string
 	clock     func() time.Time
 
-	mu      sync.Mutex
-	latest  uint64
-	closed  bool
-	current *os.File
+	mu          sync.Mutex
+	latest      uint64
+	closed      bool
+	current     *os.File
+	fileMaxSeq  map[string]uint64 // closed-file max-sequence cache: skip files entirely behind cursor
 }
 
 func NewFileStore(rootDir string) (*FileStore, error) {
@@ -39,9 +40,10 @@ func NewFileStore(rootDir string) (*FileStore, error) {
 		return nil, errors.New("rootDir is required")
 	}
 	store := &FileStore{
-		rootDir:   rootDir,
-		eventsDir: filepath.Join(rootDir, eventsDirName),
-		stateDir:  filepath.Join(rootDir, stateDirName),
+		rootDir:    rootDir,
+		eventsDir:  filepath.Join(rootDir, eventsDirName),
+		stateDir:   filepath.Join(rootDir, stateDirName),
+		fileMaxSeq: make(map[string]uint64),
 		clock: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -140,14 +142,32 @@ func (s *FileStore) ReadFrom(ctx context.Context, fromSequence uint64, limit int
 		return nil, err
 	}
 
+	// currentPath is the active journal; its max sequence changes with each Append
+	// so we never cache it — always read it fully.
+	currentPath := ""
+	if s.current != nil {
+		currentPath = filepath.Clean(s.current.Name())
+	}
+
 	out := make([]Record, 0, min(limit, 128))
 	for _, p := range paths {
 		if len(out) >= limit {
 			break
 		}
+		// Skip closed files whose cached max sequence is entirely before our cursor.
+		cleanP := filepath.Clean(p)
+		if cleanP != currentPath {
+			if maxSeq, ok := s.fileMaxSeq[cleanP]; ok && maxSeq < fromSequence {
+				continue
+			}
+		}
 		recs, err := readRecordsFromFile(p)
 		if err != nil {
 			return nil, err
+		}
+		// Populate cache for closed (non-current) files.
+		if cleanP != currentPath && len(recs) > 0 {
+			s.fileMaxSeq[cleanP] = recs[len(recs)-1].Sequence
 		}
 		for _, rec := range recs {
 			if rec.Sequence >= fromSequence {

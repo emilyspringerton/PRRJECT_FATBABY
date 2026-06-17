@@ -230,6 +230,12 @@ func fetchForm4s(ctx context.Context, client *http.Client, ticker, cik string, s
 		if primaryDoc == "" {
 			continue
 		}
+		// EDGAR sometimes prefixes the document path with an XSL stylesheet
+		// directory (e.g. "xslF345X06/form4.xml"). That URL returns rendered
+		// HTML, not the raw XML we need. Strip the leading xsl*/ component.
+		if idx := strings.Index(primaryDoc, "/"); idx > 0 && strings.HasPrefix(primaryDoc, "xsl") {
+			primaryDoc = primaryDoc[idx+1:]
+		}
 
 		docURL := secwatch.DocumentURL(cik, accession, primaryDoc)
 		xmlBytes, err := getJSON(ctx, client, docURL)
@@ -270,7 +276,7 @@ func getJSON(ctx context.Context, client *http.Client, rawURL string) ([]byte, e
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	return io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
