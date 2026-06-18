@@ -1537,6 +1537,7 @@ p{color:#444;line-height:1.6;}
 // AskLandingData is the template data for GET /ask.
 type AskLandingData struct {
 	GoogleClientID string
+	Symbols        []string
 }
 
 // RenderAskLanding renders GET /ask — the Ask Emily product landing page.

@@ -24,6 +24,22 @@ import (
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
+// headResponseWriter wraps a ResponseWriter and discards Write calls,
+// letting headers (including status) pass through unchanged.
+type headResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (hw *headResponseWriter) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (hw *headResponseWriter) WriteHeader(code int) {
+	hw.wroteHeader = true
+	hw.ResponseWriter.WriteHeader(code)
+}
+
 func main() {
 	storeRoot        := flag.String("store", "var/secwatch", "path to eventstore root")
 	graphDir         := flag.String("graph-dir", "var/entity-graph", "path to entity-graph directory (empty to disable)")
@@ -206,11 +222,27 @@ func main() {
 	if guard.IsActive() {
 		logger.Printf("iamguard: newssite /live/events and /api/tickers protected by IDUNA JWT (fatbaby.read)")
 	}
+	// headToGet converts HEAD requests into GET requests with body suppressed.
+	// Go's ServeMux does not auto-respond to HEAD on GET handlers, so without
+	// this wrapper all routes return 405 on HEAD (breaks SEO crawlers).
+	headToGet := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodHead {
+				r2 := r.Clone(r.Context())
+				r2.Method = http.MethodGet
+				nw := &headResponseWriter{ResponseWriter: w}
+				next.ServeHTTP(nw, r2)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
 	// Wrap only the machine-consumed endpoints; all other paths use h directly.
 	mux := http.NewServeMux()
 	mux.Handle("/live/events", guard.RequirePermission("fatbaby.read")(h))
 	mux.Handle("/api/tickers", guard.RequirePermission("fatbaby.read")(h))
-	mux.Handle("/", h)
+	mux.Handle("/", headToGet(h))
 
 	// ── HTTP server starts immediately; indexes fill in behind it ─────────────
 	srv := &http.Server{

@@ -346,7 +346,7 @@ func hasPermission(perms []string, perm string) bool {
 // serveAskLanding renders GET /ask — the Ask Emily product landing page.
 func (h *Handler) serveAskLanding(w http.ResponseWriter, r *http.Request) int {
 	var buf bytes.Buffer
-	if err := RenderAskLanding(&buf, AskLandingData{GoogleClientID: h.googleClientID}); err != nil {
+	if err := RenderAskLanding(&buf, AskLandingData{GoogleClientID: h.googleClientID, Symbols: h.symbols()}); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return http.StatusInternalServerError
 	}

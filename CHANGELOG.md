@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-18
+
+- fix(newssite): S37-01 /ask 500 — add Symbols []string to AskLandingData; serveAskLanding now populates ticker datalist from h.symbols()
+- fix(newssite): S37-02 HEAD 405 — headToGet middleware in cmd/newssite wraps handler; HEAD on all routes now returns 200 with headers only
+- fix(newssite): S37-03 /ticker/{sym}/feed.xml already implemented via serveTickerRSS + RenderTickerRSS (confirmed present, no changes needed)
+
 ## 2026-06-17
 
 - fix(processor): S36-01 EDGAR 429 retry — per-host 150ms throttle (~6 req/s), up to 3 retries on 429 with 30s/60s/300s backoffs; prevents 9K+/day signal_failed spam from rate-limit hammering
