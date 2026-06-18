@@ -2,6 +2,7 @@
 
 ## 2026-06-18
 
+- feat(graph-seeder): S37-05 cmd/graph-seeder — seeds SQLite governance_signals from entity-graph signals.ndjson; 487 real signals inserted; dedup by filing_id
 - fix(newssite): S37-01 /ask 500 — add Symbols []string to AskLandingData; serveAskLanding now populates ticker datalist from h.symbols()
 - fix(newssite): S37-02 HEAD 405 — headToGet middleware in cmd/newssite wraps handler; HEAD on all routes now returns 200 with headers only
 - fix(newssite): S37-03 /ticker/{sym}/feed.xml already implemented via serveTickerRSS + RenderTickerRSS (confirmed present, no changes needed)
