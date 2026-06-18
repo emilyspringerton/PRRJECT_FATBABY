@@ -29,6 +29,12 @@
 /eps-reconciler
 /schd13-watcher
 /prwatch-body
+/graph-seeder
+/market-data-watcher
+/projector
+/buyback-watcher
+/nt-watcher
+/bin/
 
 # Local env / editor noise.
 .env
