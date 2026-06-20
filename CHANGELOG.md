@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-20
+- feat: S44-05 git pull --rebase before push in obs-watcher (Apple #1878)
 
 - feat: S42-05 HaikuProvider + ENABLE_LLM_ANALYSIS feature flag — claude-haiku-4-5-20251001 analysis (Apple #1874)
 
