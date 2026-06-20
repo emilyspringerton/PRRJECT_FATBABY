@@ -449,8 +449,10 @@ func runReportFooter(summary, observationTimestamp string) string {
 **3. Git sync** — include the run report in the commit:
   git add -A
   git commit -m "claude-code: ` + summary + ` [` + observationTimestamp + `]"
+  git pull --rebase origin main
   git push
-Retry push once on failure; record failure in notes, set exit_status "partial". Never skip.
+On rebase conflict: run: emily apples post -t escalation -repo PRRJECT_FATBABY "merge conflict — push skipped"
+Then set exit_status "partial", do NOT force push. Retry push once on clean failure; log in notes.
 
 **4. Apple** — file completion to IDUNA:
   emily apples post -t completion -repo PRRJECT_FATBABY "` + summary + `"
