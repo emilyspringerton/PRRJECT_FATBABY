@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-20
+
+- feat: S42-05 HaikuProvider + ENABLE_LLM_ANALYSIS feature flag — claude-haiku-4-5-20251001 analysis (Apple #1874)
+
+
 ## 2026-06-18
 
 - feat(graph-seeder): S37-05 cmd/graph-seeder — seeds SQLite governance_signals from entity-graph signals.ndjson; 487 real signals inserted; dedup by filing_id
