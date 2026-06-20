@@ -42,11 +42,24 @@ func main() {
 	}
 	defer store.Close()
 
+	var prov processor.Provider
+	if os.Getenv("ENABLE_LLM_ANALYSIS") == "true" {
+		apiKey := os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			logger.Fatalf("ENABLE_LLM_ANALYSIS=true requires ANTHROPIC_API_KEY to be set")
+		}
+		prov = processor.NewHaikuProvider(apiKey)
+		logger.Printf("processor provider=haiku model=%s", "claude-haiku-4-5-20251001")
+	} else {
+		prov = &stubProvider{}
+		logger.Printf("processor provider=stub (set ENABLE_LLM_ANALYSIS=true to activate haiku)")
+	}
+
 	if b, _ := json.Marshal(map[string]any{"workers": *workers, "poll_interval": pollInterval.String()}); len(b) > 0 {
 		logger.Printf("processor starting %s", b)
 		logger.Printf("data directory %s", *storeRoot)
 	}
-	if err := processor.Run(ctx, processor.WorkerConfig{Store: store, Provider: &stubProvider{}, Logger: logger, Workers: *workers, PollInterval: *pollInterval, UserAgent: *ua, MaxDocBytes: *maxDocBytes}); err != nil && err != context.Canceled {
+	if err := processor.Run(ctx, processor.WorkerConfig{Store: store, Provider: prov, Logger: logger, Workers: *workers, PollInterval: *pollInterval, UserAgent: *ua, MaxDocBytes: *maxDocBytes}); err != nil && err != context.Canceled {
 		logger.Fatalf("processor run failed: %v", err)
 	}
 }
