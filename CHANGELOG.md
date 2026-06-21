@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-21
+
+- test: S57-01 issuerregistry test suite (Apple #2385)
+
+
 ## 2026-06-20
 - feat: S44-05 git pull --rebase before push in obs-watcher (Apple #1878)
 
