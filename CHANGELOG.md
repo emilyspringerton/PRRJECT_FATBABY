@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-21
+- test: S60-01 store mysqlToSQLite+splitStatements tests; 20 cases (Apple #2391)
 
 - test: S57-01 issuerregistry test suite (Apple #2385)
 
