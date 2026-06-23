@@ -25,11 +25,12 @@ func (p *stubProvider) AnalyzeText(ctx context.Context, text string) (*intellige
 }
 
 func main() {
-	storeRoot := flag.String("store", filepath.Join("var", "secwatch"), "event store root")
-	workers := flag.Int("workers", 4, "processor worker count")
+	storeRoot    := flag.String("store", filepath.Join("var", "secwatch"), "event store root")
+	workers      := flag.Int("workers", 4, "processor worker count")
 	pollInterval := flag.Duration("poll-interval", 15*time.Second, "polling interval")
-	ua := flag.String("user-agent", "prrject-fatbaby-secwatch/0.1 (contact: secops@example.com)", "SEC-compliant user-agent")
-	maxDocBytes := flag.Int64("max-doc-bytes", 16<<20, "max filing document bytes to ingest")
+	ua           := flag.String("user-agent", "prrject-fatbaby-secwatch/0.1 (contact: secops@example.com)", "SEC-compliant user-agent")
+	maxDocBytes  := flag.Int64("max-doc-bytes", 16<<20, "max filing document bytes to ingest")
+	archetypeURL := flag.String("archetype-engine", os.Getenv("ARCHETYPE_ENGINE_URL"), "THE_FIELD archetype engine URL (default: disabled)")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)
@@ -44,12 +45,16 @@ func main() {
 
 	var prov processor.Provider
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey != "" {
-		prov = processor.NewHaikuProvider(apiKey)
+	haiku := processor.NewHaikuProvider(apiKey)
+	if apiKey != "" && *archetypeURL != "" {
+		prov = processor.NewArchetypeProvider(*archetypeURL, haiku, haiku)
+		logger.Printf("processor provider=archetype engine=%s fallback=haiku", *archetypeURL)
+	} else if apiKey != "" {
+		prov = haiku
 		logger.Printf("processor provider=haiku model=%s", "claude-haiku-4-5-20251001")
 	} else {
 		prov = &stubProvider{}
-		logger.Printf("processor provider=stub (set ANTHROPIC_API_KEY to activate haiku)")
+		logger.Printf("processor provider=stub (set ANTHROPIC_API_KEY to activate haiku, add -archetype-engine for THE_FIELD)")
 	}
 
 	if b, _ := json.Marshal(map[string]any{"workers": *workers, "poll_interval": pollInterval.String()}); len(b) > 0 {
