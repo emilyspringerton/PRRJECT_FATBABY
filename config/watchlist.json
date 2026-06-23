@@ -297,44 +297,44 @@
     {
       "ticker": "COIN",
       "company_name": "Coinbase Global, Inc.",
-      "cik": "1679273",
+      "cik": "1679788",
       "allowed_forms": [
         "10-K",
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
+      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1679273)"
     },
     {
       "ticker": "SOFI",
       "company_name": "SoFi Technologies, Inc.",
-      "cik": "1818502",
+      "cik": "1818874",
       "allowed_forms": [
         "10-K",
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
+      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1818502)"
     },
     {
       "ticker": "HOOD",
       "company_name": "Robinhood Markets, Inc.",
-      "cik": "1783398",
+      "cik": "1783879",
       "allowed_forms": [
         "10-K",
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 fintech — CIK needs EDGAR verification before enabling"
+      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1783398)"
     },
     {
       "ticker": "AMZN",
@@ -527,10 +527,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: managed care — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: managed care \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "MRK",
@@ -541,10 +541,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: large-cap pharma — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: large-cap pharma \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "TGT",
@@ -555,10 +555,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "consumer_staples",
-      "notes": "S&P 100 expansion: retail — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: retail \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "LOW",
@@ -569,10 +569,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "consumer_discretionary",
-      "notes": "S&P 100 expansion: home improvement — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: home improvement \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "CAT",
@@ -583,10 +583,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: industrials — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: industrials \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "RTX",
@@ -597,24 +597,24 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: aerospace/defense — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: aerospace/defense \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "GE",
       "company_name": "GE Aerospace",
-      "cik": "40987",
+      "cik": "40545",
       "allowed_forms": [
         "10-K",
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: aerospace/industrials — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: aerospace/industrials \u2014 CIK verified via SEC company_tickers.json (was 40987)"
     },
     {
       "ticker": "T",
@@ -625,10 +625,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: telecom — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: telecom \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "VZ",
@@ -639,10 +639,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: telecom — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: telecom \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "CMCSA",
@@ -653,24 +653,24 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: media/telecom — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: media/telecom \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "DIS",
       "company_name": "The Walt Disney Company",
-      "cik": "1001293",
+      "cik": "1744489",
       "allowed_forms": [
         "10-K",
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: media/entertainment — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: media/entertainment \u2014 CIK verified via SEC company_tickers.json (was 1001293)"
     },
     {
       "ticker": "NEE",
@@ -681,10 +681,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "utilities",
-      "notes": "S&P 100 expansion: utilities — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: utilities \u2014 CIK verified; enabled 2026-06-23"
     },
     {
       "ticker": "COP",
@@ -695,10 +695,10 @@
         "10-Q",
         "8-K"
       ],
-      "enabled": false,
-      "poll_priority": 3,
+      "enabled": true,
+      "poll_priority": 2,
       "sector": "energy",
-      "notes": "S&P 100 expansion: E&P energy — CIK needs EDGAR verification before enabling"
+      "notes": "S&P 100 expansion: E&P energy \u2014 CIK verified; enabled 2026-06-23"
     }
   ]
 }
