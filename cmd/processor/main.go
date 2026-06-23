@@ -43,16 +43,13 @@ func main() {
 	defer store.Close()
 
 	var prov processor.Provider
-	if os.Getenv("ENABLE_LLM_ANALYSIS") == "true" {
-		apiKey := os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			logger.Fatalf("ENABLE_LLM_ANALYSIS=true requires ANTHROPIC_API_KEY to be set")
-		}
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey != "" {
 		prov = processor.NewHaikuProvider(apiKey)
 		logger.Printf("processor provider=haiku model=%s", "claude-haiku-4-5-20251001")
 	} else {
 		prov = &stubProvider{}
-		logger.Printf("processor provider=stub (set ENABLE_LLM_ANALYSIS=true to activate haiku)")
+		logger.Printf("processor provider=stub (set ANTHROPIC_API_KEY to activate haiku)")
 	}
 
 	if b, _ := json.Marshal(map[string]any{"workers": *workers, "poll_interval": pollInterval.String()}); len(b) > 0 {
