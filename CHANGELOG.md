@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-23
+
+- feat(watchlist): S91-01 enable 16 tickers — fix COIN/SOFI/HOOD/GE/DIS CIKs, enable UNH/MRK/TGT/LOW/CAT/RTX/T/VZ/CMCSA/NEE/COP via SEC company_tickers.json
+
+
 ## 2026-06-21
 - test: S61-01 chart package tests (Yahoo parse + SVG render); 7 tests (Apple #2393)
 - test: S60-01 store mysqlToSQLite+splitStatements tests; 20 cases (Apple #2391)
