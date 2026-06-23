@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-23
+- S36-04: processor defaults to haiku when ANTHROPIC_API_KEY set; remove ENABLE_LLM_ANALYSIS gate — real signal classification now automatic
 
 - feat(watchlist): S91-01 enable 16 tickers — fix COIN/SOFI/HOOD/GE/DIS CIKs, enable UNH/MRK/TGT/LOW/CAT/RTX/T/VZ/CMCSA/NEE/COP via SEC company_tickers.json
 
