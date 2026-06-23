@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-23
+- S103-01: ArchetypeProvider in internal/processor — THE_FIELD spirit-stack routing for SEC signal analysis; -archetype-engine flag in cmd/processor; 9 tests
 - signalapi poll-interval default 2s→30s (-73% CPU); stub-backfill cmd (haiku re-analysis of cached docs, no EDGAR re-fetch); signal_failed 30d retry TTL; 4MB doc truncation→extract instead of fail
 - S36-04: processor defaults to haiku when ANTHROPIC_API_KEY set; remove ENABLE_LLM_ANALYSIS gate — real signal classification now automatic
 
