@@ -50,13 +50,16 @@ type TickerSummary struct {
 func NewIndex() *Index { return &Index{byTicker: make(map[string][]*SignalEntry)} }
 
 // Ingest adds one eventstore.Record to the index.
+// signal_generated_v2 events replace the prior stub signal for the same identity
+// (partition key) so backfill rewrites are reflected without a full restart.
 func (idx *Index) Ingest(rec eventstore.Record) error {
-	if rec.Event.Type != "signal_generated" {
+	isV2 := rec.Event.Type == "signal_generated_v2"
+	if rec.Event.Type != "signal_generated" && !isV2 {
 		return nil
 	}
 	var signal intelligence.Signal
 	if err := json.Unmarshal(rec.Event.Data, &signal); err != nil {
-		return fmt.Errorf("unmarshal signal_generated data: %w", err)
+		return fmt.Errorf("unmarshal %s data: %w", rec.Event.Type, err)
 	}
 	ticker := normalizeTicker(signal.Ticker)
 	if ticker == "" {
@@ -81,6 +84,19 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 	items := idx.byTicker[ticker]
+	if isV2 {
+		// Replace the stub entry for the same accession number, if present.
+		for i, it := range items {
+			if it.AccessionNumber == accession {
+				items[i] = entry
+				idx.byTicker[ticker] = items
+				if rec.Sequence > idx.latestSeq {
+					idx.latestSeq = rec.Sequence
+				}
+				return nil
+			}
+		}
+	}
 	insertAt := sort.Search(len(items), func(i int) bool { return !items[i].Timestamp.Before(entry.Timestamp) })
 	items = append(items, nil)
 	copy(items[insertAt+1:], items[insertAt:])

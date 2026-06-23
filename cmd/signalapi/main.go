@@ -30,7 +30,7 @@ func main() {
 	storeRoot := flag.String("store", "var/secwatch", "")
 	addr := flag.String("addr", ":9091", "")
 	apiKeys := flag.String("api-keys", "", "")
-	pollInterval := flag.Duration("poll-interval", 2*time.Second, "")
+	pollInterval := flag.Duration("poll-interval", 30*time.Second, "")
 	maxLimit := flag.Int("max-limit", 100, "")
 	readTimeout := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTimeout := flag.Duration("write-timeout", 30*time.Second, "")

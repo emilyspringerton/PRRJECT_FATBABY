@@ -65,13 +65,20 @@ func (s *seenSet) markSource(id string) {
 	s.sources[id] = struct{}{}
 }
 
+// signal_failed retry TTL: 429 failures older than this are eligible for retry.
+// Empty-URL and non-retryable errors stay blocked by checking the error field.
+const failedRetryTTL = 30 * 24 * time.Hour
+
 // loadSeenIdentities does a single O(n) scan of the store at startup to build
 // the in-memory seen set, replacing per-filing O(n) calls inside handleOne.
-// signal_failed events are also loaded into seen.signals so permanently-failed
-// filings (e.g. empty URL, exhausted 429 retries) are not re-attempted on restart.
+// signal_failed events block retry only when (a) the error is a permanent failure
+// (empty URL, non-HTTP) or (b) the failure is recent (< 30 days old). This lets
+// 429-rate-limited filings be retried on the next processor restart after the
+// EDGAR cooldown window has passed.
 func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger *log.Logger) *seenSet {
 	seen := newSeenSet()
 	from := uint64(1)
+	expiry := time.Now().UTC().Add(-failedRetryTTL)
 	for {
 		recs, err := store.ReadFrom(ctx, from, 512)
 		if err != nil || len(recs) == 0 {
@@ -79,8 +86,20 @@ func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger
 		}
 		for _, r := range recs {
 			switch r.Event.Type {
-			case "signal_generated", "signal_failed":
+			case "signal_generated":
 				seen.signals[r.Event.PartitionKey] = struct{}{}
+			case "signal_failed":
+				// Only permanently block non-retryable failures. 429-based failures
+				// older than failedRetryTTL are eligible for a fresh attempt.
+				var meta map[string]string
+				_ = json.Unmarshal(r.Event.Data, &meta)
+				errMsg := meta["error"]
+				isPermanent := strings.Contains(errMsg, "unsupported document URL") ||
+					strings.Contains(errMsg, "status=404") ||
+					strings.Contains(errMsg, "status=403")
+				if isPermanent || r.AppendedAt.After(expiry) {
+					seen.signals[r.Event.PartitionKey] = struct{}{}
+				}
 			case "source_document_persisted":
 				seen.sources[r.Event.PartitionKey] = struct{}{}
 			}

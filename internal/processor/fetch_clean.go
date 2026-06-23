@@ -102,15 +102,22 @@ func FetchAndCleanText(ctx context.Context, docURL, userAgent string, maxBytes i
 			return "", fmt.Errorf("fetch primary document status=%d", resp.StatusCode)
 		}
 
-		raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+		// Read up to 3× maxBytes so we can clean HTML and still hit maxBytes of clean text.
+		raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes*3))
 		resp.Body.Close()
 		if err != nil {
 			return "", fmt.Errorf("read primary document: %w", err)
 		}
-		if int64(len(raw)) > maxBytes {
-			return "", fmt.Errorf("filing document too large: %d bytes > %d", len(raw), maxBytes)
+		cleaned := CleanText(string(raw))
+		// Truncate cleaned text to maxBytes of UTF-8 characters rather than failing.
+		if int64(len(cleaned)) > maxBytes {
+			cleaned = cleaned[:maxBytes]
+			// Trim to last space to avoid splitting a word.
+			if i := strings.LastIndex(cleaned, " "); i > int(maxBytes)*9/10 {
+				cleaned = cleaned[:i]
+			}
 		}
-		return CleanText(string(raw)), nil
+		return cleaned, nil
 	}
 }
 
