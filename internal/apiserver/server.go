@@ -83,6 +83,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/eps/{ticker}", s.withMiddleware(s.handleEPS))
 	mux.HandleFunc("/v1/entities/{ticker}", s.withMiddleware(s.handleEntity))
 	mux.HandleFunc("/v1/entities/{ticker}/related", s.withMiddleware(s.handleRelated))
+	mux.HandleFunc("/v1/velocity-alerts", s.withMiddleware(s.handleVelocityAlerts))
 	mux.HandleFunc("/v1/data-quality", s.withMiddleware(s.handleDataQuality))
 	return &http.Server{Addr: cfg.Addr, Handler: mux, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
 }

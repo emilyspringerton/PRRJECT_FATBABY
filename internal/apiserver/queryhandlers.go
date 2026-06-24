@@ -10,6 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
 // GovernanceSignalRow is one row from the governance_signals MySQL table.
@@ -262,5 +264,29 @@ func (s *server) handleRelated(_ http.ResponseWriter, r *http.Request) (int, any
 	}
 	related := s.cfg.CoOccurrence.Related(ticker)
 	return http.StatusOK, map[string]any{"ticker": ticker, "related": related}
+}
+
+// VelocityAlertResponse is the JSON shape for one velocity alert.
+type VelocityAlertResponse struct {
+	Ticker      string    `json:"ticker"`
+	Count       int       `json:"count"`
+	WindowStart time.Time `json:"window_start"`
+	WindowEnd   time.Time `json:"window_end"`
+}
+
+// handleVelocityAlerts serves GET /v1/velocity-alerts.
+// Returns tickers with >3 high-confidence (importance>60) signals in the past hour.
+func (s *server) handleVelocityAlerts(_ http.ResponseWriter, r *http.Request) (int, any) {
+	alerts := s.cfg.Index.CheckVelocity(time.Now().UTC(), signalindex.DefaultVelocityThreshold)
+	out := make([]VelocityAlertResponse, len(alerts))
+	for i, a := range alerts {
+		out[i] = VelocityAlertResponse{
+			Ticker:      a.Ticker,
+			Count:       a.Count,
+			WindowStart: a.WindowStart,
+			WindowEnd:   a.WindowEnd,
+		}
+	}
+	return http.StatusOK, map[string]any{"alerts": out, "count": len(out)}
 }
 
