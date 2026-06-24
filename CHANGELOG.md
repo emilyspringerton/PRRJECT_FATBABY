@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-24
+
+- feat: S125-09 signal confidence scoring + /v1/data-quality endpoint — A–F grade per ticker, source trust, completeness, quant bonus, 18 tests (Apple #3518)
+
+
 ## 2026-06-23
 - S107: signal replay engine + CLI (cmd/replay) — replay filing_discovered events through haiku/stub provider, stream Signal JSONL, filter by date window
 - S103-01: ArchetypeProvider in internal/processor — THE_FIELD spirit-stack routing for SEC signal analysis; -archetype-engine flag in cmd/processor; 9 tests
