@@ -250,3 +250,17 @@ func (s *server) handleEntity(_ http.ResponseWriter, r *http.Request) (int, any)
 	return http.StatusOK, result
 }
 
+// handleRelated serves GET /v1/entities/{ticker}/related.
+// Returns up to 10 related tickers ordered by co-occurrence weight.
+func (s *server) handleRelated(_ http.ResponseWriter, r *http.Request) (int, any) {
+	if s.cfg.CoOccurrence == nil {
+		return http.StatusServiceUnavailable, map[string]string{"error": "co-occurrence store not configured"}
+	}
+	ticker := r.PathValue("ticker")
+	if ticker == "" {
+		return http.StatusBadRequest, map[string]string{"error": "ticker required"}
+	}
+	related := s.cfg.CoOccurrence.Related(ticker)
+	return http.StatusOK, map[string]any{"ticker": ticker, "related": related}
+}
+

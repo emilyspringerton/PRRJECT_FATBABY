@@ -20,6 +20,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/apiserver"
+	"github.com/example/prrject-fatbaby/internal/cooccurrence"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
@@ -116,6 +117,23 @@ func main() {
 			logger.Printf("MongoDB connected db=%s: entities endpoint enabled", cfg.MongoDB)
 		}
 	}
+	// Co-occurrence store — seeded from signal index at startup (S126-11).
+	coStore := cooccurrence.NewStore()
+	summaries := idx.Summary()
+	var allSignals []cooccurrence.TickerSignal
+	for _, ts := range summaries {
+		entries, ok := idx.ForTicker(ts.Ticker)
+		if !ok {
+			continue
+		}
+		for _, e := range entries {
+			allSignals = append(allSignals, cooccurrence.TickerSignal{Ticker: ts.Ticker, Timestamp: e.Timestamp})
+		}
+	}
+	coStore.SeedFromSignals(allSignals)
+	cfg.CoOccurrence = coStore
+	logger.Printf("co-occurrence store seeded tickers=%d edges=%d", len(summaries), coStore.EdgeCount())
+
 	srv := apiserver.New(cfg)
 	go func() {
 		<-ctx.Done()

@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/example/prrject-fatbaby/internal/earningscal"
+	cooccur "github.com/example/prrject-fatbaby/internal/cooccurrence"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
@@ -41,6 +42,11 @@ type ServerConfig struct {
 	// When nil, /v1/entities/* returns 503.
 	Mongo   *mongo.Client
 	MongoDB string // database name; defaults to "fatbaby"
+	// CoOccurrence is an optional in-memory co-occurrence store for /v1/entities/{ticker}/related.
+	// When nil, the endpoint returns 503.
+	CoOccurrence interface {
+		Related(ticker string) []cooccur.RelatedEntry
+	}
 }
 
 type server struct {
@@ -76,6 +82,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/governance-signals", s.withMiddleware(s.handleGovernanceSignals))
 	mux.HandleFunc("/v1/eps/{ticker}", s.withMiddleware(s.handleEPS))
 	mux.HandleFunc("/v1/entities/{ticker}", s.withMiddleware(s.handleEntity))
+	mux.HandleFunc("/v1/entities/{ticker}/related", s.withMiddleware(s.handleRelated))
 	mux.HandleFunc("/v1/data-quality", s.withMiddleware(s.handleDataQuality))
 	return &http.Server{Addr: cfg.Addr, Handler: mux, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
 }
