@@ -156,3 +156,60 @@ func TestAuth_Disabled(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestHandleDataQuality_Empty(t *testing.T) {
+	s := New(ServerConfig{Index: signalindex.NewIndex()})
+	w := req(s, "/v1/data-quality", "")
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if int(body["tickers"].(float64)) != 0 {
+		t.Errorf("want 0 tickers, got %v", body["tickers"])
+	}
+}
+
+func TestHandleDataQuality_WithData(t *testing.T) {
+	idx := signalindex.NewIndex()
+	n := time.Now()
+	// Add signals for two tickers.
+	add(t, idx, 1, "AAPL", "eps_beat", 8, n)
+	add(t, idx, 2, "AAPL", "guidance_raise", 7, n.Add(time.Hour))
+	add(t, idx, 3, "MSFT", "dividend_raise", 6, n)
+	s := New(ServerConfig{Index: idx})
+	w := req(s, "/v1/data-quality", "")
+	if w.Code != 200 {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if int(body["tickers"].(float64)) != 2 {
+		t.Errorf("want 2 tickers, got %v", body["tickers"])
+	}
+	if int(body["total_signals"].(float64)) != 3 {
+		t.Errorf("want 3 total signals, got %v", body["total_signals"])
+	}
+	if body["overall_confidence"] == nil {
+		t.Error("missing overall_confidence")
+	}
+	if body["grade_distribution"] == nil {
+		t.Error("missing grade_distribution")
+	}
+}
+
+func TestHandleDataQuality_Auth(t *testing.T) {
+	s := New(ServerConfig{Index: signalindex.NewIndex(), APIKeys: []string{"key1"}})
+	w := req(s, "/v1/data-quality", "")
+	if w.Code != 401 {
+		t.Fatalf("want 401 without auth, got %d", w.Code)
+	}
+	w = req(s, "/v1/data-quality", "Bearer key1")
+	if w.Code != 200 {
+		t.Fatalf("want 200 with auth, got %d", w.Code)
+	}
+}

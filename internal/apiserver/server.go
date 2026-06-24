@@ -76,6 +76,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/governance-signals", s.withMiddleware(s.handleGovernanceSignals))
 	mux.HandleFunc("/v1/eps/{ticker}", s.withMiddleware(s.handleEPS))
 	mux.HandleFunc("/v1/entities/{ticker}", s.withMiddleware(s.handleEntity))
+	mux.HandleFunc("/v1/data-quality", s.withMiddleware(s.handleDataQuality))
 	return &http.Server{Addr: cfg.Addr, Handler: mux, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
 }
 
@@ -295,6 +296,37 @@ func (s *server) handlePressReleases(_ http.ResponseWriter, r *http.Request) (in
 		}
 	}
 	return http.StatusOK, map[string]any{"ticker": ticker, "count": len(out), "press_releases": out}
+}
+
+func (s *server) handleDataQuality(_ http.ResponseWriter, _ *http.Request) (int, any) {
+	report := s.cfg.Index.DataQuality(nil)
+	// Aggregate totals.
+	total := 0
+	sumConf := 0.0
+	flagTotals := map[string]int{}
+	gradeTotals := map[string]int{}
+	for _, tq := range report {
+		total += tq.SignalCount
+		sumConf += tq.AvgConfidence * float64(tq.SignalCount)
+		for f, n := range tq.FlagCounts {
+			flagTotals[f] += n
+		}
+		for g, n := range tq.GradeDistribution {
+			gradeTotals[g] += n
+		}
+	}
+	overallConf := 0.0
+	if total > 0 {
+		overallConf = sumConf / float64(total)
+	}
+	return http.StatusOK, map[string]any{
+		"tickers":           len(report),
+		"total_signals":     total,
+		"overall_confidence": overallConf,
+		"grade_distribution": gradeTotals,
+		"flag_totals":       flagTotals,
+		"by_ticker":         report,
+	}
 }
 
 func (s *server) handleHealth(http.ResponseWriter, *http.Request) (int, any) {

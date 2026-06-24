@@ -157,6 +157,89 @@ func (idx *Index) Summary() []TickerSummary {
 	return out
 }
 
+// TickerQuality holds per-ticker data quality metrics.
+type TickerQuality struct {
+	Ticker           string  `json:"ticker"`
+	SignalCount       int     `json:"signal_count"`
+	AvgConfidence     float64 `json:"avg_confidence"`
+	MinConfidence     float64 `json:"min_confidence"`
+	MaxConfidence     float64 `json:"max_confidence"`
+	AvgImportance     float64 `json:"avg_importance"`
+	GradeDistribution map[string]int `json:"grade_distribution"` // A/B/C/D/F → count
+	FlagCounts        map[string]int `json:"flag_counts"`
+	MedianLatencyMs   int64   `json:"median_latency_ms"` // appended_at - timestamp
+}
+
+// DataQuality computes quality metrics for every ticker in the index.
+// sourceTypeForTicker is optional — pass nil to use empty source type for all signals.
+func (idx *Index) DataQuality(sourceTypeForTicker func(ticker string) string) []TickerQuality {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	out := make([]TickerQuality, 0, len(idx.byTicker))
+	for ticker, items := range idx.byTicker {
+		if len(items) == 0 {
+			continue
+		}
+		srcType := ""
+		if sourceTypeForTicker != nil {
+			srcType = sourceTypeForTicker(ticker)
+		}
+
+		tq := TickerQuality{
+			Ticker:           ticker,
+			SignalCount:       len(items),
+			MinConfidence:     1.0,
+			GradeDistribution: map[string]int{"A": 0, "B": 0, "C": 0, "D": 0, "F": 0},
+			FlagCounts:        map[string]int{},
+		}
+
+		latencies := make([]int64, 0, len(items))
+		sumConf := 0.0
+		sumImp := 0.0
+		for _, it := range items {
+			sig := intelligence.Signal{
+				Ticker:         it.Ticker,
+				SignalType:     it.SignalType,
+				Summary:        it.Summary,
+				ImpactAnalysis: it.ImpactAnalysis,
+				Importance:     it.Importance,
+			}
+			q := intelligence.ScoreSignal(sig, srcType)
+			sumConf += q.Score
+			sumImp += float64(it.Importance)
+			if q.Score < tq.MinConfidence {
+				tq.MinConfidence = q.Score
+			}
+			if q.Score > tq.MaxConfidence {
+				tq.MaxConfidence = q.Score
+			}
+			grade := intelligence.Grade(q.Score)
+			tq.GradeDistribution[grade]++
+			for _, f := range q.Flags {
+				tq.FlagCounts[f]++
+			}
+			if !it.AppendedAt.IsZero() && !it.Timestamp.IsZero() {
+				latencies = append(latencies, it.AppendedAt.Sub(it.Timestamp).Milliseconds())
+			}
+		}
+		tq.AvgConfidence = sumConf / float64(len(items))
+		tq.AvgImportance = sumImp / float64(len(items))
+		if len(latencies) > 0 {
+			sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+			tq.MedianLatencyMs = latencies[len(latencies)/2]
+		}
+		out = append(out, tq)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].AvgConfidence != out[j].AvgConfidence {
+			return out[i].AvgConfidence > out[j].AvgConfidence
+		}
+		return out[i].Ticker < out[j].Ticker
+	})
+	return out
+}
+
 // LatestSeq returns the highest sequence number ingested so far.
 func (idx *Index) LatestSeq() uint64 { idx.mu.RLock(); defer idx.mu.RUnlock(); return idx.latestSeq }
 
