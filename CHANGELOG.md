@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-06-24
+- feat: S126-11 entity co-occurrence graph — cooccurrence.Store, GET /v1/entities/{ticker}/related, SeedFromSignals startup warm-up (Apple #3557)
 
 - feat: S125-09 signal confidence scoring + /v1/data-quality endpoint — A–F grade per ticker, source trust, completeness, quant bonus, 18 tests (Apple #3518)
 
