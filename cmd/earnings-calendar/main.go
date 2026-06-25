@@ -34,6 +34,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 	"github.com/example/prrject-fatbaby/prwatch"
+	"github.com/example/prrject-fatbaby/secwatch"
 )
 
 func main() {
@@ -41,6 +42,7 @@ func main() {
 	bodyRoot       := flag.String("body-store", filepath.Join("var", "prwatch-body"), "prwatch body event store")
 	secRoot        := flag.String("sec-store", filepath.Join("var", "secwatch"), "secwatch event store (8-K confirmed dates)")
 	outDir         := flag.String("out-dir", filepath.Join("var", "earnings-calendar"), "output directory")
+	watchlistPath  := flag.String("watchlist", filepath.Join("config", "watchlist.json"), "watchlist.json for ticker resolver")
 	pollInterval   := flag.Duration("poll-interval", 60*time.Second, "poll interval")
 	cursorPath     := flag.String("cursor", filepath.Join("var", "earnings-calendar", ".cursor"), "PR body cursor file")
 	secCursorPath  := flag.String("sec-cursor", filepath.Join("var", "earnings-calendar", ".sec-cursor"), "secwatch cursor file")
@@ -49,6 +51,22 @@ func main() {
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "earnings-calendar ", log.LstdFlags|log.LUTC)
+
+	// Build watchlist-based company→ticker resolver so PR-announced records
+	// are only accepted for companies we actually care about.
+	var resolver *earningscal.CompanyResolver
+	if wl, err := secwatch.LoadWatchlist(*watchlistPath); err != nil {
+		logger.Printf("warn: could not load watchlist for resolver: %v", err)
+	} else {
+		entries := make([][2]string, 0, len(wl.Entries))
+		for _, e := range wl.Entries {
+			if e.Enabled && e.CompanyName != "" {
+				entries = append(entries, [2]string{e.Ticker, e.CompanyName})
+			}
+		}
+		resolver = earningscal.NewCompanyResolver(entries)
+		logger.Printf("watchlist resolver: %d companies loaded", len(entries))
+	}
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		logger.Fatalf("mkdir %s: %v", *outDir, err)
@@ -86,7 +104,7 @@ func main() {
 		}
 
 		// Source 2: press release body scan for "will report on [date]".
-		prNew, prCursorNew := scanPRBodies(ctx, bodyStore, store, prCursor, *batchSize, logger)
+		prNew, prCursorNew := scanPRBodies(ctx, bodyStore, store, resolver, prCursor, *batchSize, logger)
 		if prNew > 0 {
 			logger.Printf("pr scan new=%d", prNew)
 		}
@@ -173,7 +191,7 @@ func backfillFromEPS(epsDir string, store *earningscal.Store, logger *log.Logger
 
 // ── Source 2: PR body scan ───────────────────────────────────────────────────
 
-func scanPRBodies(ctx context.Context, bodyStore eventstore.EventStore, store *earningscal.Store, cursor uint64, batchSize int, logger *log.Logger) (int, uint64) {
+func scanPRBodies(ctx context.Context, bodyStore eventstore.EventStore, store *earningscal.Store, resolver *earningscal.CompanyResolver, cursor uint64, batchSize int, logger *log.Logger) (int, uint64) {
 	recs, err := bodyStore.ReadFrom(ctx, cursor, batchSize)
 	if err != nil {
 		logger.Printf("read pr bodies: %v", err)
@@ -204,10 +222,18 @@ func scanPRBodies(ctx context.Context, bodyStore eventstore.EventStore, store *e
 		if quarter == "" && year == 0 {
 			continue // can't identify which earnings this is for
 		}
-		// Derive ticker from company name in headline when no ticker is in the event.
-		ticker := "" // filled by ticker map in a fuller implementation; accept empty
-		if ev.Company != "" {
-			ticker = slugTicker(ev.Company)
+		// Resolve ticker via watchlist-based company name matcher.
+		// Only emit announced records for companies on our watchlist.
+		ticker := ""
+		candidate := ev.Company
+		if candidate == "" {
+			candidate = extractIssuer(ev.Headline)
+		}
+		if resolver != nil {
+			ticker = resolver.Resolve(candidate)
+		}
+		if ticker == "" {
+			continue // not a watchlisted company; skip to avoid false positives
 		}
 
 		id := earningscal.MakeID(ticker, quarter, year)
@@ -217,10 +243,7 @@ func scanPRBodies(ctx context.Context, bodyStore eventstore.EventStore, store *e
 		}
 
 		bm := earningscal.ExtractBeforeMarket(ev.Body)
-		issuer := ev.Company
-		if ev.Headline != "" && issuer == "" {
-			issuer = extractIssuer(ev.Headline)
-		}
+		issuer := earningscal.CleanIssuer(candidate)
 
 		d := earningscal.EarningsDate{
 			ID:            id,
