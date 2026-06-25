@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-25
+
+- feat: earnings engine audit — internal/notify (Mailgun+SMTP+NullMailer, 7 tests), earningscal watchlist resolver + CleanIssuer, earnings-alert weekly email command (Apple #3857)
+
+
 ## 2026-06-24
 - feat: S126-12 velocity alerts — signalindex.CheckVelocity + GET /v1/velocity-alerts, >3 signals <1h importance>60, 5 tests (Apple #3561)
 - feat: S126-11 entity co-occurrence graph — cooccurrence.Store, GET /v1/entities/{ticker}/related, SeedFromSignals startup warm-up (Apple #3557)
