@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-26
+
+- add internal/streamlog (NDJSON streaming logger), internal/spider (rate-limited HTTP spider), internal/spider/reddit (Reddit JSON API client with ExternalLinks spidering), internal/research (multi-source research engine: static sources + Reddit + spider-out)
+
+
 ## 2026-06-25
 
 - feat: earnings engine audit — internal/notify (Mailgun+SMTP+NullMailer, 7 tests), earningscal watchlist resolver + CleanIssuer, earnings-alert weekly email command (Apple #3857)
