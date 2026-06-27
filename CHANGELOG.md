@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-27
+
+- S138-03/04: kgraph package — MongoDB Store + haiku Extractor for EINHORN INDEX knowledge graph
+
+
 ## 2026-06-26
 
 - add internal/streamlog (NDJSON streaming logger), internal/spider (rate-limited HTTP spider), internal/spider/reddit (Reddit JSON API client with ExternalLinks spidering), internal/research (multi-source research engine: static sources + Reddit + spider-out)
