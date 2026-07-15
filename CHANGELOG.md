@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-15
+
+- fix(observation-watcher): route the failure-escalation `emily observe` call through `resolveCmd()` instead of a bare `exec.Command("emily", ...)` — under systemd the user-manager PATH lacks `~/.local/bin`, so the warning Apple for "claude invoke failed after retries" was silently no-op'ing exactly when you'd most want to know
+
 ## 2026-06-27
 
 - S138-03/04: kgraph package — MongoDB Store + haiku Extractor for EINHORN INDEX knowledge graph

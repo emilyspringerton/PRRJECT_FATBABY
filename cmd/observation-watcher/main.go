@@ -71,7 +71,7 @@ func invokeWithRetry(cmdName string, args []string) error {
 		return nil
 	}
 	log.Printf("invoke: permanent failure after %d retries: %v", maxRetries, lastErr)
-	_ = exec.Command("emily", "observe", "-s", "warning",
+	_ = exec.Command(resolveCmd("emily"), "observe", "-s", "warning",
 		"obs-watcher: claude invoke failed after retries",
 		"--findings", lastErr.Error()).Run()
 	return fmt.Errorf("invoke failed after %d retries: %w", maxRetries, lastErr)
