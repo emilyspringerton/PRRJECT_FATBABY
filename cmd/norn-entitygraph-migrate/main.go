@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"norn/pkg/apples"
 	"norn/pkg/norn"
 
 	"github.com/example/prrject-fatbaby/internal/entitygraph/norngate"
@@ -50,8 +51,14 @@ func main() {
 	fmt.Printf("decision: promote=%v reason=%q\n", decision.Promote, decision.Reason)
 	if decision.Promote {
 		golden, err := reg.Golden(norngate.ArtifactKind)
-		if err == nil {
-			fmt.Printf("golden entity_graph_rules artifact: %s\n", golden.Hash)
+		if err != nil {
+			log.Fatalf("norn-entitygraph-migrate: promotion succeeded but re-reading golden artifact failed: %v", err)
+		}
+		fmt.Printf("golden entity_graph_rules artifact: %s\n", golden.Hash)
+		if id, err := apples.PostPromotionFromEnv(context.Background(), golden, decision, "PRRJECT_FATBABY"); err != nil {
+			log.Printf("norn-entitygraph-migrate: %v (promotion is still recorded in the registry)", err)
+		} else {
+			fmt.Printf("Apple #%d filed\n", id)
 		}
 	}
 }
