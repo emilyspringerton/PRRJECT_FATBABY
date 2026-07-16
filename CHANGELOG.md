@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-16
+
+- feat(S141-02): `internal/eps/norngate` — migrates the EPS headline extractor to the NORN kernel (`norn/pkg/norn`), the first real instantiation per HQ-SPEC-PRIME-101 §8.2. `EPSOracle` wraps `eps.Extract` as a `norn.Oracle`, graded against the four `fixtures/eps/*.txt` cases already codified in `extract_test.go` (the only ground-truth-labeled EPS data anywhere in this system — the live `var/eps/oracle.ndjson` has exactly 2 cases, both permanently `pending`; verified via the full `var/secwatch` event store and `var/logs/eps-reconciler.log` that the reconciler has never once matched a pending case against a filed 8-K in its entire operating history, not a bug, just thin watchlist coverage so far). `cmd/norn-eps-migrate` (one-shot, matching `cmd/projector -one-shot`) bootstrap-promoted the current extractor as the first `eps_extractor` artifact NORN has ever governed — `var/norn/eps_extractor.ndjson`. 7 new tests, including a real double-grade replay-determinism check. Found and fixed a real bug in `pkg/norn` itself while wiring this up live: `NDJSONRegistry.Record` never stamped `Timestamp`, so this migration's first real run landed all three events at the Go zero time — fixed at the source (auto-stamp on zero, explicit values still honored) so no future NORN instantiation can repeat it.
+
 ## 2026-07-15
 
 - fix(observation-watcher): route the failure-escalation `emily observe` call through `resolveCmd()` instead of a bare `exec.Command("emily", ...)` — under systemd the user-manager PATH lacks `~/.local/bin`, so the warning Apple for "claude invoke failed after retries" was silently no-op'ing exactly when you'd most want to know
