@@ -1,0 +1,35 @@
+# FatBaby prwatch-body — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-prwatch-body.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/prwatch-body ./cmd/prwatch-body
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-prwatch-body.service
+#
+# Added 2026-07-17 (BACKLOG SECTION 152, S152-03) after secwatch and
+# eps-reconciler were both silently OOM-killed and stayed down for hours
+# with zero auto-recovery — replaces the previous manually-launched
+# `go run ./cmd/prwatch-body` process, which had no restart-on-crash and did
+# not survive a reboot.
+#
+[Unit]
+Description=FatBaby prwatch-body (PR Newswire body fetcher)
+After=network-online.target fatbaby-prwatch.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/prwatch-body \
+    -discovery-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
+    -poll-interval 15s
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/prwatch-body.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/prwatch-body.log
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,40 @@
+# FatBaby eps-reconciler — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-eps-reconciler.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/eps-reconciler ./cmd/eps-reconciler
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-eps-reconciler.service
+#
+# Added 2026-07-17 (BACKLOG SECTION 152, S152-03) after secwatch and
+# eps-reconciler were both silently OOM-killed and stayed down for hours
+# with zero auto-recovery — replaces the previous manually-launched
+# `go run ./cmd/eps-reconciler` process, which had no restart-on-crash and did
+# not survive a reboot.
+#
+[Unit]
+Description=FatBaby eps-reconciler (oracle case reconciliation vs filed 8-K EPS)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/eps-reconciler \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
+    -eps-dir /home/fatbaby/PRRJECT_FATBABY/var/eps \
+    -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
+    -poll-interval 6h
+Restart=on-failure
+RestartSec=30s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/eps-reconciler.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/eps-reconciler.log
+# Observed steady-state RSS ~520MB (loads the full entity graph in-process) —
+# generous headroom here, not a tight guess. This is the single largest
+# consumer among the headless pollers; see THE_EMILY_WAY.md Principle 15 re:
+# this box being memory-constrained overall.
+MemoryMax=896M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

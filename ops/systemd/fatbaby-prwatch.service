@@ -1,0 +1,34 @@
+# FatBaby prwatch — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-prwatch.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/prwatch ./cmd/prwatch
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-prwatch.service
+#
+# Added 2026-07-17 (BACKLOG SECTION 152, S152-03) after secwatch and
+# eps-reconciler were both silently OOM-killed and stayed down for hours
+# with zero auto-recovery — replaces the previous manually-launched
+# `go run ./cmd/prwatch` process, which had no restart-on-crash and did
+# not survive a reboot.
+#
+[Unit]
+Description=FatBaby prwatch (PR Newswire discovery poller)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/prwatch \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -poll-interval 30s
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/prwatch.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/prwatch.log
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=default.target
