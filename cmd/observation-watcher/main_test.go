@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -396,13 +397,92 @@ func TestPrimeTaskDuplicateExists(t *testing.T) {
 	}
 }
 
+func TestIsCreditExhaustedOutput(t *testing.T) {
+	cases := map[string]bool{
+		"Credit balance is too low":                  true,
+		"⚠ credit balance is too low\nplease top up": true,
+		"CREDIT BALANCE IS TOO LOW":                  true,
+		"rate limit exceeded, please retry":          false,
+		"":                                           false,
+		"context length exceeded":                    false,
+	}
+	for in, want := range cases {
+		if got := isCreditExhaustedOutput(in); got != want {
+			t.Errorf("isCreditExhaustedOutput(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+// resetCreditCooldown clears the package-level circuit-breaker state before
+// and after a test that manipulates it, so tests don't leak state into each
+// other (main()'s poll loop is single-threaded in production, and these
+// tests run sequentially too, but this keeps each test self-contained).
+func resetCreditCooldown(t *testing.T) {
+	t.Helper()
+	creditExhaustedUntil = time.Time{}
+	t.Cleanup(func() { creditExhaustedUntil = time.Time{} })
+}
+
+func TestInvokeWithRetry_CooldownActive_SkipsWithoutRunning(t *testing.T) {
+	resetCreditCooldown(t)
+	creditExhaustedUntil = time.Now().Add(5 * time.Minute)
+
+	// A command that would fail loudly if actually executed — proves the
+	// cooldown short-circuits before exec.Command ever runs.
+	err := invokeWithRetry("/definitely/does/not/exist/anywhere", nil)
+	if !errors.Is(err, errCreditCooldown) {
+		t.Fatalf("expected errCreditCooldown while cooldown is active, got: %v", err)
+	}
+}
+
+func TestInvokeWithRetry_DetectsCreditExhausted_TripsCooldown(t *testing.T) {
+	resetCreditCooldown(t)
+	if creditCooldownActive() {
+		t.Fatal("cooldown should not be active before any failure")
+	}
+
+	// "sh -c" running a script that prints the exact phrase claude emits and
+	// exits non-zero — simulates a real claude invocation without depending
+	// on the claude CLI or network/credits.
+	err := invokeWithRetry("sh", []string{"-c", "echo 'Credit balance is too low'; exit 1"})
+	if !errors.Is(err, errCreditCooldown) {
+		t.Fatalf("expected errCreditCooldown after detecting the message, got: %v", err)
+	}
+	if !creditCooldownActive() {
+		t.Fatal("expected cooldown to be active immediately after detection")
+	}
+
+	// A second call, even against a command that would otherwise succeed,
+	// must short-circuit — proves the breaker actually prevents further
+	// subprocess spawns until the cooldown expires.
+	err = invokeWithRetry("true", nil)
+	if !errors.Is(err, errCreditCooldown) {
+		t.Fatalf("expected the breaker to skip a subsequent call, got: %v", err)
+	}
+}
+
+func TestInvokeWithRetry_UnrelatedFailureDoesNotTripCooldown(t *testing.T) {
+	resetCreditCooldown(t)
+
+	err := invokeWithRetry("sh", []string{"-c", "echo 'some other error'; exit 1"})
+	if err == nil {
+		t.Fatal("expected an error from a failing command")
+	}
+	if errors.Is(err, errCreditCooldown) {
+		t.Fatal("an unrelated failure must not trip the credit-cooldown breaker")
+	}
+	if creditCooldownActive() {
+		t.Fatal("cooldown must not be active after an unrelated failure")
+	}
+}
+
 func TestSplitArgs(t *testing.T) {
 	cases := map[string][]string{
-		"":                                    nil,
-		"   ":                                 nil,
-		"--foo":                               {"--foo"},
-		"--foo --bar baz":                     {"--foo", "--bar", "baz"},
-		"  --dangerously-skip-permissions  ":  {"--dangerously-skip-permissions"},
+		"":                                   nil,
+		"   ":                                nil,
+		"--foo":                              {"--foo"},
+		"--foo --bar baz":                    {"--foo", "--bar", "baz"},
+		"  --dangerously-skip-permissions  ": {"--dangerously-skip-permissions"},
 	}
 	for in, want := range cases {
 		got := splitArgs(in)

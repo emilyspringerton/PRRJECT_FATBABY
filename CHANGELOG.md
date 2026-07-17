@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-17
+
+- fix(observation-watcher): credit-exhaustion circuit breaker — `cmd/observation-watcher/main.go` gained `creditCooldownActive()`/`isCreditExhaustedOutput()` and a package-level `creditExhaustedUntil`. Found live: `emily-system.service` had been OOM-killed and down for ~22h (unrelated root cause, likely this session's local GPT-2 training attempts spiking system memory — see EMILY's CHANGELOG); after restarting it, observation-watcher was re-attempting its entire backlog of unprocessed prime tasks/observations every 10s poll (failed invocations never advance their cursor, by design), each producing a multi-line `claude` CLI failure banner — pure log noise and wasted subprocess spawns for a condition (Anthropic credit balance exhausted) that retrying cannot fix. Now: the first real detection trips a 10-minute cooldown, logged once; every poll during the cooldown (`pollOnce`, `pollBatched`, `pollPrimeTasks` — all three call sites) skips quietly, leaving cursors untouched so the real backlog is reprocessed for real once the cooldown expires. 4 new tests, full suite green. Verified live: log went from a multi-line failure every ~10s to one line total.
+
 ## 2026-07-16
 
 - feat(S141-04): `cmd/norn-eps-migrate` and `cmd/norn-entitygraph-migrate` now file a real Apple on every promotion via `norn/pkg/apples.PostPromotionFromEnv` (`IDUNA_BASE_URL`/`IDUNA_AGENT_SECRET` from env, best-effort — a missing/failing Apple post never blocks or unwinds the promotion, which is already durably recorded in the registry regardless). Verified live: both CLIs ran against production data with real IDUNA credentials and filed real Apples (#9926 eps_extractor, #9927 entity_graph_rules), correctly attributed to the new `NORN` IDUNA agent.

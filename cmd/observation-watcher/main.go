@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -24,6 +25,38 @@ import (
 	"strings"
 	"time"
 )
+
+// creditExhaustedUntil implements a circuit breaker for one specific,
+// non-transient failure: the Anthropic account running out of credit
+// balance. Unlike a rate limit, retrying (or trying the *next* task) cannot
+// fix this — every invocation will fail identically until a human tops up
+// the balance. Without this, the default 10s poll interval re-attempts the
+// entire backlog of unprocessed tasks every cycle (failed tasks never
+// advance their cursor, by design, so they're retried forever), each
+// producing a multi-line claude CLI failure: pure log noise and wasted
+// subprocess spawns on a box that has already had one OOM incident this
+// week. main()'s poll loop is single-threaded (no concurrent pollers), so a
+// bare package-level var is safe without a mutex.
+var creditExhaustedUntil time.Time
+
+const creditCooldown = 10 * time.Minute
+
+// errCreditCooldown is returned by invokeWithRetry when it skipped the
+// invocation entirely because a prior call already detected an exhausted
+// credit balance within creditCooldown. Callers should treat this as a
+// quiet, expected skip — not a failure worth logging per task.
+var errCreditCooldown = errors.New("claude invocations paused: credit balance too low")
+
+func creditCooldownActive() bool {
+	return !creditExhaustedUntil.IsZero() && time.Now().Before(creditExhaustedUntil)
+}
+
+// isCreditExhaustedOutput returns true when claude's output signals the
+// Anthropic account has run out of credit balance — a condition retrying
+// cannot fix, unlike a transient rate limit (isRateLimitOutput).
+func isCreditExhaustedOutput(s string) bool {
+	return strings.Contains(strings.ToLower(s), "credit balance is too low")
+}
 
 // invokeWithRetry runs cmdName with args and retries if the output indicates a
 // Claude API rate-limit or overload error. Retries up to 3 times with
@@ -36,6 +69,9 @@ import (
 // so the session resets. This prevents the AGI loop from getting stuck in a
 // permanent context-overflow snowball.
 func invokeWithRetry(cmdName string, args []string) error {
+	if creditCooldownActive() {
+		return errCreditCooldown
+	}
 	const maxRetries = 3
 	const retryBase = 30 * time.Second
 	var lastErr error
@@ -55,6 +91,11 @@ func invokeWithRetry(cmdName string, args []string) error {
 		if err := cmd.Run(); err != nil {
 			lastErr = err
 			output := buf.String()
+			if isCreditExhaustedOutput(output) {
+				creditExhaustedUntil = time.Now().Add(creditCooldown)
+				log.Printf("invoke: credit balance too low — pausing all claude invocations for %s (will resume automatically, no action needed)", creditCooldown)
+				return errCreditCooldown
+			}
 			if isRateLimitOutput(output) {
 				continue
 			}
@@ -162,17 +203,17 @@ type observation struct {
 
 func main() {
 	var (
-		root        = flag.String("root", envOr("FATBABY_ROOT", "."), "fatbaby project root")
-		interval    = flag.Duration("interval", 10*time.Second, "poll interval")
-		cmdName     = flag.String("cmd", envOr("OBSERVATION_CMD", "claude"), "command to invoke when a new observation arrives")
-		extraArg    = flag.String("extra-args", envOr("OBSERVATION_CMD_ARGS", "--dangerously-skip-permissions"), "space-separated extra args passed to the command before the prompt")
-		rulesPath   = flag.String("rules", envOr("ENTITY_GRAPH_RULES", ""), "path to entity-graph-rules.json; included in refinement prompts when non-empty")
-		oneShot     = flag.Bool("one-shot", false, "process at most one observation, then exit")
-		dryRun      = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
-		gateMode    = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
-		primeDir         = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
-		batchWindow      = flag.Duration("batch-window", 60*time.Second, "when >0, collect all new observations within this window and invoke Claude once for the batch; set to 0 to process each observation individually")
-		continueSession  = flag.Bool("continue", envOr("OBSERVATION_CONTINUE", "") == "true", "pass --continue to claude so each RSI cycle continues the prior session (AGI loop mode)")
+		root            = flag.String("root", envOr("FATBABY_ROOT", "."), "fatbaby project root")
+		interval        = flag.Duration("interval", 10*time.Second, "poll interval")
+		cmdName         = flag.String("cmd", envOr("OBSERVATION_CMD", "claude"), "command to invoke when a new observation arrives")
+		extraArg        = flag.String("extra-args", envOr("OBSERVATION_CMD_ARGS", "--dangerously-skip-permissions"), "space-separated extra args passed to the command before the prompt")
+		rulesPath       = flag.String("rules", envOr("ENTITY_GRAPH_RULES", ""), "path to entity-graph-rules.json; included in refinement prompts when non-empty")
+		oneShot         = flag.Bool("one-shot", false, "process at most one observation, then exit")
+		dryRun          = flag.Bool("dry-run", false, "log what would be invoked, do not actually run the command")
+		gateMode        = flag.String("gate", envOr("OBSERVATION_GATE", "nontrivial"), "gate mode: 'none' (always invoke), 'nontrivial' (skip batches where only high_trust signals fired and no parse errors or gaps)")
+		primeDir        = flag.String("prime-tasks", envOr("EMILY_PRIME_TASKS_DIR", ""), "path to Emily Prime signals/tasks/ directory; polls for directed tasks when set")
+		batchWindow     = flag.Duration("batch-window", 60*time.Second, "when >0, collect all new observations within this window and invoke Claude once for the batch; set to 0 to process each observation individually")
+		continueSession = flag.Bool("continue", envOr("OBSERVATION_CONTINUE", "") == "true", "pass --continue to claude so each RSI cycle continues the prior session (AGI loop mode)")
 	)
 	flag.Parse()
 
@@ -381,6 +422,16 @@ func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool
 			continue
 		}
 
+		// Check the credit-cooldown circuit breaker before even logging this
+		// task as "new" — once tripped, every remaining task in this (and
+		// every subsequent) poll would fail identically, so stop iterating
+		// the backlog entirely rather than logging N near-identical skips.
+		// The file is left unprocessed (cursor untouched) and picked back up
+		// for real once the cooldown expires.
+		if creditCooldownActive() {
+			return processed, nil
+		}
+
 		log.Printf("new prime task task_id=%s type=%s priority=%s", task.TaskID, task.TaskType, task.Priority)
 
 		prompt := buildPrimeTaskPrompt(path, task)
@@ -388,6 +439,12 @@ func pollPrimeTasks(tasksDir, cursorPath, cmdName, extraArgs string, dryRun bool
 			args := splitArgs(extraArgs)
 			args = append(args, prompt)
 			if err := invokeWithRetry(cmdName, args); err != nil {
+				if errors.Is(err, errCreditCooldown) {
+					// Already logged once, inside invokeWithRetry, at the
+					// moment the breaker tripped. Leave this task unprocessed
+					// for the same reason as the pre-check above.
+					return processed, nil
+				}
 				log.Printf("prime task invoke %s failed: %v", cmdName, err)
 				continue
 			}
@@ -539,6 +596,15 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, ru
 		return false, nil
 	}
 
+	// Same circuit breaker as pollBatched/pollPrimeTasks: while credits are
+	// known exhausted, this exact observation would just be re-announced
+	// and re-fail every 10s poll until a human tops up the balance. Skip
+	// quietly — cursor untouched, reprocessed for real once the cooldown
+	// expires.
+	if creditCooldownActive() {
+		return false, nil
+	}
+
 	subject := obs.Summary
 	if obs.Subject != "" {
 		subject = obs.Subject
@@ -576,6 +642,13 @@ func pollOnce(latestPath, cursorPath, cmdName, extraArgs string, dryRun bool, ru
 		args := splitArgs(extraArgs)
 		args = append(args, prompt)
 		if err := invokeWithRetry(cmdName, args); err != nil {
+			if errors.Is(err, errCreditCooldown) {
+				// Already logged once, inside invokeWithRetry. Leave this
+				// observation unprocessed (cursor untouched) — picked back
+				// up for real once the cooldown expires. Not an error worth
+				// surfacing as "poll error" every 10s while it's active.
+				return false, nil
+			}
 			return false, fmt.Errorf("invoke %s: %w", cmdName, err)
 		}
 	}
@@ -760,6 +833,15 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 		return true, nil
 	}
 
+	// Same circuit breaker as pollOnce/pollPrimeTasks: once credits are known
+	// exhausted, every batch would announce+fail identically every poll.
+	// Skip quietly (cursor untouched, batch reprocessed for real once the
+	// cooldown expires) rather than re-announcing "invoking Claude" every
+	// cycle for something guaranteed to fail.
+	if creditCooldownActive() {
+		return false, nil
+	}
+
 	log.Printf("batch: %d new obs (%d nontrivial) — invoking Claude once for the batch", len(candidates), len(nontrivial))
 
 	var obsList []observation
@@ -789,6 +871,12 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 		args := splitArgs(extraArgs)
 		args = append(args, prompt)
 		if err := invokeWithRetry(cmdName, args); err != nil {
+			if errors.Is(err, errCreditCooldown) {
+				// Already logged once, inside invokeWithRetry. Leave this
+				// batch unprocessed (cursor untouched) — picked back up for
+				// real once the cooldown expires.
+				return false, nil
+			}
 			return false, fmt.Errorf("invoke %s: %w", cmdName, err)
 		}
 	}
