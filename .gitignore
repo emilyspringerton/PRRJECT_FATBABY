@@ -7,6 +7,11 @@
 # Conversation state for emily-agent.
 /conversations/
 
+# Real secrets belong here per the file's own header comment, but the file
+# was never actually gitignored — fixed 2026-07-17. History checked clean
+# (only CHANGE_ME placeholders were ever committed).
+/ops/env.production
+
 # Compiled binaries dropped in repo root by `go build ./cmd/...`.
 /entity-graph
 /secwatch
