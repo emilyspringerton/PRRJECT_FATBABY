@@ -75,39 +75,46 @@ const failedRetryTTL = 30 * 24 * time.Hour
 // (empty URL, non-HTTP) or (b) the failure is recent (< 30 days old). This lets
 // 429-rate-limited filings be retried on the next processor restart after the
 // EDGAR cooldown window has passed.
-func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger *log.Logger) *seenSet {
+//
+// Returns the highest sequence encountered so Run can resume its main loop
+// from there instead of replaying the whole store a second time from
+// sequence 1 (that redundant second replay, paged through ReadFrom 512
+// records at a time with a poll-interval sleep between every page, used to
+// make cold-start catch-up take up to ~an hour and was a direct contributor
+// to processor's OOM kills — see docs/northstar/replay-fragility.md).
+func loadSeenIdentities(ctx context.Context, store eventstore.EventStore, logger *log.Logger) (*seenSet, uint64) {
 	seen := newSeenSet()
-	from := uint64(1)
+	var lastSeq uint64
 	expiry := time.Now().UTC().Add(-failedRetryTTL)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
-		if err != nil || len(recs) == 0 {
-			break
-		}
-		for _, r := range recs {
-			switch r.Event.Type {
-			case "signal_generated":
+	err := store.Scan(ctx, 1, func(r eventstore.Record) error {
+		switch r.Event.Type {
+		case "signal_generated":
+			seen.signals[r.Event.PartitionKey] = struct{}{}
+		case "signal_failed":
+			// Only permanently block non-retryable failures. 429-based failures
+			// older than failedRetryTTL are eligible for a fresh attempt.
+			var meta map[string]string
+			_ = json.Unmarshal(r.Event.Data, &meta)
+			errMsg := meta["error"]
+			isPermanent := strings.Contains(errMsg, "unsupported document URL") ||
+				strings.Contains(errMsg, "status=404") ||
+				strings.Contains(errMsg, "status=403")
+			if isPermanent || r.AppendedAt.After(expiry) {
 				seen.signals[r.Event.PartitionKey] = struct{}{}
-			case "signal_failed":
-				// Only permanently block non-retryable failures. 429-based failures
-				// older than failedRetryTTL are eligible for a fresh attempt.
-				var meta map[string]string
-				_ = json.Unmarshal(r.Event.Data, &meta)
-				errMsg := meta["error"]
-				isPermanent := strings.Contains(errMsg, "unsupported document URL") ||
-					strings.Contains(errMsg, "status=404") ||
-					strings.Contains(errMsg, "status=403")
-				if isPermanent || r.AppendedAt.After(expiry) {
-					seen.signals[r.Event.PartitionKey] = struct{}{}
-				}
-			case "source_document_persisted":
-				seen.sources[r.Event.PartitionKey] = struct{}{}
 			}
+		case "source_document_persisted":
+			seen.sources[r.Event.PartitionKey] = struct{}{}
 		}
-		from = recs[len(recs)-1].Sequence + 1
+		if r.Sequence > lastSeq {
+			lastSeq = r.Sequence
+		}
+		return nil
+	})
+	if err != nil && logger != nil {
+		logger.Printf("processor startup: seen-set scan error: %v", err)
 	}
-	logger.Printf("processor startup: seen signals=%d sources=%d", len(seen.signals), len(seen.sources))
-	return seen
+	logger.Printf("processor startup: seen signals=%d sources=%d latest_seq=%d", len(seen.signals), len(seen.sources), lastSeq)
+	return seen, lastSeq
 }
 
 func Run(ctx context.Context, cfg WorkerConfig) error {
@@ -124,13 +131,16 @@ func Run(ctx context.Context, cfg WorkerConfig) error {
 		cfg.Logger = log.New(log.Writer(), "", log.LstdFlags|log.LUTC)
 	}
 
-	seen := loadSeenIdentities(ctx, cfg.Store, cfg.Logger)
+	seen, seenLastSeq := loadSeenIdentities(ctx, cfg.Store, cfg.Logger)
 
-	lastSeq := uint64(1)
+	lastSeq := seenLastSeq + 1
 	cfg.Logger.Printf("processor loop starting from_sequence=%d workers=%d poll_interval=%s", lastSeq, cfg.Workers, cfg.PollInterval)
 	for {
-		recs, err := cfg.Store.ReadFrom(ctx, lastSeq, 512)
-		if err != nil {
+		var recs []eventstore.Record
+		if err := cfg.Store.Scan(ctx, lastSeq, func(rec eventstore.Record) error {
+			recs = append(recs, rec)
+			return nil
+		}); err != nil {
 			return fmt.Errorf("read events: %w", err)
 		}
 		if len(recs) > 0 {
