@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-07-18 (2)
+- docs: `docs/headlines/live-feed-northstar.md` — NORTHSTAR for a combined, MTWire-style live headline feed unifying all ten signal-producing pollers into one terse, low-latency stream. Builds on the existing `feedserver` TCP infrastructure (framed protocol, resume/backfill, multi-tenant routing — already built, not currently running) and the existing `docs/headlines/pr-feed.md` draft (its `Article` schema becomes one specialization of this doc's unified headline envelope). New pieces: a thin inline `headline-normalizer` (no new unsupervised process, per SECTION 152's lesson) and a WebSocket bridge folded into `newssite` for a live front-page ticker, avoiding a new domain/cert the same way tonight's `/api/`/`/news/` proxies did. Design only — no code yet, phased build plan included.
+
 ## 2026-07-18
 - fix(ops): `newssite` moved to a user-level systemd unit (`ops/systemd/fatbaby-newssite.service`) — became a public-facing surface the moment okemily.com started linking to it (`/news/` proxy), so its uptime now matters the same way secwatch/processor/etc. already did (SECTION 152). Was still an unsupervised `go run` process until now. Found and fixed a real bug in the process: the previously-drafted unit was stale — missing `-guidance-dir`/`-earnings-cal-dir` (both real, in-use flags) and referencing a `-doc-index-dir` flag that doesn't exist anywhere in `cmd/newssite/main.go`; deploying it as-drafted would have made the service fail to start outright. Live-verified: SIGKILL'd the running process, confirmed systemd auto-restarted it within `RestartSec=10s`, `/healthz` back to 200 immediately.
 
