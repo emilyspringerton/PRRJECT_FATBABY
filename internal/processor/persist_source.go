@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -50,17 +51,15 @@ func persistSourceDocument(
 // source_document_persisted event with the given identity.
 // Used to skip re-persisting on replay, consistent with signalExists.
 func sourceDocumentExists(ctx context.Context, store eventstore.EventStore, identity string) bool {
-	from := uint64(1)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
-		if err != nil || len(recs) == 0 {
-			return false
+	found := false
+	_ = store.Scan(ctx, 1, func(r eventstore.Record) error {
+		if r.Event.Type == "source_document_persisted" && r.Event.PartitionKey == identity {
+			found = true
+			return errStopScan
 		}
-		for _, r := range recs {
-			if r.Event.Type == "source_document_persisted" && r.Event.PartitionKey == identity {
-				return true
-			}
-		}
-		from = recs[len(recs)-1].Sequence + 1
-	}
+		return nil
+	})
+	return found
 }
+
+var errStopScan = errors.New("stop scan: found")

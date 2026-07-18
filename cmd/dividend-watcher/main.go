@@ -209,31 +209,23 @@ func saveCursor(path string, seq uint64) {
 // buildTickerMap reads pr_discovered events and maps PRDiscoveryID → primary ticker.
 func buildTickerMap(ctx context.Context, store eventstore.EventStore, logger *log.Logger) map[string]string {
 	m := map[string]string{}
-	from := uint64(1)
-	const page = 1000
-	for {
-		recs, err := store.ReadFrom(ctx, from, page)
-		if err != nil || len(recs) == 0 {
-			break
+	err := store.Scan(ctx, 1, func(rec eventstore.Record) error {
+		if rec.Event.Type != "pr_discovered" {
+			return nil
 		}
-		for _, rec := range recs {
-			if rec.Event.Type != "pr_discovered" {
-				continue
-			}
-			var ev prwatch.PressReleaseDiscovered
-			if err := json.Unmarshal(rec.Event.Data, &ev); err != nil {
-				continue
-			}
-			if ev.Identity.PrimaryTicker != nil && ev.Identity.PrimaryTicker.Symbol != "" {
-				if id, ok := ev.Metadata["id"]; ok {
-					m[id] = ev.Identity.PrimaryTicker.Symbol
-				}
+		var ev prwatch.PressReleaseDiscovered
+		if err := json.Unmarshal(rec.Event.Data, &ev); err != nil {
+			return nil
+		}
+		if ev.Identity.PrimaryTicker != nil && ev.Identity.PrimaryTicker.Symbol != "" {
+			if id, ok := ev.Metadata["id"]; ok {
+				m[id] = ev.Identity.PrimaryTicker.Symbol
 			}
 		}
-		if len(recs) < page {
-			break
-		}
-		from = recs[len(recs)-1].Sequence + 1
+		return nil
+	})
+	if err != nil && logger != nil {
+		logger.Printf("ticker map scan error: %v", err)
 	}
 	return m
 }

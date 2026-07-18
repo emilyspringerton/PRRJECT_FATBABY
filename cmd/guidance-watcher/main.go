@@ -191,27 +191,23 @@ func writeCursor(path string, seq uint64, logger *log.Logger) {
 
 func buildTickerMap(ctx context.Context, store eventstore.EventStore, logger *log.Logger) map[string]string {
 	m := make(map[string]string)
-	from := uint64(1)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
-		if err != nil || len(recs) == 0 {
-			break
+	err := store.Scan(ctx, 1, func(rec eventstore.Record) error {
+		if rec.Event.Type != "pr_discovered" {
+			return nil
 		}
-		for _, rec := range recs {
-			if rec.Event.Type != "pr_discovered" {
-				continue
-			}
-			var ev prwatch.PressReleaseDiscovered
-			if err := json.Unmarshal(rec.Event.Data, &ev); err != nil {
-				continue
-			}
-			if ev.Identity.PrimaryTicker != nil && ev.Identity.PrimaryTicker.Symbol != "" {
-				if id, ok := ev.Metadata["id"]; ok {
-					m[id] = ev.Identity.PrimaryTicker.Symbol
-				}
+		var ev prwatch.PressReleaseDiscovered
+		if err := json.Unmarshal(rec.Event.Data, &ev); err != nil {
+			return nil
+		}
+		if ev.Identity.PrimaryTicker != nil && ev.Identity.PrimaryTicker.Symbol != "" {
+			if id, ok := ev.Metadata["id"]; ok {
+				m[id] = ev.Identity.PrimaryTicker.Symbol
 			}
 		}
-		from = recs[len(recs)-1].Sequence + 1
+		return nil
+	})
+	if err != nil && logger != nil {
+		logger.Printf("ticker map scan error: %v", err)
 	}
 	return m
 }
