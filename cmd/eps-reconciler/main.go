@@ -98,88 +98,82 @@ func reconcile(ctx context.Context, store eventstore.EventStore, epsDir, graphDi
 	// Scan the secwatch store for 8-K source documents.
 	confirmed := 0
 	contradicts := 0
-	from := uint64(1)
-	for {
-		if ctx.Err() != nil {
-			break
+	scanErr := store.Scan(ctx, 1, func(rec eventstore.Record) error {
+		if rec.Event.Type != "source_document_persisted" {
+			return nil
 		}
-		recs, err := store.ReadFrom(ctx, from, 256)
-		if err != nil || len(recs) == 0 {
-			break
+		var doc intelligence.SourceDocument
+		if err := json.Unmarshal(rec.Event.Data, &doc); err != nil {
+			return nil
 		}
-		for _, rec := range recs {
-			if rec.Event.Type != "source_document_persisted" {
-				continue
-			}
-			var doc intelligence.SourceDocument
-			if err := json.Unmarshal(rec.Event.Data, &doc); err != nil {
-				continue
-			}
-			// Only care about 8-K filings that likely contain earnings data.
-			if doc.Form != "8-K" {
-				continue
-			}
-			if !isEarningsRelease(doc.CleanedText) {
-				continue
-			}
+		// Only care about 8-K filings that likely contain earnings data.
+		if doc.Form != "8-K" {
+			return nil
+		}
+		if !isEarningsRelease(doc.CleanedText) {
+			return nil
+		}
 
-			// Extract EPS from the 8-K.
-			filed := eps.Extract(doc.CleanedText, doc.Identity, doc.Ticker)
-			if filed.EPSGAAPDiluted == nil {
-				continue
-			}
-			filedEPS := *filed.EPSGAAPDiluted
+		// Extract EPS from the 8-K.
+		filed := eps.Extract(doc.CleanedText, doc.Identity, doc.Ticker)
+		if filed.EPSGAAPDiluted == nil {
+			return nil
+		}
+		filedEPS := *filed.EPSGAAPDiluted
 
-			// Try to match against a pending case by ticker + period.
-			k := caseKey(doc.Ticker, filed.Period)
-			c, ok := pendingByKey[k]
-			if !ok {
-				continue
-			}
-			if c.ExtractedEPS == nil {
-				continue
-			}
+		// Try to match against a pending case by ticker + period.
+		k := caseKey(doc.Ticker, filed.Period)
+		c, ok := pendingByKey[k]
+		if !ok {
+			return nil
+		}
+		if c.ExtractedEPS == nil {
+			return nil
+		}
 
-			filedVal := filedEPS
-			c.FiledEPS = &filedVal
-			c.FiledAccession = doc.Identity
+		filedVal := filedEPS
+		c.FiledEPS = &filedVal
+		c.FiledAccession = doc.Identity
 
-			now := time.Now().UTC().Format("2006-01-02")
-			extracted := *c.ExtractedEPS
-			delta := filedEPS - extracted
-			c.Delta = &delta
-			c.RecordedAt = now
+		now := time.Now().UTC().Format("2006-01-02")
+		extracted := *c.ExtractedEPS
+		delta := filedEPS - extracted
+		c.Delta = &delta
+		c.RecordedAt = now
 
-			relErr := 0.0
-			if extracted != 0 {
-				relErr = math.Abs(delta) / math.Abs(extracted)
-			}
+		relErr := 0.0
+		if extracted != 0 {
+			relErr = math.Abs(delta) / math.Abs(extracted)
+		}
 
-			if relErr <= epsTolerance {
-				c.Verdict = eps.VerdictConfirmed
-				confirmed++
-				logger.Printf("confirmed ticker=%q period=%s extracted=%.2f filed=%.2f",
-					c.Ticker, c.Period.FiscalQuarter, extracted, filedEPS)
-			} else {
-				c.Verdict = eps.VerdictContradicts
-				c.Notes = "filed EPS differs from press release extraction"
-				contradicts++
-				logger.Printf("CONTRADICTS ticker=%q period=%s extracted=%.2f filed=%.2f delta=%.4f",
-					c.Ticker, c.Period.FiscalQuarter, extracted, filedEPS, delta)
-				// Emit an entity-graph signal when the filed EPS materially
-				// differs from the press release EPS. This can indicate a
-				// GAAP/non-GAAP labelling mismatch, a genuine revision between
-				// the PR and the filing, or an extraction error worth reviewing.
-				if graphDir != "" {
-					sig := scoreEPSRevision(c.Ticker, c.Period.FiscalQuarter, extracted, filedEPS, delta, doc.FilingDate)
-					if err := entitygraph.WriteSignals(graphDir, []entitygraph.Signal{sig}); err != nil {
-						logger.Printf("write eps_filing_revision signal: %v", err)
-					}
+		if relErr <= epsTolerance {
+			c.Verdict = eps.VerdictConfirmed
+			confirmed++
+			logger.Printf("confirmed ticker=%q period=%s extracted=%.2f filed=%.2f",
+				c.Ticker, c.Period.FiscalQuarter, extracted, filedEPS)
+		} else {
+			c.Verdict = eps.VerdictContradicts
+			c.Notes = "filed EPS differs from press release extraction"
+			contradicts++
+			logger.Printf("CONTRADICTS ticker=%q period=%s extracted=%.2f filed=%.2f delta=%.4f",
+				c.Ticker, c.Period.FiscalQuarter, extracted, filedEPS, delta)
+			// Emit an entity-graph signal when the filed EPS materially
+			// differs from the press release EPS. This can indicate a
+			// GAAP/non-GAAP labelling mismatch, a genuine revision between
+			// the PR and the filing, or an extraction error worth reviewing.
+			if graphDir != "" {
+				sig := scoreEPSRevision(c.Ticker, c.Period.FiscalQuarter, extracted, filedEPS, delta, doc.FilingDate)
+				if err := entitygraph.WriteSignals(graphDir, []entitygraph.Signal{sig}); err != nil {
+					logger.Printf("write eps_filing_revision signal: %v", err)
 				}
 			}
-			delete(pendingByKey, k)
 		}
-		from = recs[len(recs)-1].Sequence + 1
+		delete(pendingByKey, k)
+		return nil
+	})
+	if scanErr != nil {
+		logger.Printf("scan secwatch store: %v", scanErr)
+		return
 	}
 
 	if confirmed+contradicts == 0 {
