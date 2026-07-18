@@ -253,3 +253,29 @@ func TestPreviewText_ShortTextUnchanged(t *testing.T) {
 		t.Errorf("previewText = %q, want %q", got, text)
 	}
 }
+
+func TestByIdentity_FindsIndexedDoc(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	if err := idx.Ingest(docRec(42, "AAPL", "id-42", "2019-04-26", now)); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	got, ok := idx.ByIdentity("id-42")
+	if !ok {
+		t.Fatal("expected to find id-42")
+	}
+	if got.Sequence != 42 {
+		t.Errorf("expected Sequence 42, got %d", got.Sequence)
+	}
+	if got.Ticker != "AAPL" {
+		t.Errorf("expected ticker AAPL, got %q", got.Ticker)
+	}
+}
+
+func TestByIdentity_MissingReturnsFalse(t *testing.T) {
+	idx := NewIndex()
+	if _, ok := idx.ByIdentity("does-not-exist"); ok {
+		t.Fatal("expected ok=false for an unindexed identity")
+	}
+}

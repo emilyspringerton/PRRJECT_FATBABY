@@ -45,25 +45,25 @@ func summaryToEntry(ds *docindex.DocSummary) DocEntry {
 
 // Handler is an http.Handler for the news site.
 type Handler struct {
-	store           eventstore.EventStore
-	graph           *graphread.Store       // nil if graph dir not configured
-	sigIdx          *signalindex.Index     // nil if not wired
-	docIdx          *docindex.Index        // nil if not wired
-	cat             *catalog.Catalog       // nil if not wired
-	epsStore        *epsread.Store         // nil if eps-dir not configured
-	commentaryStore *commentary.Store      // nil if commentary-dir not configured
-	commentaryDir   string                 // path for POST /api/commentary writes
-	guidanceStore   *guidanceread.Store    // nil if guidance-dir not configured
-	earningsCalStore *earningscal.Store    // nil if earnings-cal-dir not configured
-	emilyBaseURL        string         // Emily Prime base URL for /api/ask; empty disables
-	signalapiURL        string         // signalapi base URL for ticker context injection; empty skips
-	googleClientID      string         // Google OAuth client ID for Sign in with Google; empty disables auth flow
-	idunaBaseURL        string         // IDUNA base URL for Google→IDUNA JWT exchange; empty disables
-	askJWTVerifier      askVerifier    // JWT verifier for authenticated /api/ask; nil → no auth
-	logger              *log.Logger
-	defaultLimit        int
-	rateLimiter         *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
-	askRateLimiter      *ipRateLimiter // Ask Emily rate limiter (5/day); nil disables
+	store                eventstore.EventStore
+	graph                *graphread.Store    // nil if graph dir not configured
+	sigIdx               *signalindex.Index  // nil if not wired
+	docIdx               *docindex.Index     // nil if not wired
+	cat                  *catalog.Catalog    // nil if not wired
+	epsStore             *epsread.Store      // nil if eps-dir not configured
+	commentaryStore      *commentary.Store   // nil if commentary-dir not configured
+	commentaryDir        string              // path for POST /api/commentary writes
+	guidanceStore        *guidanceread.Store // nil if guidance-dir not configured
+	earningsCalStore     *earningscal.Store  // nil if earnings-cal-dir not configured
+	emilyBaseURL         string              // Emily Prime base URL for /api/ask; empty disables
+	signalapiURL         string              // signalapi base URL for ticker context injection; empty skips
+	googleClientID       string              // Google OAuth client ID for Sign in with Google; empty disables auth flow
+	idunaBaseURL         string              // IDUNA base URL for Google→IDUNA JWT exchange; empty disables
+	askJWTVerifier       askVerifier         // JWT verifier for authenticated /api/ask; nil → no auth
+	logger               *log.Logger
+	defaultLimit         int
+	rateLimiter          *ipRateLimiter // free-tier IP rate limiter; nil disables limiting
+	askRateLimiter       *ipRateLimiter // Ask Emily rate limiter (5/day); nil disables
 	authedAskRateLimiter *ipRateLimiter // authenticated Ask Emily rate limiter (20/day); nil disables
 }
 
@@ -88,17 +88,17 @@ func NewHandler(store eventstore.EventStore, logger *log.Logger) *Handler {
 // SetRateLimiter replaces the rate limiter. Pass nil to disable rate limiting (e.g. in tests).
 func (h *Handler) SetRateLimiter(rl *ipRateLimiter) { h.rateLimiter = rl }
 
-func (h *Handler) SetGraphStore(gs *graphread.Store)          { h.graph = gs }
-func (h *Handler) SetSignalIndex(si *signalindex.Index)       { h.sigIdx = si }
-func (h *Handler) SetDocIndex(di *docindex.Index)             { h.docIdx = di }
-func (h *Handler) SetCatalog(c *catalog.Catalog)              { h.cat = c }
-func (h *Handler) SetEpsStore(es *epsread.Store)              { h.epsStore = es }
+func (h *Handler) SetGraphStore(gs *graphread.Store)    { h.graph = gs }
+func (h *Handler) SetSignalIndex(si *signalindex.Index) { h.sigIdx = si }
+func (h *Handler) SetDocIndex(di *docindex.Index)       { h.docIdx = di }
+func (h *Handler) SetCatalog(c *catalog.Catalog)        { h.cat = c }
+func (h *Handler) SetEpsStore(es *epsread.Store)        { h.epsStore = es }
 func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 	h.commentaryStore = cs
 	h.commentaryDir = dir
 }
-func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)        { h.guidanceStore = gs }
-func (h *Handler) SetEarningsCalStore(s *earningscal.Store)       { h.earningsCalStore = s }
+func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)  { h.guidanceStore = gs }
+func (h *Handler) SetEarningsCalStore(s *earningscal.Store) { h.earningsCalStore = s }
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +255,23 @@ func (h *Handler) serveFrontPage(w http.ResponseWriter, r *http.Request) int {
 
 func (h *Handler) serveDoc(w http.ResponseWriter, r *http.Request) int {
 	id := strings.TrimPrefix(r.URL.Path, "/doc/")
-	entry, found, err := ReadByIdentity(r.Context(), h.store, id)
+
+	// Fast path: O(1) sequence lookup via the in-memory index, then a
+	// targeted single-record fetch — touches at most one day-partition
+	// file, not the entire event-store history. Falls back to the slow
+	// full-scan only if the index doesn't have this identity yet (e.g.
+	// mid-rebuild after a restart), matching prior behavior in that case.
+	var entry DocEntry
+	var found bool
+	var err error
+	if h.docIdx != nil {
+		if summary, ok := h.docIdx.ByIdentity(id); ok {
+			entry, found, err = ReadAtSequence(r.Context(), h.store, summary.Sequence)
+		}
+	}
+	if !found && err == nil {
+		entry, found, err = ReadByIdentity(r.Context(), h.store, id)
+	}
 	if err != nil {
 		http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
 		return http.StatusInternalServerError
@@ -673,9 +689,9 @@ func (h *Handler) serveEarnings(w http.ResponseWriter, r *http.Request) int {
 		records := h.earningsCalStore.Query(nil, today, horizon, nil)
 		for _, d := range records {
 			uv := UpcomingEarningsView{
-				Ticker:     strings.ToUpper(d.Ticker),
-				ReportDate: formatUpcomingDate(d.ReportDate),
-				PeriodStr:  formatPeriodStr(d.FiscalQuarter, d.FiscalYear),
+				Ticker:      strings.ToUpper(d.Ticker),
+				ReportDate:  formatUpcomingDate(d.ReportDate),
+				PeriodStr:   formatPeriodStr(d.FiscalQuarter, d.FiscalYear),
 				StatusLabel: earningsStatusLabel(d.Status),
 			}
 			if d.BeforeMarket != nil {

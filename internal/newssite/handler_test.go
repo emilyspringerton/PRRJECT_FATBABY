@@ -13,6 +13,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/earningscal"
+	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 )
 
@@ -90,15 +91,15 @@ func TestHandler(t *testing.T) {
 			wantStatus: http.StatusNotFound,
 		},
 		{
-			name:       "feed.xml empty",
-			path:       "/feed.xml",
-			wantStatus: http.StatusOK,
+			name:         "feed.xml empty",
+			path:         "/feed.xml",
+			wantStatus:   http.StatusOK,
 			wantContains: []string{"<?xml", "rss", "FATBABY"},
 		},
 		{
-			name:       "section feed empty",
-			path:       "/section/governance/feed.xml",
-			wantStatus: http.StatusOK,
+			name:         "section feed empty",
+			path:         "/section/governance/feed.xml",
+			wantStatus:   http.StatusOK,
 			wantContains: []string{"<?xml", "Governance"},
 		},
 		{
@@ -132,8 +133,8 @@ func TestHandler(t *testing.T) {
 			},
 			// Historical filings (>90 days) are suppressed from the front page feed.
 			// The front page will show "No source documents" rather than a 2019 filing.
-			wantStatus:   http.StatusOK,
-			notContains:  []string{"22 May 2026"}, // persisted_at date must not appear as the article date
+			wantStatus:  http.StatusOK,
+			notContains: []string{"22 May 2026"}, // persisted_at date must not appear as the article date
 		},
 		{
 			name: "detail page shows filing date not persisted date",
@@ -173,9 +174,9 @@ func TestHandler(t *testing.T) {
 			wantContains: []string{"AAPL"},
 		},
 		{
-			name:         "archive empty",
-			path:         "/archive",
-			wantStatus:   http.StatusOK,
+			name:       "archive empty",
+			path:       "/archive",
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:         "about page",
@@ -184,19 +185,19 @@ func TestHandler(t *testing.T) {
 			wantContains: []string{"FATBABY"},
 		},
 		{
-			name:         "tickers empty",
-			path:         "/tickers",
-			wantStatus:   http.StatusOK,
+			name:       "tickers empty",
+			path:       "/tickers",
+			wantStatus: http.StatusOK,
 		},
 		{
-			name:         "live page",
-			path:         "/live",
-			wantStatus:   http.StatusOK,
+			name:       "live page",
+			path:       "/live",
+			wantStatus: http.StatusOK,
 		},
 		{
-			name:         "breaking page",
-			path:         "/breaking",
-			wantStatus:   http.StatusOK,
+			name:       "breaking page",
+			path:       "/breaking",
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:         "section governance",
@@ -219,9 +220,9 @@ func TestHandler(t *testing.T) {
 		},
 		{
 			// Without a catalog, search renders a results page (200) rather than redirecting.
-			name:         "search no catalog returns page",
-			path:         "/search?q=AAPL",
-			wantStatus:   http.StatusOK,
+			name:       "search no catalog returns page",
+			path:       "/search?q=AAPL",
+			wantStatus: http.StatusOK,
 		},
 		{
 			name: "ticker page with doc",
@@ -431,7 +432,11 @@ func TestEarningsCalendarSection_PastDateExcluded(t *testing.T) {
 
 // TestFormatPeriodStr validates the period formatter.
 func TestFormatPeriodStr(t *testing.T) {
-	cases := []struct{ q string; y int; want string }{
+	cases := []struct {
+		q    string
+		y    int
+		want string
+	}{
 		{"Q3", 2026, "Q3 2026"},
 		{"FY", 2027, "FY 2027"},
 		{"Q1", 0, "Q1"},
@@ -511,5 +516,45 @@ func writeSourceDoc(t *testing.T, store eventstore.EventStore, doc intelligence.
 	})
 	if err != nil {
 		t.Fatalf("append: %v", err)
+	}
+}
+
+func TestServeDoc_FastPathViaDocIndex(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	writeSourceDoc(t, store, intelligence.SourceDocument{
+		Identity: "fastpath:1", Ticker: "MSFT", SourceType: "sec_8k",
+		CleanedText: "FULL BODY VIA FAST PATH", CleanedCharCount: 24, PersistedAt: now,
+	})
+
+	idx := docindex.NewIndex()
+	if err := docindex.Build(context.Background(), store, idx, log.New(io.Discard, "", 0)); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	// Sanity check the precondition this test actually exercises: the
+	// fast path requires ByIdentity to resolve to a real sequence.
+	summary, ok := idx.ByIdentity("fastpath:1")
+	if !ok || summary.Sequence == 0 {
+		t.Fatalf("expected indexed doc with a non-zero sequence, got %+v ok=%v", summary, ok)
+	}
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	h.SetDocIndex(idx)
+
+	req := httptest.NewRequest(http.MethodGet, "/doc/fastpath:1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "FULL BODY VIA FAST PATH") {
+		t.Fatalf("expected full body text in response, got: %s", rec.Body.String())
 	}
 }

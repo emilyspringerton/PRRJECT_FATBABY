@@ -79,6 +79,7 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 		CharCount:   doc.CleanedCharCount,
 		FilingDate:  doc.FilingDate,
 		PersistedAt: doc.PersistedAt,
+		Sequence:    rec.Sequence,
 	}
 	idx.byIdentity[doc.Identity] = ds
 	idx.byTicker[ticker] = append(idx.byTicker[ticker], ds)
@@ -90,6 +91,17 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 
 // ForTicker returns all docs for a ticker, newest first by FilingDate.
 // Allocation on each call is intentional (cheap copy; list is short; avoids exposing the internal slice).
+// ByIdentity returns the summary for one document by its identity, in O(1)
+// via the in-memory index — the fast path for detail-page lookups. Callers
+// needing full body text should use the returned summary's Sequence for a
+// targeted eventstore.ReadFrom(ctx, seq, 1) fetch, not a full-store scan.
+func (idx *Index) ByIdentity(identity string) (*DocSummary, bool) {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	ds, ok := idx.byIdentity[identity]
+	return ds, ok
+}
+
 func (idx *Index) ForTicker(ticker string) []*DocSummary {
 	ticker = strings.ToUpper(strings.TrimSpace(ticker))
 	idx.mu.RLock()

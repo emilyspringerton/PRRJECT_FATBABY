@@ -102,8 +102,29 @@ func ReadLatest(ctx context.Context, store eventstore.EventStore, limit int) ([]
 	return result, nil
 }
 
+// ReadAtSequence fetches exactly one record at a known sequence number — the
+// fast path for detail pages when the caller already knows the sequence
+// (e.g. from docindex.Index.ByIdentity's O(1) lookup). Unlike ReadByIdentity,
+// this does not scan the store from the beginning: FileStore.ReadFrom skips
+// whole day-partitioned files entirely before fromSequence, so this touches
+// at most the one partition containing the target record.
+func ReadAtSequence(ctx context.Context, store eventstore.EventStore, seq uint64) (DocEntry, bool, error) {
+	recs, err := store.ReadFrom(ctx, seq, 1)
+	if err != nil {
+		return DocEntry{}, false, err
+	}
+	if len(recs) == 0 || recs[0].Sequence != seq {
+		return DocEntry{}, false, nil
+	}
+	entry, ok := toEntry(recs[0])
+	return entry, ok, nil
+}
+
 // ReadByIdentity returns the single DocEntry whose Identity matches the given
-// string, or (DocEntry{}, false) if not found.
+// string, or (DocEntry{}, false) if not found. This scans the store from the
+// beginning — O(entire history) — and should only be used as a fallback when
+// the in-memory docindex hasn't indexed the identity yet (e.g. mid-rebuild).
+// Prefer docindex.Index.ByIdentity + ReadAtSequence, the fast path.
 func ReadByIdentity(ctx context.Context, store eventstore.EventStore, identity string) (DocEntry, bool, error) {
 	from := uint64(1)
 	for {
@@ -165,4 +186,3 @@ func previewText(s string, maxRunes int) string {
 	}
 	return strings.TrimSpace(trimmed)
 }
-
