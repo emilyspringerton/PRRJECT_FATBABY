@@ -661,36 +661,32 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 func buildFilingIndexes(ctx context.Context, store eventstore.EventStore, logger *log.Logger) (dates map[string]string, forms map[string]string) {
 	dates = make(map[string]string)
 	forms = make(map[string]string)
-	from := uint64(1)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
-		if err != nil || len(recs) == 0 {
-			break
+	err := store.Scan(ctx, 1, func(r eventstore.Record) error {
+		if r.Event.Type != "filing_discovered" {
+			return nil
 		}
-		for _, r := range recs {
-			if r.Event.Type != "filing_discovered" {
-				continue
-			}
-			var ev secwatch.FilingDiscoveredEvent
-			if err := json.Unmarshal(r.Event.Data, &ev); err != nil {
-				continue
-			}
-			if ev.CIK == "" || ev.AccessionNumber == "" {
-				continue
-			}
-			id := secwatch.FilingIdentity(ev.CIK, ev.AccessionNumber)
-			if ev.FilingDate != "" {
-				if _, exists := dates[id]; !exists {
-					dates[id] = ev.FilingDate
-				}
-			}
-			if form := ev.EffectiveForm(); form != "" {
-				if _, exists := forms[id]; !exists {
-					forms[id] = form
-				}
+		var ev secwatch.FilingDiscoveredEvent
+		if err := json.Unmarshal(r.Event.Data, &ev); err != nil {
+			return nil
+		}
+		if ev.CIK == "" || ev.AccessionNumber == "" {
+			return nil
+		}
+		id := secwatch.FilingIdentity(ev.CIK, ev.AccessionNumber)
+		if ev.FilingDate != "" {
+			if _, exists := dates[id]; !exists {
+				dates[id] = ev.FilingDate
 			}
 		}
-		from = recs[len(recs)-1].Sequence + 1
+		if form := ev.EffectiveForm(); form != "" {
+			if _, exists := forms[id]; !exists {
+				forms[id] = form
+			}
+		}
+		return nil
+	})
+	if err != nil && logger != nil {
+		logger.Printf("filing_indexes scan error: %v", err)
 	}
 	logger.Printf("filing_indexes loaded entries=%d", len(dates))
 	return dates, forms

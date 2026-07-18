@@ -178,55 +178,50 @@ func (idx *Index) LatestSeq() uint64 {
 	return idx.latestSeq
 }
 
-// Build scans the entire store from sequence 1 and populates idx.
-func Build(ctx context.Context, store eventstore.EventStore, idx *Index, logger *log.Logger) error {
-	fromSeq := uint64(1)
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
+// Build scans the store from fromSeq and populates idx. fromSeq is normally 1
+// (full history); pass a higher value only via the documented
+// -replay-from-seq emergency degraded-mode lever.
+func Build(ctx context.Context, store eventstore.EventStore, idx *Index, fromSeq uint64, logger *log.Logger) error {
+	return store.Scan(ctx, fromSeq, func(rec eventstore.Record) error {
+		if err := idx.Ingest(rec); err != nil && logger != nil {
+			logger.Printf("docindex ingest: %v", err)
 		}
-		recs, err := store.ReadFrom(ctx, fromSeq, 512)
-		if err != nil {
-			return err
-		}
-		if len(recs) == 0 {
-			return nil
-		}
-		for _, rec := range recs {
-			if err := idx.Ingest(rec); err != nil && logger != nil {
-				logger.Printf("docindex ingest: %v", err)
-			}
-			fromSeq = rec.Sequence + 1
-		}
-	}
+		return nil
+	})
 }
 
 // Tail starts a background goroutine that polls the store for new records.
 // It closes the returned channel once the first poll completes (signals readiness).
+// The first poll runs immediately rather than waiting a full interval, since
+// Build() has typically just caught the index up to latest_seq and this poll
+// is normally a fast no-op.
 func Tail(ctx context.Context, store eventstore.EventStore, idx *Index, interval time.Duration, logger *log.Logger) <-chan struct{} {
 	ready := make(chan struct{})
+	poll := func() {
+		start := idx.LatestSeq() + 1
+		err := store.Scan(ctx, start, func(rec eventstore.Record) error {
+			_ = idx.Ingest(rec)
+			return nil
+		})
+		if err != nil && !errors.Is(err, context.Canceled) && logger != nil {
+			logger.Printf("docindex tail: %v", err)
+		}
+	}
 	go func() {
 		defer close(ready)
+		if ctx.Err() != nil {
+			return
+		}
+		poll()
+		ready <- struct{}{}
 		t := time.NewTicker(interval)
 		defer t.Stop()
-		readySent := false
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				start := idx.LatestSeq() + 1
-				recs, err := store.ReadFrom(ctx, start, 256)
-				if err != nil && !errors.Is(err, context.Canceled) && logger != nil {
-					logger.Printf("docindex tail: %v", err)
-				}
-				for _, rec := range recs {
-					_ = idx.Ingest(rec)
-				}
-				if !readySent {
-					readySent = true
-					ready <- struct{}{}
-				}
+				poll()
 			}
 		}
 	}()

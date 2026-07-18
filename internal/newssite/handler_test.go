@@ -534,7 +534,7 @@ func TestServeDoc_FastPathViaDocIndex(t *testing.T) {
 	})
 
 	idx := docindex.NewIndex()
-	if err := docindex.Build(context.Background(), store, idx, log.New(io.Discard, "", 0)); err != nil {
+	if err := docindex.Build(context.Background(), store, idx, 1, log.New(io.Discard, "", 0)); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	// Sanity check the precondition this test actually exercises: the

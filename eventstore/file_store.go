@@ -2,6 +2,7 @@ package eventstore
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,19 @@ type FileStore struct {
 	closed      bool
 	current     *os.File
 	fileMaxSeq  map[string]uint64 // closed-file max-sequence cache: skip files entirely behind cursor
+
+	scanMu      sync.Mutex
+	tailCursors map[string]tailCursor // current-journal resume cache, keyed by clean path
+}
+
+// tailCursor lets a repeated Scan against the still-growing current journal
+// resume from where the previous call left off instead of re-reading the
+// whole file. It is only a forward-progress optimization: any Scan call
+// requesting a fromSeq at or behind lastSeq falls back to reading from the
+// start of the file for correctness.
+type tailCursor struct {
+	offset  int64  // bytes already streamed from this file
+	lastSeq uint64 // highest record sequence seen at that offset
 }
 
 func NewFileStore(rootDir string) (*FileStore, error) {
@@ -179,6 +193,170 @@ func (s *FileStore) ReadFrom(ctx context.Context, fromSequence uint64, limit int
 		}
 	}
 	return out, nil
+}
+
+// Scan streams every record with Sequence >= fromSeq to fn, in order, reading
+// each journal file exactly once, line by line, without ever materializing a
+// whole file in memory. Peak memory is one record, not one file.
+//
+// The store mutex is held only long enough to snapshot the journal path list,
+// the current-journal identity, and the closed-file skip cache — never across
+// the actual file reads, so this does not block concurrent Append calls.
+// Journal files are append-only, so reading the already-written bytes of a
+// file concurrently with an in-progress Append is safe; a partial trailing
+// line from a write still in flight is tolerated and simply not consumed
+// until it is complete (mirrors readRecordsFromFile's truncated-line
+// tolerance).
+func (s *FileStore) Scan(ctx context.Context, fromSeq uint64, fn func(Record) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return os.ErrClosed
+	}
+	paths, err := s.journalPaths()
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	currentPath := ""
+	if s.current != nil {
+		currentPath = filepath.Clean(s.current.Name())
+	}
+	skip := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		cleanP := filepath.Clean(p)
+		if cleanP == currentPath {
+			continue
+		}
+		if maxSeq, ok := s.fileMaxSeq[cleanP]; ok && maxSeq < fromSeq {
+			skip[cleanP] = true
+		}
+	}
+	s.mu.Unlock()
+
+	for _, p := range paths {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		cleanP := filepath.Clean(p)
+		if skip[cleanP] {
+			continue
+		}
+		isCurrent := cleanP == currentPath
+		lastSeq, err := s.scanFile(ctx, p, cleanP, isCurrent, fromSeq, fn)
+		if err != nil {
+			return err
+		}
+		if !isCurrent && lastSeq > 0 {
+			s.mu.Lock()
+			s.fileMaxSeq[cleanP] = lastSeq
+			s.mu.Unlock()
+		}
+	}
+	return nil
+}
+
+// scanFile streams one journal file from the given path, invoking fn for
+// every record with Sequence >= fromSeq, and returns the highest sequence
+// encountered in the file (0 if none). For the current (still-growing)
+// journal, it resumes from a cached byte offset when safe to do so, so a
+// repeated tail-style Scan call only reads bytes appended since the last
+// call instead of re-reading the whole file.
+func (s *FileStore) scanFile(ctx context.Context, path, cleanPath string, isCurrent bool, fromSeq uint64, fn func(Record) error) (uint64, error) {
+	startOffset := int64(0)
+	if isCurrent {
+		s.scanMu.Lock()
+		if c, ok := s.tailCursors[cleanPath]; ok && fromSeq > c.lastSeq {
+			startOffset = c.offset
+		}
+		s.scanMu.Unlock()
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("open journal file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if startOffset > 0 {
+		fi, statErr := f.Stat()
+		if statErr != nil {
+			return 0, fmt.Errorf("stat journal file %s: %w", path, statErr)
+		}
+		if fi.Size() < startOffset {
+			// File is shorter than our cached position — something rotated or
+			// reset it unexpectedly. Fall back to a full read for correctness.
+			startOffset = 0
+		} else if _, err := f.Seek(startOffset, io.SeekStart); err != nil {
+			return 0, fmt.Errorf("seek journal file %s: %w", path, err)
+		}
+	}
+
+	reader := bufio.NewReaderSize(f, 64*1024)
+	offset := startOffset
+	var lastSeq uint64
+	for {
+		if err := ctx.Err(); err != nil {
+			return lastSeq, err
+		}
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return lastSeq, fmt.Errorf("read journal file %s: %w", path, readErr)
+		}
+		complete := len(line) > 0 && line[len(line)-1] == '\n'
+		if complete {
+			offset += int64(len(line))
+			trimmed := bytes.TrimSpace(line)
+			if len(trimmed) > 0 {
+				var rec Record
+				if uErr := json.Unmarshal(trimmed, &rec); uErr != nil {
+					return lastSeq, fmt.Errorf("unmarshal journal record in %s: %w", path, uErr)
+				}
+				if rec.Sequence > lastSeq {
+					lastSeq = rec.Sequence
+				}
+				if rec.Sequence >= fromSeq {
+					if err := fn(rec); err != nil {
+						return lastSeq, err
+					}
+				}
+			}
+		} else if len(line) > 0 {
+			// Partial trailing line — either a write still in flight (current
+			// file) or a truncated final line from a hard kill. Either way,
+			// stop here without consuming or counting it; offset stays put so
+			// the next Scan picks it up once it's complete.
+			break
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+	}
+
+	if isCurrent {
+		s.scanMu.Lock()
+		if s.tailCursors == nil {
+			s.tailCursors = make(map[string]tailCursor)
+		}
+		existing, ok := s.tailCursors[cleanPath]
+		if !ok || offset > existing.offset {
+			cached := lastSeq
+			if ok && existing.lastSeq > cached {
+				cached = existing.lastSeq
+			}
+			s.tailCursors[cleanPath] = tailCursor{offset: offset, lastSeq: cached}
+		}
+		s.scanMu.Unlock()
+	}
+
+	return lastSeq, nil
 }
 
 func (s *FileStore) LatestSequence(ctx context.Context) (uint64, error) {

@@ -43,6 +43,10 @@ type Record struct {
 type EventStore interface {
 	Append(ctx context.Context, events ...Event) ([]Record, error)
 	ReadFrom(ctx context.Context, fromSequence uint64, limit int) ([]Record, error)
+	// Scan streams every record with Sequence >= fromSeq to fn, in order, reading
+	// each journal file exactly once without materializing it in full. fn
+	// returning an error stops the scan and that error is returned.
+	Scan(ctx context.Context, fromSeq uint64, fn func(Record) error) error
 	LatestSequence(ctx context.Context) (uint64, error)
 	Close() error
 }

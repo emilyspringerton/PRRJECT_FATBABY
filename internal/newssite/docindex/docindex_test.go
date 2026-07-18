@@ -228,7 +228,7 @@ func TestBuild_PopulatesFromStore(t *testing.T) {
 	}
 
 	idx := NewIndex()
-	if err := Build(ctx, store, idx, nil); err != nil {
+	if err := Build(ctx, store, idx, 1, nil); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	if docs := idx.ForTicker("AAPL"); len(docs) != 1 {

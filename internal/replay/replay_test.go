@@ -45,6 +45,17 @@ func (m *memStore) ReadFrom(_ context.Context, fromSeq uint64, limit int) ([]eve
 	return out, nil
 }
 
+func (m *memStore) Scan(_ context.Context, fromSeq uint64, fn func(eventstore.Record) error) error {
+	for _, r := range m.records {
+		if r.Sequence >= fromSeq {
+			if err := fn(r); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (m *memStore) LatestSequence(_ context.Context) (uint64, error) {
 	if len(m.records) == 0 {
 		return 0, nil

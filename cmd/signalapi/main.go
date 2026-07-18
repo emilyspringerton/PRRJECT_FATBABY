@@ -35,8 +35,12 @@ func main() {
 	maxLimit := flag.Int("max-limit", 100, "")
 	readTimeout := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTimeout := flag.Duration("write-timeout", 30*time.Second, "")
+	replayFromSeq := flag.Uint64("replay-from-seq", 1, "emergency degraded-mode lever: start index rebuild at this sequence instead of full history (see PRRJECT_FATBABY/docs/northstar/replay-fragility.md §5)")
 	flag.Parse()
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)
+	if *replayFromSeq != 1 {
+		logger.Printf("WARNING: -replay-from-seq=%d — starting index below full history, degraded mode", *replayFromSeq)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	store, err := eventstore.NewFileStore(*storeRoot)
@@ -46,14 +50,14 @@ func main() {
 	defer store.Close()
 	idx := signalindex.NewIndex()
 	scanStart := time.Now()
-	if err := signalindex.Build(ctx, store, idx, logger); err != nil {
+	if err := signalindex.Build(ctx, store, idx, *replayFromSeq, logger); err != nil {
 		logger.Fatalf("build index: %v", err)
 	}
 	scanTook := time.Since(scanStart)
 	ready := signalindex.Tail(ctx, store, idx, *pollInterval, logger)
 	<-ready
 	docIdx := docindex.NewIndex()
-	if err := docindex.Build(ctx, store, docIdx, logger); err != nil {
+	if err := docindex.Build(ctx, store, docIdx, *replayFromSeq, logger); err != nil {
 		logger.Fatalf("build docindex: %v", err)
 	}
 	docReady := docindex.Tail(ctx, store, docIdx, *pollInterval, logger)

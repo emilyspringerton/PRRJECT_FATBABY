@@ -54,9 +54,13 @@ func main() {
 	addr             := flag.String("addr", ":8082", "listen address")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
+	replayFromSeq := flag.Uint64("replay-from-seq", 1, "emergency degraded-mode lever: start signal/doc index rebuild at this sequence instead of full history (see PRRJECT_FATBABY/docs/northstar/replay-fragility.md §5)")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)
+	if *replayFromSeq != 1 {
+		logger.Printf("WARNING: -replay-from-seq=%d — starting index below full history, degraded mode", *replayFromSeq)
+	}
 
 	store, err := eventstore.NewFileStore(*storeRoot)
 	if err != nil {
@@ -166,7 +170,7 @@ func main() {
 	buildWG.Add(2)
 	go func() {
 		defer buildWG.Done()
-		if err := signalindex.Build(ctx, store, sigIdx, logger); err != nil {
+		if err := signalindex.Build(ctx, store, sigIdx, *replayFromSeq, logger); err != nil {
 			logger.Printf("newssite signalindex build: %v", err)
 		} else {
 			logger.Printf("newssite signalindex built depth=%d", sigIdx.Depth())
@@ -174,7 +178,7 @@ func main() {
 	}()
 	go func() {
 		defer buildWG.Done()
-		if err := docindex.Build(ctx, store, docIdx, logger); err != nil {
+		if err := docindex.Build(ctx, store, docIdx, *replayFromSeq, logger); err != nil {
 			logger.Printf("newssite docindex build: %v", err)
 		} else {
 			logger.Printf("newssite docindex built tickers=%d", len(docIdx.KnownTickers()))

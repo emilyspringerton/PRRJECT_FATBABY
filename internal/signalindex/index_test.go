@@ -86,7 +86,7 @@ func TestBuild_ScansFullStore(t *testing.T) {
 		}
 	}
 	idx := NewIndex()
-	if err := Build(ctx, store, idx, nil); err != nil {
+	if err := Build(ctx, store, idx, 1, nil); err != nil {
 		t.Fatal(err)
 	}
 	if idx.Depth() != 5 {
@@ -105,7 +105,7 @@ func TestTail_PicksUpNewRecords(t *testing.T) {
 		}
 	}
 	idx := NewIndex()
-	_ = Build(ctx, store, idx, nil)
+	_ = Build(ctx, store, idx, 1, nil)
 	ready := Tail(ctx, store, idx, 50*time.Millisecond, nil)
 	<-ready
 	for i := 0; i < 2; i++ {
