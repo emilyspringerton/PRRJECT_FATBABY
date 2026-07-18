@@ -418,7 +418,45 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 	if h.epsStore != nil {
 		tickerEPS = EarningsItemsFrom(h.epsStore.ArticlesFor(symbol))
 	}
-	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, h.symbols())
+	var nextEarnings *UpcomingEarningsView
+	var pastEarnings []UpcomingEarningsView
+	if h.earningsCalStore != nil {
+		// Query sorts ascending by (ISO) ReportDate — split on that before
+		// formatting, since formatted strings ("Jan 2, 2006") don't compare
+		// chronologically.
+		const maxPast = 4
+		for _, d := range h.earningsCalStore.Query([]string{symbol}, "", "", nil) {
+			uv := UpcomingEarningsView{
+				Ticker:      strings.ToUpper(d.Ticker),
+				ReportDate:  formatUpcomingDate(d.ReportDate),
+				PeriodStr:   formatPeriodStr(d.FiscalQuarter, d.FiscalYear),
+				StatusLabel: earningsStatusLabel(d.Status),
+			}
+			if d.BeforeMarket != nil {
+				if *d.BeforeMarket {
+					uv.Timing = "BMO"
+				} else {
+					uv.Timing = "AMC"
+				}
+			}
+			if d.ReportDate >= today {
+				if nextEarnings == nil {
+					nextEarnings = &uv
+				}
+				continue
+			}
+			pastEarnings = append(pastEarnings, uv)
+		}
+		// pastEarnings arrived oldest-first (ascending); keep the most
+		// recent maxPast entries, newest first.
+		if len(pastEarnings) > maxPast {
+			pastEarnings = pastEarnings[len(pastEarnings)-maxPast:]
+		}
+		for i, j := 0, len(pastEarnings)-1; i < j; i, j = i+1, j-1 {
+			pastEarnings[i], pastEarnings[j] = pastEarnings[j], pastEarnings[i]
+		}
+	}
+	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK

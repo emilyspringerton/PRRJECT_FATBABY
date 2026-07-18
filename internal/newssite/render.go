@@ -205,6 +205,8 @@ type TickerPageView struct {
 	Docs         []ArticleView
 	Wire         []ArticleView
 	Earnings     []EarningsItemView // EPS articles for this ticker
+	NextEarnings *UpcomingEarningsView
+	PastEarnings []UpcomingEarningsView // most recent first
 	Facts        TickerFactBox
 }
 
@@ -377,7 +379,8 @@ func RenderSectionPage(w io.Writer, slug string, ranked []edition.Ranked, symbol
 
 func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 	ranked []edition.Ranked, directors []*entitygraph.PersonNode,
-	secDocs []DocEntry, wireDocs []DocEntry, earnings []EarningsItemView, symbols []string) {
+	secDocs []DocEntry, wireDocs []DocEntry, earnings []EarningsItemView,
+	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView, symbols []string) {
 
 	var lead *ArticleView
 	var signals []ArticleView
@@ -476,6 +479,8 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		Docs:         secViews,
 		Wire:         wireViews,
 		Earnings:     earnings,
+		NextEarnings: nextEarnings,
+		PastEarnings: pastEarnings,
 		Facts:        facts,
 	}
 	if err := tickerTmpl.Execute(w, view); err != nil {

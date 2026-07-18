@@ -637,6 +637,24 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
         <dt>Documents</dt><dd>{{.Facts.DocCount}}</dd>
       </dl>
     </div>
+    {{if or .NextEarnings .PastEarnings}}
+    <div class="sidebar-box"><h4>Earnings</h4>
+      {{if .NextEarnings}}
+      <div class="director-row">
+        <span class="dr-name">Next: {{.NextEarnings.ReportDate}}</span>
+        {{if .NextEarnings.PeriodStr}}<span class="dr-pct"> — {{.NextEarnings.PeriodStr}}</span>{{end}}
+        <br><span class="cal-status">{{.NextEarnings.StatusLabel}}</span>
+        {{if .NextEarnings.Timing}} <span class="cal-timing">{{.NextEarnings.Timing}}</span>{{end}}
+      </div>
+      {{end}}
+      {{range .PastEarnings}}<div class="director-row">
+        <span class="dr-name">{{.ReportDate}}</span>
+        {{if .PeriodStr}}<span class="dr-pct"> — {{.PeriodStr}}</span>{{end}}
+        <br><span class="cal-status">{{.StatusLabel}}</span>
+        {{if .Timing}} <span class="cal-timing">{{.Timing}}</span>{{end}}
+      </div>{{end}}
+    </div>
+    {{end}}
     {{if .Directors}}
     <div class="sidebar-box"><h4>The Board</h4>
       {{range .Directors}}<div class="director-row">

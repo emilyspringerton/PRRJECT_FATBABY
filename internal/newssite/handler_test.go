@@ -430,6 +430,61 @@ func TestEarningsCalendarSection_PastDateExcluded(t *testing.T) {
 	}
 }
 
+// TestTickerPage_EarningsDates verifies that a ticker page shows both its
+// next upcoming earnings date and recent past ones from the earningscal.Store.
+func TestTickerPage_EarningsDates(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := eventstore.NewFileStore(dir)
+	defer store.Close()
+
+	calDir := t.TempDir()
+	today := time.Now().UTC()
+	future := today.AddDate(0, 0, 14).Format("2006-01-02")
+	past := today.AddDate(0, 0, -90).Format("2006-01-02")
+	bmo := false
+
+	calStore := earningscal.NewStore(calDir)
+	_ = calStore.Append(earningscal.EarningsDate{
+		ID: earningscal.MakeID("AAPL", "Q4", today.Year()), Ticker: "AAPL",
+		FiscalQuarter: "Q4", FiscalYear: today.Year(), ReportDate: future,
+		BeforeMarket: &bmo, Status: earningscal.StatusAnnounced, Source: "press_release",
+		UpdatedAt: today.Format(time.RFC3339),
+	})
+	_ = calStore.Append(earningscal.EarningsDate{
+		ID: earningscal.MakeID("AAPL", "Q3", today.Year()), Ticker: "AAPL",
+		FiscalQuarter: "Q3", FiscalYear: today.Year(), ReportDate: past,
+		Status: earningscal.StatusConfirmed, Source: "8k_filing",
+		UpdatedAt: today.Format(time.RFC3339),
+	})
+	if err := calStore.Refresh(); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	h.SetEarningsCalStore(calStore)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/ticker/AAPL", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Next:") {
+		t.Error("/ticker/AAPL missing 'Next:' upcoming earnings label")
+	}
+	if !strings.Contains(body, "Announced") {
+		t.Error("/ticker/AAPL missing Announced status for upcoming earnings")
+	}
+	if !strings.Contains(body, "Confirmed") {
+		t.Error("/ticker/AAPL missing Confirmed status for past earnings")
+	}
+	if !strings.Contains(body, "Q4") || !strings.Contains(body, "Q3") {
+		t.Error("/ticker/AAPL missing expected fiscal period labels")
+	}
+}
+
 // TestFormatPeriodStr validates the period formatter.
 func TestFormatPeriodStr(t *testing.T) {
 	cases := []struct {
