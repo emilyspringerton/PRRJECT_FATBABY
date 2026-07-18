@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-18 (3)
+- ops: newssite moved to its own `news.okemily.com` subdomain (OKEMILY repo) — fixes ticker sub-pages 404ing under the `/news/` subpath proxy, since newssite generates root-relative links with no base-path config option. Old `/news/` path 301-redirects with the correct target (verified no double-prefix bug).
+- ops(risk found): built user-level systemd units for `entity-graph`/`signalapi` (the two biggest, still-unsupervised memory consumers, ~590MB each) to address a live newssite OOM crash-loop traced to system-wide memory exhaustion. `signalapi`'s full-history rebuild-on-restart (replays the entire event store into an in-memory index) thrashed memory during the swap-over — RSS grew to 628MB+, swap nearly filled, progress stalled — and was stopped/disabled rather than risk cascading into another incident. `entity-graph`'s systemd migration deferred entirely for the same reason. This is a real architectural fragility (full in-memory replay on every process start), not just a supervision gap — flagged for a proper fix (bounded replay window, or a persisted/cached index) rather than improvised live. Apple #9968.
+
 ## 2026-07-18 (2)
 - docs: `docs/headlines/live-feed-northstar.md` — NORTHSTAR for a combined, MTWire-style live headline feed unifying all ten signal-producing pollers into one terse, low-latency stream. Builds on the existing `feedserver` TCP infrastructure (framed protocol, resume/backfill, multi-tenant routing — already built, not currently running) and the existing `docs/headlines/pr-feed.md` draft (its `Article` schema becomes one specialization of this doc's unified headline envelope). New pieces: a thin inline `headline-normalizer` (no new unsupervised process, per SECTION 152's lesson) and a WebSocket bridge folded into `newssite` for a live front-page ticker, avoiding a new domain/cert the same way tonight's `/api/`/`/news/` proxies did. Design only — no code yet, phased build plan included.
 

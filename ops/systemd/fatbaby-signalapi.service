@@ -1,21 +1,35 @@
+# FatBaby signalapi — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-signalapi.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/signalapi ./cmd/signalapi
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-signalapi.service
+#
+# Added 2026-07-18 — was still an unsupervised `go run` process (since
+# Jul 16) despite being one of the two biggest memory consumers on this box
+# (~590MB steady-state — real, accumulated in-memory index data, not a
+# leak) and directly implicated in tonight's newssite OOM crash-loop
+# investigation. MemoryMax set to real observed usage + real headroom, not
+# the previously-drafted 256M (which would have cgroup-killed it on the
+# very first request).
+
 [Unit]
 Description=FatBaby signalapi (:9091)
-After=network.target mysql.service
+After=network-online.target
 
 [Service]
 Type=simple
-User=fatbaby
-Group=fatbaby
 WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
-EnvironmentFile=-/home/fatbaby/PRRJECT_FATBABY/ops/env.production
 ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/signalapi \
     -addr :9091 \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch
-Restart=always
-RestartSec=5s
+Restart=on-failure
+RestartSec=10s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/signalapi.log
 StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/signalapi.log
-MemoryMax=256M
+MemoryMax=900M
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

@@ -1,0 +1,33 @@
+# FatBaby entity-graph — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-entity-graph.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/entity-graph ./cmd/entity-graph
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-entity-graph.service
+#
+# Added 2026-07-18 — was still an unsupervised `go run` process (since
+# Jul 16), the single biggest memory consumer on this box (~596MB
+# steady-state — real, accumulated entity-resolution data built in-memory
+# over its full runtime, not a leak; genuinely shrinking this means making
+# it disk-backed instead of in-memory, a separate design effort, not done
+# here). No unit existed for this process before now at all.
+
+[Unit]
+Description=FatBaby entity-graph (signal accuracy / correlation engine)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/entity-graph \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/entity-graph.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/entity-graph.log
+MemoryMax=900M
+
+[Install]
+WantedBy=default.target
