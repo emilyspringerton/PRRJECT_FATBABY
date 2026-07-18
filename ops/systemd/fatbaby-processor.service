@@ -25,6 +25,7 @@ ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/processor \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
     -workers 4 \
     -poll-interval 15s
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=10s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/processor.log

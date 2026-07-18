@@ -23,6 +23,7 @@ WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
 ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/prwatch \
     -store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
     -poll-interval 30s
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=10s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/prwatch.log

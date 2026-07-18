@@ -25,6 +25,7 @@ WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
 ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/signalapi \
     -addr :9091 \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=10s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/signalapi.log

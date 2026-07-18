@@ -25,6 +25,7 @@ ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/eps-reconciler \
     -eps-dir /home/fatbaby/PRRJECT_FATBABY/var/eps \
     -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
     -poll-interval 6h
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=30s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/eps-reconciler.log

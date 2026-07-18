@@ -33,6 +33,7 @@ ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/newssite \
     -commentary-dir /home/fatbaby/PRRJECT_FATBABY/var/commentary \
     -guidance-dir /home/fatbaby/PRRJECT_FATBABY/var/guidance \
     -earnings-cal-dir /home/fatbaby/PRRJECT_FATBABY/var/earnings-calendar
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=10s
 TimeoutStopSec=10s

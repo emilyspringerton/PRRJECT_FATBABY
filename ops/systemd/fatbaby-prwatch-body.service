@@ -24,6 +24,7 @@ ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/prwatch-body \
     -discovery-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
     -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
     -poll-interval 15s
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=10s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/prwatch-body.log

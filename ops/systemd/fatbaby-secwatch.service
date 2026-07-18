@@ -25,11 +25,12 @@ ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/secwatch \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
     -poll-interval 5m \
     -rate-rps 2
+OOMScoreAdjust=-300
 Restart=on-failure
 RestartSec=15s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/secwatch.log
 StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/secwatch.log
-MemoryMax=256M
+MemoryMax=384M
 TasksMax=32
 
 [Install]
