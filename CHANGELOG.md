@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-07-18
+- fix(ops): `newssite` moved to a user-level systemd unit (`ops/systemd/fatbaby-newssite.service`) — became a public-facing surface the moment okemily.com started linking to it (`/news/` proxy), so its uptime now matters the same way secwatch/processor/etc. already did (SECTION 152). Was still an unsupervised `go run` process until now. Found and fixed a real bug in the process: the previously-drafted unit was stale — missing `-guidance-dir`/`-earnings-cal-dir` (both real, in-use flags) and referencing a `-doc-index-dir` flag that doesn't exist anywhere in `cmd/newssite/main.go`; deploying it as-drafted would have made the service fail to start outright. Live-verified: SIGKILL'd the running process, confirmed systemd auto-restarted it within `RestartSec=10s`, `/healthz` back to 200 immediately.
+
 ## 2026-07-17
 
 - fix(security): `ops/env.production` was never actually gitignored despite its own header comment claiming otherwise — `.gitignore` only excluded `.env`/`.env.*` at repo root. History checked clean (only `CHANGE_ME` placeholders ever committed); untracked the file and added an explicit ignore rule before that gap could leak a real secret. Found while auditing this repo's secret-handling for the systemd hardening pass below.

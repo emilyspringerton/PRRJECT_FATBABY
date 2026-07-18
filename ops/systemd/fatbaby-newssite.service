@@ -1,30 +1,45 @@
+# FatBaby newssite — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-newssite.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/newssite ./cmd/newssite
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-newssite.service
+#
+# Added 2026-07-18 — newssite became a public-facing surface the moment
+# okemily.com started linking to it, so its uptime now matters the same way
+# secwatch/processor/etc. already did (SECTION 152). Was still an
+# unsupervised `go run` process until now.
+#
+# Flags below match the actual live process's argv and actual cmd/newssite
+# flag definitions as of this writing — the previously-drafted version of
+# this unit had drifted: missing -guidance-dir/-earnings-cal-dir (both real,
+# in-use flags), and included -doc-index-dir, which does not exist as a flag
+# in cmd/newssite/main.go at all — deploying the old file as-is would have
+# made the service fail to start (flag.Parse() errors on an unknown flag).
+
 [Unit]
-Description=FatBaby Newssite (:8082)
-After=network.target
-Wants=fatbaby-processor.service
+Description=FatBaby newssite (:8082) — public news reader
+After=network-online.target fatbaby-processor.service
 
 [Service]
 Type=simple
-User=fatbaby
-Group=fatbaby
 WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
-EnvironmentFile=-/home/fatbaby/PRRJECT_FATBABY/ops/env.production
 ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/newssite \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
-    -addr :8082 \
-    -commentary-dir /home/fatbaby/PRRJECT_FATBABY/var/commentary \
     -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
-    -doc-index-dir /home/fatbaby/PRRJECT_FATBABY/var/docindex \
-    -eps-dir /home/fatbaby/PRRJECT_FATBABY/var/eps
-Restart=always
-RestartSec=5s
+    -eps-dir /home/fatbaby/PRRJECT_FATBABY/var/eps \
+    -commentary-dir /home/fatbaby/PRRJECT_FATBABY/var/commentary \
+    -guidance-dir /home/fatbaby/PRRJECT_FATBABY/var/guidance \
+    -earnings-cal-dir /home/fatbaby/PRRJECT_FATBABY/var/earnings-calendar
+Restart=on-failure
+RestartSec=10s
 TimeoutStopSec=10s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/newssite.log
 StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/newssite.log
-# Memory guard: restart if newssite exceeds 512MB (file store can grow).
 MemoryMax=512M
-# File descriptor limit: nginx can hold many connections open.
 LimitNOFILE=65536
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
