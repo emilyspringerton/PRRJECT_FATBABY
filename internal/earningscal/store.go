@@ -46,6 +46,15 @@ func (s *Store) Refresh() error {
 		if d.ID == "" || d.Ticker == "" || d.ReportDate == "" {
 			continue
 		}
+		if d.FiscalYear == 0 {
+			// Known-bad legacy records (found live: 61 of them, all
+			// "confirmed"/8k_filing — a since-fixed extraction bug stored
+			// FiscalYear=0 when ExtractPeriod found a quarter label but no
+			// explicit year in the filing text). A corrected record with a
+			// real ID exists separately for each; the file is append-only
+			// so these can't be deleted, only filtered on load.
+			continue
+		}
 		// Last record per ID wins (newest append wins).
 		byID[d.ID] = &d
 	}

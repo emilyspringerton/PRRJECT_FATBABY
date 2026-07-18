@@ -303,6 +303,17 @@ func scanSecFilings(ctx context.Context, secStore eventstore.EventStore, store *
 		if quarter == "" && year == 0 {
 			continue
 		}
+		if year == 0 {
+			// ExtractPeriod found a quarter label ("FY", "Q1", ...) but no
+			// explicit year in the filing text — fall back to the filing
+			// date's year rather than silently storing FiscalYear=0 (found
+			// live: 61 of 363 stored records had this, all "confirmed"
+			// 8-K-sourced, since this is the only path that skipped past
+			// the quarter=="" && year==0 guard with a nonzero quarter).
+			if t, err := time.Parse("2006-01-02", doc.FilingDate); err == nil {
+				year = t.Year()
+			}
+		}
 
 		id := earningscal.MakeID(doc.Ticker, quarter, year)
 		existing := store.GetByID(id)
