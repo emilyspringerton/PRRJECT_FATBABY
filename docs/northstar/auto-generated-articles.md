@@ -87,8 +87,17 @@ computed — meeting dates aren't rule-based like holidays, they're announced).
 (founder or research pass) before any code. Real question to resolve first: is this extending
 `internal/earningscal` with call-time/dial-in fields, or a genuinely separate feed?
 
+**Phase 5 — Bond/treasury data.** Shipped 2026-07-19. `internal/bonddata` fetches FRED's free,
+no-API-key CSV export (2Y/10Y/30Y treasury yields, high-yield corporate spread) — same "no new
+vendor, no cost" shape as Phase 1's Yahoo dependency. `cmd/bond-watcher` records a daily snapshot
+via systemd timer (6pm ET, after FRED's typical same-day publication), gated on
+`marketcal.IsMarketDay`. Live-verified: all 4 tracked series recorded against the real FRED API.
+Data-ingestion only so far — no article/display surface yet (no `/section/bonds` page, no
+commentary integration), same "ship the data layer, surface it later" sequencing as EIA/Fed.
+
 ## 5. What this explicitly does not do yet
 
-No code beyond Phase 0 has been written. This document exists so five rapid-fire asks in one
-session land as one sequenced plan instead of four abandoned half-starts — per "back step our way
-into," foundation and plan first, each phase built and verified on its own after this.
+Phase 0 (market calendar) and Phase 1 (movers) and Phase 5 (bonds) are live. Phases 2-4 (EIA,
+Fed, investor calls) remain unbuilt. This document exists so rapid-fire asks in one session land
+as one sequenced plan instead of abandoned half-starts — per "back step our way into," foundation
+and plan first, each phase built and verified on its own.
