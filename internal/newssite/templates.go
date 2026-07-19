@@ -343,6 +343,7 @@ const sharedFragments = `
   &nbsp;&middot;&nbsp; <a href="/about">About &amp; methodology</a>
   &nbsp;&middot;&nbsp; <a href="/tickers">Tickers</a>
   &nbsp;&middot;&nbsp; <a href="/archive">Archive</a>
+  &nbsp;&middot;&nbsp; <a href="/api-playground">API playground</a>
 </footer>
 {{end}}
 

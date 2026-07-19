@@ -85,6 +85,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/entities/{ticker}/related", s.withMiddleware(s.handleRelated))
 	mux.HandleFunc("/v1/velocity-alerts", s.withMiddleware(s.handleVelocityAlerts))
 	mux.HandleFunc("/v1/data-quality", s.withMiddleware(s.handleDataQuality))
+	mux.HandleFunc("/v1/openapi.json", handleOpenAPI) // public, no auth -- see openapi.go
 	return &http.Server{Addr: cfg.Addr, Handler: mux, ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
 }
 

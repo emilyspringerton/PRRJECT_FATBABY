@@ -2104,3 +2104,10 @@ signal in Emily's hand-written observations.
   meant that ticker's data was simply missing until the next 24h cycle. Now retries network
   errors and 429/403/5xx with backoff via httpretry.
 - fix(prwatch): Client.Discover had zero retry logic -- now retries via httpretry, same pattern.
+
+## 2026-07-19 (4)
+- feat(signalapi): OpenAPI 3.1 spec at GET /v1/openapi.json -- public, no auth required (unlike
+  every other /v1/ route), CORS-open. Covers all 11 real routes with their actual query/path
+  params, matching IDUNA's openapi.go precedent.
+- feat(newssite): /api-playground -- Swagger UI page (CDN-loaded, no build step) pointed at
+  signalapi's spec, linked from the site footer. S162-01.

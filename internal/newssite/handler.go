@@ -172,6 +172,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveSearch(w, r)
 	case path == "/archive":
 		status = h.serveArchive(w, r)
+	case path == "/api-playground":
+		status = h.serveAPIPlayground(w, r)
 	case path == "/about":
 		status = h.serveAbout(w, r)
 	case path == "/live":
@@ -558,6 +560,59 @@ func (h *Handler) serveArchive(w http.ResponseWriter, r *http.Request) int {
 	RenderArchivePage(&buf, entries, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+// serveAPIPlayground serves a Swagger UI page against the FatBaby Signal
+// API's OpenAPI spec (signalapi's /v1/openapi.json — see
+// internal/apiserver/openapi.go). Same pattern as OKEMILY's
+// api-playground.html (CDN-loaded Swagger UI, no build step), rendered
+// server-side here since newssite doesn't serve static files from a
+// directory the way OKEMILY does.
+func (h *Handler) serveAPIPlayground(w http.ResponseWriter, r *http.Request) int {
+	specURL := strings.TrimRight(h.signalapiURL, "/") + "/v1/openapi.json"
+	if h.signalapiURL == "" {
+		specURL = "http://localhost:9091/v1/openapi.json"
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Playground &mdash; FatBaby Signal API</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+<style>
+  body { margin: 0; background: #fafafa; }
+  .topbar { display: none !important; }
+  .our-header {
+    padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    border-bottom: 1px solid #e4e4e8; background: #fff;
+  }
+  .our-header a { color: #4451c7; text-decoration: none; font-weight: 600; }
+  .our-header p { color: #4a4f5c; font-size: 0.9rem; margin: 0.4rem 0 0; }
+</style>
+</head>
+<body>
+<div class="our-header">
+  <a href="/">&larr; FATBABY</a>
+  <p>Live API playground for the FatBaby Signal API. Most endpoints require a Bearer token
+  (a signalapi API key, or an IDUNA JWT with fatbaby.read) &mdash; the spec itself is public.</p>
+</div>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+<script>
+  window.onload = function() {
+    SwaggerUIBundle({
+      url: %q,
+      dom_id: '#swagger-ui',
+      presets: [SwaggerUIBundle.presets.apis],
+      layout: 'BaseLayout',
+    });
+  };
+</script>
+</body>
+</html>`, specURL)
 	return http.StatusOK
 }
 
