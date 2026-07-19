@@ -13,6 +13,15 @@
 # `go run ./cmd/secwatch` process, which had no restart-on-crash and did
 # not survive a reboot.
 #
+# MemoryMax raised 384M -> 768M on 2026-07-19: the original 384M was sized
+# against the store/seen-set as of 07-17; the in-memory "already_seen"
+# identity dedup set has grown since (~23K entries and climbing) and
+# secwatch was hitting its own cgroup ceiling on every restart within ~2
+# minutes, crash-looping (4 OOM-kills in 6 minutes, live-observed). Real
+# root cause is real growth, not a leak fixed by supervision alone -- 768M
+# is a safe multiple of current usage, not a guess; box has 5.6GB+
+# available system-wide when this was set.
+#
 [Unit]
 Description=FatBaby secwatch (SEC EDGAR filing poller)
 After=network-online.target
@@ -30,7 +39,7 @@ Restart=on-failure
 RestartSec=15s
 StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/secwatch.log
 StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/secwatch.log
-MemoryMax=384M
+MemoryMax=768M
 TasksMax=32
 
 [Install]
