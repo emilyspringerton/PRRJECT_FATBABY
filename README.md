@@ -1,8 +1,10 @@
 # prrject-fatbaby
 
-A Go-based financial signal intelligence pipeline. It watches SEC EDGAR filings and PR Newswire press releases, extracts structured governance signals from the content, and exposes them through a streaming TCP feed, an SSE dashboard, and an LLM-powered operations agent (Emily) that can both monitor the system and answer questions about what the signals mean.
+A Go-based financial signal intelligence pipeline that's grown into a small operating system for turning SEC EDGAR filings and PR Newswire press releases into structured, queryable, publicly-readable financial intelligence — governance signals, EPS results, insider transactions, dividend/buyback actions, market-wide movers, entity relationships — served through a public news site, a streaming TCP feed, an SSE dashboard, an HTTP signal API, and an LLM-powered operations agent (Emily) that can monitor the system and answer questions about what the signals mean.
 
-The centrepiece is a **recursive self-improving entity graph** that turns 8-K annual meeting filings into director-level governance intelligence — friction scores, activist risk composites, entrenchment patterns, and cross-company board relationships — and feeds anomalies back to Claude Code for automatic rule refinement.
+At this point the value here isn't any one pipeline — it's the accumulated **data** (630MB+ and growing event store, 116K+ records, 50 tracked tickers, entity graph of directors/auditors/boards spanning 20+ years of filings) and the **patterns** the codebase has converged on for building each new collector/consumer without reinventing plumbing. See [Patterns](#patterns) below — that's the part worth reading before adding a 37th `cmd/` binary.
+
+The original centerpiece is still a **recursive self-improving entity graph** that turns 8-K annual meeting filings into director-level governance intelligence — friction scores, activist risk composites, entrenchment patterns, and cross-company board relationships — and feeds anomalies back to Claude Code for automatic rule refinement. It's since been joined by a real public product surface (`cmd/newssite`) with per-ticker pages, own-hosted charts, a daily auto-generated "Stocks on the Move" article, and an editorial content pipeline, plus a growing set of specialized watchers (insider Form 4s, dividends, buybacks, NT late-filing notices, forward guidance, EPS reconciliation, earnings calendar).
 
 ---
 
@@ -38,6 +40,12 @@ All variables are optional unless marked **Required**.
 ---
 
 ## Architecture
+
+The diagram below is the original RSI loop (entity-graph's recursive self-improvement) — still
+real and still running, but no longer the whole picture. It doesn't show the specialized
+watchers (Form 4, dividends, buybacks, NT filings, guidance, earnings calendar), the market-data/
+movers pipeline, or newssite's full surface (ticker pages, charts, commentary, blog-adjacent
+content). See [All processes](#all-processes) for the complete, current map.
 
 ```
 SEC EDGAR          PR Newswire
@@ -212,22 +220,107 @@ go run ./cmd/observation-watcher -gate nontrivial
 
 ## All processes
 
+Grouped by role, not alphabetically — this is the map that matters when you're trying to figure
+out what actually touches a given piece of data.
+
+**Ingestion** — turn the outside world into events
 | Process | Purpose |
 |---------|---------|
-| `cmd/secwatch` | Polls SEC EDGAR → `filing_discovered` events |
-| `cmd/prwatch` | Polls PR Newswire → discovery events |
-| `cmd/prwatch-body` | Fetches press release bodies |
-| `cmd/processor` | Filings → structured signals |
-| `cmd/entity-graph` | 8-K Item 5.07 → director graph + governance signals |
-| `cmd/observation-watcher` | Triggers Claude when entity-graph publishes an observation |
-| `cmd/emily-agent` | LLM ops agent + signal analyst (:8080) |
-| `cmd/dashboard` | SSE event dashboard (:8080) |
-| `cmd/newssite` | Filing reader (:8082) |
-| `cmd/feedserver` | TCP framed feed (:8083) |
-| `cmd/signalapi` | HTTP signal query API (:8084) |
-| `cmd/broker` | Tenant-aware proxy with hot-reload registry |
+| `cmd/secwatch` | Polls SEC EDGAR → `filing_discovered` + `source_document_persisted` events |
+| `cmd/prwatch` | Polls PR Newswire → `pr_discovered` events |
+| `cmd/prwatch-body` | Fetches press release bodies → `pr_body_fetched` events |
+| `cmd/market-data-watcher` | Daily OHLCV bars (Yahoo, free) for every watchlist ticker — powers own-hosted charts, no third-party embeds |
+| `cmd/movers-watcher` | Daily market-wide gainers/losers (Yahoo screener), gated to real trading days (`internal/marketcal`) — publishes "Stocks on the Move" |
+| `cmd/form4-watcher` | SEC Form 4 insider transactions → `insider_buy`/`insider_sell_cluster` signals |
+| `cmd/dividend-watcher` | Classifies dividend cuts/raises/specials from press-release bodies |
+| `cmd/buyback-watcher` | Classifies buyback authorizations/suspensions from press-release bodies |
+| `cmd/nt-watcher` | NT 10-K/10-Q late-filing notifications, classifies reason |
+| `cmd/guidance-watcher` | Extracts forward guidance (raise/lower/maintain) from press releases |
+| `cmd/earnings-calendar` | Builds the report-date calendar from three sources: EPS backfill, PR body extraction, 8-K Item 2.02 |
+| `cmd/schd13-watcher` | Schedule 13D/G ownership filings |
 
-Data: `./var/<process>/`. Logs: `./var/logs/<process>.log`.
+**Processing** — turn events into structured signals and knowledge
+| Process | Purpose |
+|---------|---------|
+| `cmd/processor` | Filing/press-release text → structured `signal_generated` events |
+| `cmd/entity-graph` | 8-K Item 5.07 → director graph, governance signals, RSI feedback loop |
+| `cmd/eps-processor` | Press-release bodies → extracted EPS results (oracle cases + articles) |
+| `cmd/eps-reconciler` | Reconciles EPS oracle cases against filed 8-K numbers (confirms/contradicts) |
+| `cmd/jon-agent` | Cross-signal divergence analysis, surfaces options setups (:8084) |
+| `cmd/projector` | Maintains the MySQL/SQLite read-model schema from raw events |
+
+**Serving** — expose the data
+| Process | Purpose |
+|---------|---------|
+| `cmd/newssite` | Public news reader (:8082) — front page, ticker pages with own-hosted charts, wire, movers, commentary, RSS, Ask Emily |
+| `cmd/signalapi` | HTTP signal query API (:9091), OpenAPI 3.1 spec + Swagger playground |
+| `cmd/dashboard` | SSE event dashboard (:8080) |
+| `cmd/feedserver` | TCP framed feed (:8083) |
+| `cmd/broker` | Tenant-aware proxy with hot-reload registry |
+| `cmd/emily-agent` | LLM ops agent + signal analyst (:8080/:8086 depending on deployment) |
+
+**RSI / operations**
+| Process | Purpose |
+|---------|---------|
+| `cmd/observation-watcher` | Invokes Claude Code when a new observation is published; `--continue` for the full AGI loop |
+| `cmd/earnings-alert` | Weekly email digest of upcoming earnings (Mailgun/SMTP/null backend) |
+| `cmd/bob-agent` | MySQL schema admin agent (destructive ops require explicit confirm) |
+| `cmd/graph-seeder` | Seeds the SQLite signalapi read-model fallback from entity-graph output |
+
+**One-off / migration tools** (not part of steady-state operation)
+`cmd/backfill-signal-dates`, `cmd/norn-entitygraph-migrate`, `cmd/norn-eps-migrate`,
+`cmd/stub-backfill`, `cmd/eventstore-demo`, `cmd/fatstream-tail`, `cmd/replay`.
+
+Data: `./var/<process>/`. Logs: `./var/logs/<process>.log`. Supervision: user-level systemd units
+in `ops/systemd/*.service` (+ `.timer` for daily jobs like `movers-watcher`) — see each unit file's
+header comment for deploy steps; no `sudo` required for any of them.
+
+---
+
+## Patterns
+
+The reusable idioms this codebase has converged on. Building a new collector or consumer almost
+always means reaching for one of these rather than inventing a new shape.
+
+- **Event store, not a database.** `eventstore.FileStore` — file-backed, append-only NDJSON,
+  UTC-date-partitioned, monotonic sequence numbers. Every process resumes from its own cursor
+  file after a restart. Never mutate or reorder a written record.
+- **`Scan`, not `ReadFrom`, for anything that walks history.** `eventstore.Scan(ctx, fromSeq, fn)`
+  streams each journal file exactly once, line by line, without materializing a whole file —
+  `ReadFrom`'s paged reads are fine for small targeted fetches but pathological (quadratic) over
+  a large store. See `docs/northstar/replay-fragility.md` for what happens when a process uses
+  the wrong one at scale.
+- **Build/Tail per-process indexes.** `signalindex`, `docindex`, and siblings all follow the same
+  shape: `Build(ctx, store, idx, fromSeq, logger)` does the initial scan, `Tail(ctx, store, idx,
+  interval, logger)` polls for new records after. Every in-memory read model in this repo looks
+  like this.
+- **SQLite checkpoints for anything whose Build is no longer cheap.** `internal/indexcheckpoint`
+  persists an index's state to a small local SQLite file — self-heals on a missing/corrupt/
+  version-mismatched file (a checkpoint is a disposable cache, never a source of truth; deleting
+  one is always safe). Watermark = the event store's *true current end*
+  (`store.LatestSequence()`), not the highest sequence among only *matching* records — the latter
+  causes redundant rescans on every warm start. Used by `signalapi`, `newssite`, and
+  `entity-graph`'s filing index.
+- **`httpretry.Do[T]` for anything hitting a flaky/rate-limited upstream.** Exponential
+  backoff+jitter, retryable-status classification (429/403/5xx) built in. Every external HTTP
+  collector (`market-data-watcher`, `movers-watcher`, `secwatch`) uses it instead of hand-rolling
+  retry logic.
+- **Gate on real-world state before publishing, not just on a cron tick.** `internal/marketcal`
+  answers "is the market actually open today" from real NYSE holiday rules (not a hardcoded
+  per-year table). `movers-watcher` checks this itself even though its own systemd timer already
+  has a schedule — a timer misfire or manual run on a holiday must still no-op correctly.
+- **The editorial ticker-linking standard.** `internal/tickerlink.FormatRef` — "Company Name
+  (EXCHANGE:TICKER)" with the ticker as a real, *absolute* link to our own ticker page (absolute
+  so the link survives syndication/copy-paste elsewhere). Every content generator that mentions a
+  ticker uses this instead of ad-hoc string formatting.
+- **Compiled binaries under systemd, not `go run` in a terminal.** `ops/systemd/fatbaby-*.service`
+  — `Restart=on-failure`, `MemoryMax` set to observed usage + headroom, logs to
+  `var/logs/<process>.log`. User-level units (`systemctl --user`), no `sudo` needed. A process
+  left running as `go run` in a background shell is a known gap, not a design choice.
+- **Auth on anything that writes, not just reads.** Most GET endpoints here are intentionally
+  public (that's the point of a news site). Every POST/write path needs either a static bearer
+  token (constant-time comparison) or an IDUNA-issued JWT — an unauthenticated write endpoint is
+  always a bug, not a temporary convenience, however it got that way.
 
 ---
 
@@ -235,7 +328,12 @@ Data: `./var/<process>/`. Logs: `./var/logs/<process>.log`.
 
 ### `config/watchlist.json`
 
-25 companies pre-configured: SCHW, GS, MS, JPM, BAC, WFC, BLK, STT, C, IBKR, BRK.A/B, AAPL, MSFT, NVDA, BEN, PLTR, MSTR, LLY, and others. 8-K filings with Item 5.07 feed the entity-graph pipeline.
+50 companies tracked: megacap tech (AAPL, MSFT, GOOG/GOOGL, META, NVDA, AMZN, TSLA), financials
+(SCHW, GS, MS, JPM, BAC, WFC, BLK, STT, C, IBKR, COIN, SOFI, MSTR), and a spread across
+healthcare, energy, industrials, and retail. Every ticker here is what `secwatch`/`prwatch` poll
+for, what `market-data-watcher` charts, and what "tracked" means on the daily movers article —
+expanding this list is the single biggest lever on how much of the site has real context instead
+of numbers-only coverage.
 
 ### `config/entity-graph-rules.json`
 
