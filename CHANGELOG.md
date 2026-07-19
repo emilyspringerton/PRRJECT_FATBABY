@@ -2077,6 +2077,7 @@ signal in Emily's hand-written observations.
 - Implemented file-backed NDJSON event store with contract specs and demo.
 
 ## 2026-07-19
+- Phase 2 (1/3) of replay-fragility fix: entity-graph's per-batch full filing_discovered event-store scan replaced with an incrementally-maintained SQLite table (backfilled once, updated from each batch's own already-fetched records). Live-verified: 22,514-entry backfill in ~7s, then zero rescans
 - Phase 1b of replay-fragility fix: SQLite checkpoint for newssite (same internal/indexcheckpoint package as signalapi). Loaded synchronously before Build, so the server serves warm data from its first request instead of an empty-index window. Live kill-tested; confirmed the historical 'we dont cover AMZN' symptom resolves within seconds of restart
 - Phase 1a of replay-fragility fix: SQLite checkpoint for signalapi (internal/indexcheckpoint) -- warm restarts hydrate from a local checkpoint instead of replaying full history; found and fixed a watermark bug (was using idx.LatestSeq() instead of the store's true end sequence, causing redundant rescans). Live kill-tested.
 - Editorial ticker-linking standard: internal/tickerlink formats 'Company Name (EXCHANGE:TICKER)' with the ticker as a real absolute link to our ticker page, wired into movers-watcher. Also fixed a real security gap found in the process: POST /api/commentary had zero authentication -- added bearer-token auth, fails closed if unconfigured
