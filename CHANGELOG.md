@@ -2094,3 +2094,13 @@ signal in Emily's hand-written observations.
   real 2-year OHLCV backfill from 2026-06-17) but had zero supervision and had been dark for a
   month. Deployed, enabled, verified live: full clean 47-ticker cycle, zero errors, no rate
   limiting (600ms request delay).
+
+## 2026-07-19 (3)
+- feat(resilience): internal/httpretry -- generic retry-with-exponential-backoff-and-jitter
+  wrapper for HTTP collectors, extracted as a shared package rather than duplicated per-collector
+  (secwatch/client.go has its own older, more specialized version of the same pattern, left
+  as-is to avoid a risky refactor of that already-working code).
+- fix(market-data-watcher): fetchYahooOHLCV had zero retry logic -- one bad response for a ticker
+  meant that ticker's data was simply missing until the next 24h cycle. Now retries network
+  errors and 429/403/5xx with backoff via httpretry.
+- fix(prwatch): Client.Discover had zero retry logic -- now retries via httpretry, same pattern.

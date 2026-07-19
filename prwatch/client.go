@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/example/prrject-fatbaby/internal/httpretry"
 )
 
 const (
@@ -54,24 +56,26 @@ func NewClient(cfg ClientConfig) *Client {
 }
 
 func (c *Client) Discover(ctx context.Context) ([]PRDiscovery, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+defaultListPath, nil)
+	body, err := httpretry.Do(ctx, httpretry.Options{MaxRetries: 3, BackoffBase: 500 * time.Millisecond, BackoffCap: 8 * time.Second},
+		func(ctx context.Context, attempt int) ([]byte, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+defaultListPath, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("User-Agent", c.ua)
+			req.Header.Set("Accept", "text/html,application/xhtml+xml")
+			resp, err := c.hc.Do(req)
+			if err != nil {
+				return nil, err // network error — retryable
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return nil, &httpretry.StatusError{StatusCode: resp.StatusCode, URL: c.baseURL + defaultListPath}
+			}
+			return io.ReadAll(io.LimitReader(resp.Body, 3<<20))
+		})
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", c.ua)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	resp, err := c.hc.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, fmt.Errorf("prnewswire status=%d body=%q", resp.StatusCode, strings.TrimSpace(string(b)))
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 3<<20))
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("discover after retries: %w", err)
 	}
 	m := cardRe.FindAllStringSubmatch(string(body), -1)
 	out := make([]PRDiscovery, 0, len(m))

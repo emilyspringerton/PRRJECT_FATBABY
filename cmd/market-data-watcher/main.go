@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/httpretry"
 	"github.com/example/prrject-fatbaby/secwatch"
 )
 
@@ -232,32 +233,44 @@ type yahooChartResponse struct {
 	} `json:"chart"`
 }
 
-// fetchYahooOHLCV calls the Yahoo Finance v8 chart API and returns sorted bars.
+// fetchYahooOHLCV calls the Yahoo Finance v8 chart API and returns sorted
+// bars, retrying transient failures (network errors, 429/403/5xx — Yahoo's
+// unofficial API returns 403 for what's really rate limiting as often as it
+// returns 429) with exponential backoff+jitter via internal/httpretry.
+// Without this, one bad response for a ticker meant that ticker's data was
+// simply missing until the next 24h cycle.
 func fetchYahooOHLCV(ctx context.Context, client *http.Client, ticker, rangeStr string) ([]OHLCVBar, error) {
 	sym := yahooSymbol(ticker)
 	url := fmt.Sprintf("%s/%s?interval=1d&range=%s&includePrePost=false", yahooBaseURL, sym, rangeStr)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	chart, err := httpretry.Do(ctx, httpretry.Options{MaxRetries: 3, BackoffBase: 500 * time.Millisecond, BackoffCap: 8 * time.Second},
+		func(ctx context.Context, attempt int) (yahooChartResponse, error) {
+			var out yahooChartResponse
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if err != nil {
+				return out, err
+			}
+			req.Header.Set("User-Agent", userAgent)
+			req.Header.Set("Accept", "application/json")
+
+			resp, err := client.Do(req)
+			if err != nil {
+				return out, err // network error — treated as retryable by httpretry.IsRetryable
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				return out, &httpretry.StatusError{StatusCode: resp.StatusCode, URL: url}
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				return out, fmt.Errorf("decode json: %w", err) // not a StatusError -> IsRetryable treats malformed-body as retryable too, which is fine: a fresh request may succeed where a truncated one didn't
+			}
+			return out, nil
+		})
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http %d for %s", resp.StatusCode, sym)
+		return nil, fmt.Errorf("fetch %s after retries: %w", sym, err)
 	}
 
-	var chart yahooChartResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chart); err != nil {
-		return nil, fmt.Errorf("decode json: %w", err)
-	}
 	if chart.Chart.Error != nil {
 		return nil, fmt.Errorf("yahoo error %s: %s", chart.Chart.Error.Code, chart.Chart.Error.Description)
 	}
