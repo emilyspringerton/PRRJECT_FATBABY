@@ -212,10 +212,7 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 		return err
 	}
 	cfg.Logger.Printf("processor fetch complete identity=%s cleaned_chars=%d", identity, len(clean))
-	kind := "press_release"
-	if strings.Contains(strings.ToUpper(form), "8-K") {
-		kind = "sec_8k"
-	}
+	kind := sourceTypeForForm(form)
 	if !seen.hasSource(identity) {
 		if persistErr := persistSourceDocument(ctx, cfg.Store, filing, identity, kind, clean); persistErr != nil {
 			cfg.Logger.Printf("processor source_document persist failed identity=%s err=%v", identity, persistErr)
@@ -261,6 +258,38 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	seen.markSignal(identity)
 	cfg.Logger.Printf("processor handle complete identity=%s signal_id=%s", identity, signal.ID)
 	return nil
+}
+
+// sourceTypeForForm maps a SEC form identifier to the intelligence.SourceDocument
+// SourceType values pkg/intelligence/confidence.go already knows how to score
+// ("sec_8k", "sec_10q", "sec_10k", "sec_def14a", "sec_form4", "sec_nt10k",
+// "sec_nt10q"). This package only ever processes filing_discovered events —
+// SEC EDGAR filings from secwatch, never PR Newswire content (prwatch emits
+// its own pr_discovered/pr_body_fetched event types on a separate path) — so
+// the previous default of "press_release" for anything that wasn't an 8-K
+// was simply wrong: every 10-Q/10-K/DEF 14A this processor ever touched got
+// mislabeled as a press release. Found 2026-07-19 via newssite's "/wire" page
+// (filtered to source_type=="press_release") showing plain 10-Q filings
+// (NFLX, GE, COST) mixed in with real press releases.
+func sourceTypeForForm(form string) string {
+	switch strings.ToUpper(strings.TrimSpace(form)) {
+	case "8-K", "8-K/A":
+		return "sec_8k"
+	case "10-Q", "10-Q/A":
+		return "sec_10q"
+	case "10-K", "10-K/A":
+		return "sec_10k"
+	case "DEF 14A", "DEFA14A":
+		return "sec_def14a"
+	case "4":
+		return "sec_form4"
+	case "NT 10-K":
+		return "sec_nt10k"
+	case "NT 10-Q":
+		return "sec_nt10q"
+	default:
+		return "sec_filing"
+	}
 }
 
 func appendFailure(ctx context.Context, store eventstore.EventStore, filing secwatch.FilingDiscoveredEvent, cause error) {
