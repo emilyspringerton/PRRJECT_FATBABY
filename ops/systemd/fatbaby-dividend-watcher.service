@@ -1,0 +1,38 @@
+# FatBaby dividend-watcher — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-dividend-watcher.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/dividend-watcher ./cmd/dividend-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-dividend-watcher.service
+#
+# Added 2026-07-19 -- was never supervised at all (not even `go run`);
+# found while auditing every FatBaby watcher for real coverage (founder:
+# "ensure we have ok emily status page bubbles for all fatbaby process and
+# sub process").
+
+[Unit]
+Description=FatBaby dividend-watcher (dividend cut/raise/special classifier)
+After=network-online.target fatbaby-prwatch-body.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/dividend-watcher \
+    -discovery-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
+    -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
+    -out-dir /home/fatbaby/PRRJECT_FATBABY/var/dividends \
+    -cursor /home/fatbaby/PRRJECT_FATBABY/var/dividend-watcher/.cursor \
+    -poll-interval 30s
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/dividend-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/dividend-watcher.log
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

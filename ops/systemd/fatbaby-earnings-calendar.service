@@ -1,0 +1,41 @@
+# FatBaby earnings-calendar — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-earnings-calendar.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/earnings-calendar ./cmd/earnings-calendar
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-earnings-calendar.service
+#
+# Added 2026-07-19 -- was never supervised at all, and had been silently
+# dead since 2026-06-17 (a `context canceled` error on the SEC store read
+# killed it with nothing to restart it). Root cause of the ticker-page
+# earnings widget showing 2003/2008-era dates instead of real ones
+# (founder: "ticker page earnings widget should show the actual earnings
+# data"). Never let this happen silently again -- that's the whole point
+# of this unit.
+
+[Unit]
+Description=FatBaby earnings-calendar (report-date calendar builder)
+After=network-online.target fatbaby-secwatch.service fatbaby-prwatch-body.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/earnings-calendar \
+    -eps-dir /home/fatbaby/PRRJECT_FATBABY/var/eps \
+    -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
+    -sec-store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
+    -out-dir /home/fatbaby/PRRJECT_FATBABY/var/earnings-calendar \
+    -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \
+    -poll-interval 60s
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/earnings-calendar.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/earnings-calendar.log
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

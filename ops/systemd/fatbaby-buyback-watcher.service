@@ -1,0 +1,36 @@
+# FatBaby buyback-watcher — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-buyback-watcher.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/buyback-watcher ./cmd/buyback-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-buyback-watcher.service
+#
+# Added 2026-07-19 -- was never supervised at all; see
+# fatbaby-dividend-watcher.service's header for the audit context.
+
+[Unit]
+Description=FatBaby buyback-watcher (buyback authorization/suspension classifier)
+After=network-online.target fatbaby-prwatch-body.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/buyback-watcher \
+    -discovery-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
+    -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
+    -out-dir /home/fatbaby/PRRJECT_FATBABY/var/buybacks \
+    -cursor /home/fatbaby/PRRJECT_FATBABY/var/buyback-watcher/.cursor \
+    -poll-interval 30s
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/buyback-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/buyback-watcher.log
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,37 @@
+# FatBaby eps-processor — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-eps-processor.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/eps-processor ./cmd/eps-processor
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-eps-processor.service
+#
+# Added 2026-07-19 — was still an unsupervised `go run` process, found while
+# auditing every FatBaby watcher for real systemd supervision (founder:
+# "ensure we have ok emily status page bubbles for all fatbaby process and
+# sub process"). Migrated to a compiled binary + real unit rather than left
+# running in a background shell.
+
+[Unit]
+Description=FatBaby eps-processor (press-release EPS extraction)
+After=network-online.target fatbaby-prwatch-body.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/eps-processor \
+    -discovery-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
+    -eps-dir /home/fatbaby/PRRJECT_FATBABY/var/eps \
+    -poll-interval 30s
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/eps-processor.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/eps-processor.log
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target
