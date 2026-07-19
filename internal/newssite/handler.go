@@ -209,6 +209,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveEarnings(w, r)
 	case path == "/section/guidance":
 		status = h.serveGuidance(w, r)
+	case path == "/section/movers":
+		status = h.serveMoversSection(w, r)
+	case strings.HasPrefix(path, "/commentary/"):
+		status = h.serveCommentary(w, r)
 	case strings.HasPrefix(path, "/section/"):
 		if strings.HasSuffix(path, "/feed.xml") {
 			slug := strings.TrimSuffix(strings.TrimPrefix(path, "/section/"), "/feed.xml")
@@ -291,6 +295,45 @@ func (h *Handler) serveDoc(w http.ResponseWriter, r *http.Request) int {
 	}
 	var buf bytes.Buffer
 	RenderDetailPage(&buf, entry, h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+// serveCommentary serves the detail page for one Emily-authored commentary
+// article at /commentary/{id} -- commentaryToEntry has generated links here
+// since this package was written, but nothing ever served the route itself
+// until this (found + fixed 2026-07-19 while wiring up the first real
+// commentary content, "Stocks on the Move").
+func (h *Handler) serveCommentary(w http.ResponseWriter, r *http.Request) int {
+	id := strings.TrimPrefix(r.URL.Path, "/commentary/")
+	if h.commentaryStore == nil {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+	art, ok := h.commentaryStore.ByID(id)
+	if !ok {
+		http.NotFound(w, r)
+		return http.StatusNotFound
+	}
+	var buf bytes.Buffer
+	RenderDetailPage(&buf, commentaryToEntry(art), h.symbols())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+// serveMoversSection serves /section/movers -- the "Stocks on the Move"
+// article list, newest first.
+func (h *Handler) serveMoversSection(w http.ResponseWriter, r *http.Request) int {
+	var entries []DocEntry
+	if h.commentaryStore != nil {
+		for _, a := range h.commentaryStore.ByKind("market_movers", 30) {
+			entries = append(entries, commentaryToEntry(a))
+		}
+	}
+	var buf bytes.Buffer
+	RenderListPage(&buf, entries, nil, nil, h.symbols())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK
@@ -904,8 +947,11 @@ func (h *Handler) liveRanked() []edition.Ranked {
 }
 
 // commentaryToEntry converts an Emily-authored Article to the DocEntry shape
-// used by all newssite renderers. SourceType "emily_commentary" gets its own
-// kicker style in templates.go so it's visually distinct from SEC filings.
+// used by all newssite renderers. SourceType is derived from a.Kind for the
+// kinds that get their own kicker/byline treatment in render.go
+// (currently "market_movers"); every other Kind (including the empty string
+// -- most existing commentary predates the Kind field) falls back to the
+// generic "emily_commentary" style, unchanged from prior behavior.
 func commentaryToEntry(a *commentary.Article) DocEntry {
 	preview := a.Preview
 	if preview == "" {
@@ -915,10 +961,15 @@ func commentaryToEntry(a *commentary.Article) DocEntry {
 		}
 		preview = strings.TrimSpace(string(runes))
 	}
+	sourceType := "emily_commentary"
+	if a.Kind == "market_movers" {
+		sourceType = "market_movers"
+	}
 	return DocEntry{
 		Identity:    a.ID,
+		Headline:    a.Headline,
 		Ticker:      strings.ToUpper(strings.TrimSpace(a.Ticker)),
-		SourceType:  "emily_commentary",
+		SourceType:  sourceType,
 		DocumentURL: "/commentary/" + a.ID,
 		BodyPreview: preview,
 		FullText:    a.Body,

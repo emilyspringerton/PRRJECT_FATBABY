@@ -118,6 +118,34 @@ func (s *Store) ForTicker(ticker string) []*Article {
 	return append([]*Article{}, s.byTicker[t]...)
 }
 
+// ByID returns the article with the given ID, if present.
+func (s *Store) ByID(id string) (*Article, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, a := range s.articles {
+		if a.ID == id {
+			return a, true
+		}
+	}
+	return nil, false
+}
+
+// ByKind returns up to n articles of the given Kind, newest-first.
+func (s *Store) ByKind(kind string, n int) []*Article {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*Article
+	for _, a := range s.articles {
+		if a.Kind == kind {
+			out = append(out, a)
+			if n > 0 && len(out) >= n {
+				break
+			}
+		}
+	}
+	return out
+}
+
 // Append writes one article to articles.ndjson (append-only).
 // Used by the newssite HTTP ingest endpoint.
 func Append(dir string, a Article) error {

@@ -25,6 +25,12 @@ type DocEntry struct {
 	CharCount   int
 	FilingDate  string    // SEC filing date (e.g. "2019-04-26"); use for display
 	PersistedAt time.Time // pipeline-index timestamp; shown as footnote only
+	// Headline, when set, overrides the default "$TICKER — $Form" headline
+	// synthesis in render.go. Empty for ordinary single-ticker filings;
+	// used by Emily-authored commentary.Article content (governance
+	// commentary, market-wide pieces like "Stocks on the Move" that have a
+	// real authored title and aren't about exactly one ticker).
+	Headline string
 }
 
 // readChunkSize is the number of event store records fetched per backward step.

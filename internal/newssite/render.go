@@ -758,8 +758,7 @@ func buildDetailPage(entry DocEntry) DetailPageView {
 	if entry.Form != "" {
 		formOrType = entry.Form
 	}
-	headline := fmt.Sprintf("%s — %s", normTicker(entry.Ticker), formOrType)
-	dateline := fmt.Sprintf("%s — %s.", normTicker(entry.Ticker), displayDateFull(entry))
+	headline, dateline := entryHeadlineAndDateline(entry, formOrType)
 
 	// Primary display date: use filing date when available so historical filings
 	// show their correct SEC date rather than the indexed date.
@@ -833,8 +832,7 @@ func docToArticleView(e DocEntry, deckMax int) ArticleView {
 	if e.Form != "" {
 		formOrType = e.Form
 	}
-	headline := fmt.Sprintf("%s — %s", normTicker(e.Ticker), formOrType)
-	dateline := fmt.Sprintf("%s — %s.", normTicker(e.Ticker), displayDateFull(e))
+	headline, dateline := entryHeadlineAndDateline(e, formOrType)
 	byline := docByline(e)
 	if e.FilingDate != "" && !e.PersistedAt.IsZero() {
 		indexedStr := e.PersistedAt.UTC().Format("2 Jan 2006")
@@ -849,7 +847,7 @@ func docToArticleView(e DocEntry, deckMax int) ArticleView {
 	}
 	return ArticleView{
 		Identity:    e.Identity,
-		Link:        "/doc/" + e.Identity,
+		Link:        entryDetailLink(e),
 		Kicker:      kicker,
 		KickerClass: kickerClass,
 		Headline:    headline,
@@ -1017,6 +1015,9 @@ func docKicker(e DocEntry) (kicker, class string) {
 	if e.SourceType == "press_release" {
 		return "The Wire", "kicker-wire"
 	}
+	if e.SourceType == "market_movers" {
+		return "Stocks on the Move", "kicker-movers"
+	}
 	if e.SourceType == "emily_commentary" {
 		return "Emily · Intelligence", "kicker-emily"
 	}
@@ -1030,6 +1031,8 @@ func docByline(e DocEntry) string {
 	switch e.SourceType {
 	case "press_release":
 		return "By the Wire Desk"
+	case "market_movers":
+		return "By the Markets Desk"
 	case "emily_commentary":
 		return "By Emily — Signal Intelligence"
 	default:
@@ -1043,6 +1046,8 @@ func sourceTypeLabel(sourceType string) string {
 		return "SEC Filing"
 	case "press_release":
 		return "Press Release"
+	case "market_movers":
+		return "Stocks on the Move"
 	default:
 		r := strings.ReplaceAll(sourceType, "_", " ")
 		if r == "" {
@@ -1053,6 +1058,46 @@ func sourceTypeLabel(sourceType string) string {
 }
 
 func normTicker(t string) string { return strings.ToUpper(strings.TrimSpace(t)) }
+
+// isCommentaryEntry reports whether e originates from the commentary
+// package (Emily-authored articles) rather than a raw event-store filing.
+// Those two families use different internal detail-page routes -- see
+// entryDetailLink.
+func isCommentaryEntry(e DocEntry) bool {
+	return e.SourceType == "emily_commentary" || e.SourceType == "market_movers"
+}
+
+// entryDetailLink returns the internal URL for viewing e's own detail page.
+// commentary.Article-derived entries are served at /commentary/{id}
+// (serveCommentary); everything else -- raw source_document_persisted
+// filings -- is served at /doc/{id} (serveDoc), reading directly from the
+// event store. DocEntry.DocumentURL means something different for each
+// family (commentary: this internal link; filings: the external SEC
+// source URL) which is why this can't just read e.DocumentURL directly.
+func entryDetailLink(e DocEntry) string {
+	if isCommentaryEntry(e) {
+		return "/commentary/" + e.Identity
+	}
+	return "/doc/" + e.Identity
+}
+
+// entryHeadlineAndDateline builds the headline/dateline pair for a detail or
+// list view. Commentary entries carry their own authored Headline and may
+// not belong to exactly one ticker (e.g. a market-wide movers digest), so
+// they skip the "$TICKER — $formOrType" synthesis used for ordinary filings.
+func entryHeadlineAndDateline(e DocEntry, formOrType string) (headline, dateline string) {
+	if e.Headline != "" {
+		headline = e.Headline
+	} else {
+		headline = fmt.Sprintf("%s — %s", normTicker(e.Ticker), formOrType)
+	}
+	if e.Ticker == "" {
+		dateline = displayDateFull(e) + "."
+	} else {
+		dateline = fmt.Sprintf("%s — %s.", normTicker(e.Ticker), displayDateFull(e))
+	}
+	return headline, dateline
+}
 
 func formatTimeUTC(t time.Time) string {
 	if t.IsZero() {

@@ -120,3 +120,51 @@ func TestStore_EmptyDir_NoError(t *testing.T) {
 		t.Errorf("empty store should have 0 articles, got %d", got)
 	}
 }
+
+func TestStore_ByID(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	writeArticle(t, dir, Article{ID: "movers-2026-07-20", Headline: "Stocks on the Move", Body: "...", PublishedAt: now})
+
+	s := NewStore(dir)
+	_ = s.Refresh()
+
+	art, ok := s.ByID("movers-2026-07-20")
+	if !ok {
+		t.Fatal("expected to find article by ID")
+	}
+	if art.Headline != "Stocks on the Move" {
+		t.Errorf("Headline = %q", art.Headline)
+	}
+	if _, ok := s.ByID("does-not-exist"); ok {
+		t.Error("expected ByID to report not-found for an unknown ID")
+	}
+}
+
+func TestStore_ByKind(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	writeArticle(t, dir, Article{ID: "m1", Kind: "market_movers", Headline: "Movers 1", PublishedAt: now.Add(-time.Hour)})
+	writeArticle(t, dir, Article{ID: "m2", Kind: "market_movers", Headline: "Movers 2", PublishedAt: now})
+	writeArticle(t, dir, Article{ID: "g1", Kind: "governance_alert", Headline: "Governance", PublishedAt: now})
+
+	s := NewStore(dir)
+	_ = s.Refresh()
+
+	movers := s.ByKind("market_movers", 10)
+	if len(movers) != 2 {
+		t.Fatalf("ByKind(market_movers) = %d articles, want 2", len(movers))
+	}
+	if movers[0].ID != "m2" {
+		t.Errorf("expected newest-first: first = %q, want m2", movers[0].ID)
+	}
+
+	limited := s.ByKind("market_movers", 1)
+	if len(limited) != 1 {
+		t.Errorf("ByKind with n=1 should cap at 1, got %d", len(limited))
+	}
+
+	if got := s.ByKind("nonexistent_kind", 10); len(got) != 0 {
+		t.Errorf("ByKind for unknown kind should return empty, got %d", len(got))
+	}
+}
