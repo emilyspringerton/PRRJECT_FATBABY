@@ -19,6 +19,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
+	"github.com/example/prrject-fatbaby/internal/newssite/marketdata"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
 	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
@@ -47,6 +48,7 @@ func main() {
 	commentaryDir    := flag.String("commentary-dir", "var/commentary", "path to Emily commentary directory (empty to disable)")
 	guidanceDir      := flag.String("guidance-dir", "var/guidance", "path to guidance articles directory (empty to disable)")
 	earningsCalDir   := flag.String("earnings-cal-dir", "var/earnings-calendar", "path to earnings calendar directory (empty to disable)")
+	marketDataDir    := flag.String("market-data-dir", "var/market-data", "path to market-data eventstore root (empty to disable; charts fall back to a transparent placeholder)")
 	emilyURL         := flag.String("emily-url", os.Getenv("EMILY_BASE_URL"), "Emily Prime base URL for /api/ask (default: $EMILY_BASE_URL)")
 	signalapiURL     := flag.String("signalapi-url", os.Getenv("SIGNALAPI_URL"), "signalapi base URL for ticker context injection (default: $SIGNALAPI_URL)")
 	googleClientID   := flag.String("google-client-id", os.Getenv("GOOGLE_CLIENT_ID"), "Google OAuth client ID for Sign in with Google (default: $GOOGLE_CLIENT_ID)")
@@ -160,6 +162,23 @@ func main() {
 			logger.Printf("newssite earnings-cal loaded count=%d from %s", ecs.Count(), *earningsCalDir)
 		}
 		h.SetEarningsCalStore(ecs)
+	}
+
+	// ── Market data store (own-ingested OHLCV -> the chart sparkline's only
+	// data source; never a live third-party fetch at render time) ─────────────
+	if *marketDataDir != "" {
+		if mdStoreRaw, err := eventstore.NewFileStore(*marketDataDir); err != nil {
+			logger.Printf("newssite market-data store open: %v (charts will use placeholder)", err)
+		} else {
+			mdIdx := marketdata.NewStore()
+			go func() {
+				if err := marketdata.Build(ctx, mdStoreRaw, mdIdx, logger); err != nil {
+					logger.Printf("newssite marketdata build: %v", err)
+				}
+				go marketdata.Tail(ctx, mdStoreRaw, mdIdx, 5*time.Minute, logger)
+			}()
+			h.SetMarketData(mdIdx)
+		}
 	}
 
 	// ── Signal index + doc index — built in parallel ───────────────────────────

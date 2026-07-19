@@ -1,0 +1,40 @@
+# FatBaby market-data-watcher — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-market-data-watcher.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/market-data-watcher ./cmd/market-data-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-market-data-watcher.service
+#
+# Added 2026-07-19. This process already existed and already worked (real
+# 2-year daily OHLCV backfill from Yahoo Finance for the full watchlist,
+# 2026-06-17) but had no supervision at all — a bare `go run`/manual launch
+# that ran its one 24h cycle and was never restarted. Same S152-03 pattern
+# as secwatch/prwatch/etc: Restart=on-failure so it survives crashes and
+# reboots instead of silently going dark for a month.
+
+[Unit]
+Description=FatBaby market-data-watcher (Yahoo Finance daily OHLCV)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+Environment=FATBABY_ROOT=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/market-data-watcher \
+    -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \
+    -out-dir /home/fatbaby/PRRJECT_FATBABY/var/market-data \
+    -cursor-dir /home/fatbaby/PRRJECT_FATBABY/var/market-data-watcher \
+    -poll-interval 24h \
+    -request-delay 600ms
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=30s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/market-data-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/market-data-watcher.log
+MemoryMax=256M
+TasksMax=16
+
+[Install]
+WantedBy=default.target

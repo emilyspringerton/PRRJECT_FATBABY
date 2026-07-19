@@ -1,8 +1,11 @@
-// Package chart fetches recent equity prices from Yahoo Finance and renders
-// them as a minimal SVG sparkline. No external dependencies.
-//
-// The sparkline is a 400×60 SVG polyline with a fill gradient, open/close
-// labels, and a colour that reflects net price direction over the period.
+// Package chart renders recent equity prices as a minimal SVG sparkline.
+// No external dependencies, no third-party chart embed — the SVG is drawn
+// from EINHORN_INDUSTRIAL's own ingested OHLCV data (cmd/market-data-watcher
+// -> internal/newssite/marketdata), not fetched live from Yahoo Finance at
+// render time. Fetch/parseYahooResponse below remain only as the one-shot
+// backfill path market-data-watcher itself uses; this package's own
+// SVGCached no longer calls Yahoo directly (see the marketdata-source
+// variant below) — kept for reference/tests, not the production render path.
 package chart
 
 import (
@@ -177,12 +180,14 @@ func RenderSVG(pts []PricePoint) string {
 	)
 }
 
-// --- In-memory cache ---
+// --- In-memory render cache (SVG string building is cheap but not free;
+// the underlying data only changes ~once/day via market-data-watcher, so a
+// short cache avoids redundant work on hot ticker pages without ever
+// risking stale-vs-source drift for long) ---
 
 type cacheEntry struct {
-	svg     string
-	fetchAt time.Time
-	err     error
+	svg        string
+	renderedAt time.Time
 }
 
 var (
@@ -190,27 +195,27 @@ var (
 	cache   = map[string]*cacheEntry{}
 )
 
-const cacheTTL = 1 * time.Hour
+const cacheTTL = 10 * time.Minute
 
-// SVGCached returns a cached SVG sparkline for ticker. On miss or TTL expiry,
-// fetches from Yahoo Finance. Returns empty string on error (silently).
-func SVGCached(ticker string) string {
+// SVGCachedFromPoints returns an SVG sparkline for ticker built from pts
+// (already-converted, EINHORN_INDUSTRIAL's own ingested data — never a live
+// third-party fetch), cached for cacheTTL. Caller (newssite handler) owns
+// pulling pts from internal/newssite/marketdata.Store and converting
+// Bar -> PricePoint; this package stays free of any dependency on how the
+// data is stored.
+func SVGCachedFromPoints(ticker string, pts []PricePoint) string {
 	cacheMu.Lock()
 	entry, ok := cache[ticker]
-	if ok && time.Since(entry.fetchAt) < cacheTTL {
+	if ok && time.Since(entry.renderedAt) < cacheTTL {
 		cacheMu.Unlock()
 		return entry.svg
 	}
 	cacheMu.Unlock()
 
-	pts, err := Fetch(ticker)
-	svg := ""
-	if err == nil {
-		svg = RenderSVG(pts)
-	}
+	svg := RenderSVG(pts)
 
 	cacheMu.Lock()
-	cache[ticker] = &cacheEntry{svg: svg, fetchAt: time.Now(), err: err}
+	cache[ticker] = &cacheEntry{svg: svg, renderedAt: time.Now()}
 	cacheMu.Unlock()
 	return svg
 }

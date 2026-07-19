@@ -2083,3 +2083,14 @@ signal in Emily's hand-written observations.
   docNewerThan now compares both docs on one unified effectiveDate (FilingDate when present, else
   PersistedAt) instead of segregating dated from undated. Added
   TestRecent_MixedDatedAndUndatedSortsUnified regression test.
+
+## 2026-07-19 (2)
+- feat(newssite): own-hosted ticker charts now source from EINHORN_INDUSTRIAL's own ingested
+  OHLCV data (cmd/market-data-watcher -> new internal/newssite/marketdata read model), not a live
+  Yahoo Finance fetch at render time. New marketdata.Store follows the docindex Build/Tail pattern
+  (tails var/market-data eventstore). chart.SVGCachedFromPoints replaces the old SVGCached, which
+  called Yahoo directly on every cache miss.
+- ops: fatbaby-market-data-watcher.service — this process already existed and already worked (a
+  real 2-year OHLCV backfill from 2026-06-17) but had zero supervision and had been dark for a
+  month. Deployed, enabled, verified live: full clean 47-ticker cycle, zero errors, no rate
+  limiting (600ms request delay).

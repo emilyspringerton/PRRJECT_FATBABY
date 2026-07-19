@@ -23,6 +23,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
 	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
+	"github.com/example/prrject-fatbaby/internal/newssite/marketdata"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -55,6 +56,7 @@ type Handler struct {
 	commentaryDir        string              // path for POST /api/commentary writes
 	guidanceStore        *guidanceread.Store // nil if guidance-dir not configured
 	earningsCalStore     *earningscal.Store  // nil if earnings-cal-dir not configured
+	marketData           *marketdata.Store   // nil if market-data-dir not configured
 	emilyBaseURL         string              // Emily Prime base URL for /api/ask; empty disables
 	signalapiURL         string              // signalapi base URL for ticker context injection; empty skips
 	googleClientID       string              // Google OAuth client ID for Sign in with Google; empty disables auth flow
@@ -93,6 +95,7 @@ func (h *Handler) SetSignalIndex(si *signalindex.Index) { h.sigIdx = si }
 func (h *Handler) SetDocIndex(di *docindex.Index)       { h.docIdx = di }
 func (h *Handler) SetCatalog(c *catalog.Catalog)        { h.cat = c }
 func (h *Handler) SetEpsStore(es *epsread.Store)        { h.epsStore = es }
+func (h *Handler) SetMarketData(ms *marketdata.Store)   { h.marketData = ms }
 func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 	h.commentaryStore = cs
 	h.commentaryDir = dir
@@ -900,7 +903,15 @@ func (h *Handler) serveChart(w http.ResponseWriter, r *http.Request, sym string)
 		http.NotFound(w, r)
 		return http.StatusNotFound
 	}
-	svg := chart.SVGCached(sym)
+	var svg string
+	if h.marketData != nil {
+		bars := h.marketData.SeriesFor(sym, 90) // ~3mo of trading days
+		pts := make([]chart.PricePoint, 0, len(bars))
+		for _, b := range bars {
+			pts = append(pts, chart.PricePoint{Time: b.Timestamp, Close: b.Close})
+		}
+		svg = chart.SVGCachedFromPoints(sym, pts)
+	}
 	if svg == "" {
 		// No data — return a transparent 1×1 SVG placeholder.
 		svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`
