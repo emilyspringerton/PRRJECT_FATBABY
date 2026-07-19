@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/internal/iamguard"
+	"github.com/example/prrject-fatbaby/internal/indexcheckpoint"
 	"github.com/example/prrject-fatbaby/internal/newssite"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
@@ -59,6 +61,7 @@ func main() {
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
 	replayFromSeq := flag.Uint64("replay-from-seq", 1, "emergency degraded-mode lever: start signal/doc index rebuild at this sequence instead of full history (see PRRJECT_FATBABY/docs/northstar/replay-fragility.md §5)")
+	indexDBPath := flag.String("index-db", "", "checkpoint SQLite file (default: <store's parent dir>/newssite-index.db) -- see docs/northstar/replay-fragility.md §4b Phase 1b")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)
@@ -188,15 +191,50 @@ func main() {
 		}
 	}
 
+	// ── Checkpoint — see docs/northstar/replay-fragility.md §4b Phase 1b ──────
+	// Loaded synchronously, before the Build goroutines below launch: the
+	// hydration itself is fast (subsecond for thousands of rows), and doing
+	// it first means the HTTP server -- which SetSignalIndex/SetDocIndex
+	// makes live immediately, before Build finishes -- serves warm data from
+	// its very first request instead of the empty-index window that caused
+	// the "we don't cover AMZN" symptom during the original incident.
+	ckptPath := *indexDBPath
+	if ckptPath == "" {
+		ckptPath = filepath.Join(filepath.Dir(*storeRoot), "newssite-index.db")
+	}
+	ckpt, err := indexcheckpoint.Open(ckptPath, logger)
+	if err != nil {
+		logger.Fatalf("open index checkpoint: %v", err)
+	}
+	defer ckpt.Close()
+
 	// ── Signal index + doc index — built in parallel ───────────────────────────
 	sigIdx := signalindex.NewIndex()
 	docIdx := docindex.NewIndex()
+	signalsFrom, docsFrom := *replayFromSeq, *replayFromSeq
+
+	if *replayFromSeq == 1 {
+		if cached, cerr := ckpt.LoadSignals(); cerr != nil {
+			logger.Printf("WARNING: load signals checkpoint failed (%v); full rebuild", cerr)
+		} else if len(cached) > 0 {
+			sigIdx.LoadEntries(cached)
+			signalsFrom = ckpt.SignalsLatestSeq() + 1
+			logger.Printf("newssite signalindex warm start from checkpoint: %d entries, resuming at seq %d", len(cached), signalsFrom)
+		}
+		if cachedDocs, cerr := ckpt.LoadDocs(); cerr != nil {
+			logger.Printf("WARNING: load docs checkpoint failed (%v); full rebuild", cerr)
+		} else if len(cachedDocs) > 0 {
+			docIdx.LoadSummaries(cachedDocs)
+			docsFrom = ckpt.DocsLatestSeq() + 1
+			logger.Printf("newssite docindex warm start from checkpoint: %d docs, resuming at seq %d", len(cachedDocs), docsFrom)
+		}
+	}
 
 	var buildWG sync.WaitGroup
 	buildWG.Add(2)
 	go func() {
 		defer buildWG.Done()
-		if err := signalindex.Build(ctx, store, sigIdx, *replayFromSeq, logger); err != nil {
+		if err := signalindex.Build(ctx, store, sigIdx, signalsFrom, logger); err != nil {
 			logger.Printf("newssite signalindex build: %v", err)
 		} else {
 			logger.Printf("newssite signalindex built depth=%d", sigIdx.Depth())
@@ -204,7 +242,7 @@ func main() {
 	}()
 	go func() {
 		defer buildWG.Done()
-		if err := docindex.Build(ctx, store, docIdx, *replayFromSeq, logger); err != nil {
+		if err := docindex.Build(ctx, store, docIdx, docsFrom, logger); err != nil {
 			logger.Printf("newssite docindex build: %v", err)
 		} else {
 			logger.Printf("newssite docindex built tickers=%d", len(docIdx.KnownTickers()))
@@ -224,9 +262,30 @@ func main() {
 		cat.Build(sigIdx, gs, docIdx, today)
 		logger.Printf("newssite catalog built tickers=%d", len(cat.AllSymbols()))
 
+		// Checkpoint watermark = the store's true current end sequence, not
+		// sigIdx/docIdx.LatestSeq() (highest sequence among only *matching*
+		// records) -- see cmd/signalapi/main.go's saveNewssiteCheckpoint-
+		// equivalent comment; same bug, same fix, found once and applied to
+		// both binaries rather than rediscovered here independently.
+		saveNewssiteCheckpoint(ctx, store, ckpt, sigIdx, docIdx, logger)
+
 		// Tail new records into the indexes after initial build.
 		go signalindex.Tail(ctx, store, sigIdx, 30*time.Second, logger)
 		go docindex.Tail(ctx, store, docIdx, 30*time.Second, logger)
+
+		// Periodic checkpoint sync, same shape as cmd/signalapi.
+		go func() {
+			ckptTicker := time.NewTicker(30 * time.Second)
+			defer ckptTicker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ckptTicker.C:
+					saveNewssiteCheckpoint(ctx, store, ckpt, sigIdx, docIdx, logger)
+				}
+			}
+		}()
 
 		// Rebuild catalog every 30s.
 		t := time.NewTicker(30 * time.Second)
@@ -291,6 +350,24 @@ func main() {
 	logger.Printf("newssite listening addr=%s store=%s graph-dir=%s", *addr, *storeRoot, *graphDir)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
+	}
+}
+
+// saveNewssiteCheckpoint upserts both indexes' current full state under a
+// single shared watermark: the store's true end sequence, not
+// sigIdx/docIdx.LatestSeq() (see cmd/signalapi/main.go's saveCheckpoint for
+// the full reasoning -- same fix applied here, not rediscovered).
+func saveNewssiteCheckpoint(ctx context.Context, evStore eventstore.EventStore, ckpt *indexcheckpoint.DB, sigIdx *signalindex.Index, docIdx *docindex.Index, logger *log.Logger) {
+	endSeq, err := evStore.LatestSequence(ctx)
+	if err != nil {
+		logger.Printf("WARNING: get store latest sequence failed (%v); checkpointing at index watermark instead", err)
+		endSeq = max(sigIdx.LatestSeq(), docIdx.LatestSeq())
+	}
+	if err := ckpt.SaveSignals(sigIdx.AllEntries(), endSeq); err != nil {
+		logger.Printf("WARNING: checkpoint signals save failed: %v", err)
+	}
+	if err := ckpt.SaveDocs(docIdx.AllSummaries(), endSeq); err != nil {
+		logger.Printf("WARNING: checkpoint docs save failed: %v", err)
 	}
 }
 
