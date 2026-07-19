@@ -2077,6 +2077,7 @@ signal in Emily's hand-written observations.
 - Implemented file-backed NDJSON event store with contract specs and demo.
 
 ## 2026-07-19
+- Phase 1b of replay-fragility fix: SQLite checkpoint for newssite (same internal/indexcheckpoint package as signalapi). Loaded synchronously before Build, so the server serves warm data from its first request instead of an empty-index window. Live kill-tested; confirmed the historical 'we dont cover AMZN' symptom resolves within seconds of restart
 - Phase 1a of replay-fragility fix: SQLite checkpoint for signalapi (internal/indexcheckpoint) -- warm restarts hydrate from a local checkpoint instead of replaying full history; found and fixed a watermark bug (was using idx.LatestSeq() instead of the store's true end sequence, causing redundant rescans). Live kill-tested.
 - Editorial ticker-linking standard: internal/tickerlink formats 'Company Name (EXCHANGE:TICKER)' with the ticker as a real absolute link to our ticker page, wired into movers-watcher. Also fixed a real security gap found in the process: POST /api/commentary had zero authentication -- added bearer-token auth, fails closed if unconfigured
 - Phase 1 of auto-generated articles: daily 'Stocks on the Move' movers article (internal/movers + cmd/movers-watcher), publishes via newssite's commentary API at 9:45am ET on market days (systemd timer, fatbaby-movers-watcher.timer). Also fixed 3 dormant bugs in the commentary integration: missing /commentary/{id} route, discarded article headlines, wrong internal links on list pages
