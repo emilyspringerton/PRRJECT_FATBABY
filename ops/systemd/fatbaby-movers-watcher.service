@@ -1,0 +1,30 @@
+# FatBaby movers-watcher — user-level systemd unit (no sudo required)
+#
+# Oneshot: fetches Yahoo's day_gainers/day_losers screener and publishes the
+# daily "Stocks on the Move" article. Triggered by
+# fatbaby-movers-watcher.timer, not run continuously — see
+# PRRJECT_FATBABY/docs/northstar/auto-generated-articles.md (Phase 1).
+# Gates on marketcal.IsMarketDay itself, so a timer misfire on a weekend or
+# NYSE holiday still correctly no-ops instead of publishing garbage.
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-movers-watcher.service ops/systemd/fatbaby-movers-watcher.timer ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/movers-watcher ./cmd/movers-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-movers-watcher.timer
+
+[Unit]
+Description=FatBaby movers-watcher — daily "Stocks on the Move" article
+After=network-online.target fatbaby-newssite.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/movers-watcher \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
+    -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \
+    -commentary-url http://localhost:8082/api/commentary \
+    -count 15
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/movers-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/movers-watcher.log

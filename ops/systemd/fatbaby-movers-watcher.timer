@@ -1,0 +1,23 @@
+# Fires fatbaby-movers-watcher.service at 9:45am US/Eastern every day.
+# The timezone is part of the OnCalendar expression itself (systemd.time(7):
+# "It may also be affixed directly to the timestamp... an entry in the
+# installed IANA timezone database") -- there is no separate TimeZone=
+# directive in systemd.timer, despite that being a very natural (and wrong)
+# first guess. `systemctl show fatbaby-movers-watcher.timer -p
+# TimersCalendar` is the way to verify next_elapse actually shifted to the
+# UTC-equivalent of 9:45am ET, not just trust this comment.
+#
+# This handles EST/EDT transitions automatically -- a raw UTC OnCalendar
+# would drift by an hour twice a year. The service itself still
+# double-checks marketcal.IsMarketDay before publishing, so a 9:45am ET
+# fire on a Saturday or a NYSE holiday is a safe no-op, not a bug.
+
+[Unit]
+Description=Daily timer for FatBaby movers-watcher (9:45am ET)
+
+[Timer]
+OnCalendar=*-*-* 09:45:00 America/New_York
+Persistent=false
+
+[Install]
+WantedBy=timers.target
