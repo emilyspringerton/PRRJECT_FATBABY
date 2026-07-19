@@ -2077,6 +2077,7 @@ signal in Emily's hand-written observations.
 - Implemented file-backed NDJSON event store with contract specs and demo.
 
 ## 2026-07-19
+- Fixed processor mislabeling every non-8-K SEC filing as a press release (source_type default bug) -- newssite's /wire page was showing 10-Q filings mixed with real press releases; new sourceTypeForForm() maps each SEC form to its correct source_type
 - fix(newssite/docindex): front page "recent" sort was ranking every SEC-filing-dated doc above
   every undated doc unconditionally, regardless of actual recency -- since press releases never
   carry an SEC FilingDate, a years-old 8-K always outranked a press release ingested seconds ago.
