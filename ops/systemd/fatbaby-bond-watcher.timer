@@ -1,0 +1,18 @@
+# Fires fatbaby-bond-watcher.service at 6:00pm US/Eastern every day.
+# FRED's daily treasury-yield series (sourced from Treasury's own H.15
+# report) typically post same-day by late afternoon ET -- 6pm gives a
+# safety buffer to catch that day's real value instead of settling for
+# yesterday's on a slow publication day. Timezone is inline in the
+# OnCalendar expression, not a separate directive -- see
+# fatbaby-movers-watcher.timer's comment for why (systemd has no
+# TimeZone= key in [Timer], despite that being a very natural first guess).
+
+[Unit]
+Description=Daily timer for FatBaby bond-watcher (6pm ET)
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 America/New_York
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+# FatBaby bond-watcher — user-level systemd unit (no sudo required)
+#
+# Oneshot: records the latest treasury-yield/credit-spread observations
+# from FRED. Triggered by fatbaby-bond-watcher.timer, not run continuously
+# -- FRED's daily series update once per business day, polling more often
+# buys nothing. Gates on marketcal.IsMarketDay itself.
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-bond-watcher.service ops/systemd/fatbaby-bond-watcher.timer ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/bond-watcher ./cmd/bond-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-bond-watcher.timer
+
+[Unit]
+Description=FatBaby bond-watcher — daily treasury yield / credit spread snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/bond-watcher \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/bond-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/bond-watcher.log
