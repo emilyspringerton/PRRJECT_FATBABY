@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -48,6 +49,7 @@ func main() {
 	oneShot := flag.Bool("one-shot", false, "process one batch and exit (useful for cron or Emily's one-shot runner)")
 	mongoURL := flag.String("mongo-url", os.Getenv("MONGODB_URL"), "MongoDB connection string (default: $MONGODB_URL); empty = no MongoDB write")
 	mongoDB := flag.String("mongo-db", envOr("MONGODB_DB", "fatbaby"), "MongoDB database name")
+	filingIndexPath := flag.String("filing-index-db", "", "incremental filing-date/form index (default: <graph-dir>/filings-index.db) -- see docs/northstar/replay-fragility.md §4c")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "entity-graph ", log.LstdFlags|log.LUTC)
@@ -64,6 +66,19 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	filingDBPath := *filingIndexPath
+	if filingDBPath == "" {
+		filingDBPath = filepath.Join(*graphDir, "filings-index.db")
+	}
+	filingDB, err := openFilingIndexDB(filingDBPath)
+	if err != nil {
+		logger.Fatalf("open filing index: %v", err)
+	}
+	defer filingDB.Close()
+	if err := ensureFilingIndexBackfilled(ctx, filingDB, store, logger); err != nil {
+		logger.Fatalf("backfill filing index: %v", err)
+	}
 
 	// Optional MongoDB write (S20-04). Nil client = graceful no-op.
 	var mongoClient *mongo.Client
@@ -94,6 +109,7 @@ func main() {
 			cursor:       cursor,
 			mongoClient:  mongoClient,
 			mongoDB:      *mongoDB,
+			filingDB:     filingDB,
 		})
 
 		if *oneShot {
@@ -121,6 +137,7 @@ type runConfig struct {
 	cursor       uint64
 	mongoClient  *mongo.Client
 	mongoDB      string
+	filingDB     *sql.DB
 }
 
 func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logger, cfg runConfig) uint64 {
@@ -135,11 +152,23 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		return cfg.cursor
 	}
 
-	// Build indexes from all filing_discovered events so we can:
-	// 1. Recover the SEC filing date for source documents that pre-date FilingDate.
-	// 2. Detect the form type (8-K vs other) for docs where form="" source_type="press_release"
+	// Filing date/form recovery index -- was a full event-store scan every
+	// batch (buildFilingIndexes), now an incrementally-maintained SQLite
+	// table (see filingindex.go): backfilled once at startup, updated here
+	// with only this batch's own filing_discovered records (already fetched
+	// above, no extra store read), read back in full (cheap: local SQLite,
+	// not a store scan).
+	//
+	// Recovers, for legacy docs:
+	// 1. The SEC filing date for source documents that pre-date FilingDate.
+	// 2. The form type (8-K vs other) for docs where form="" source_type="press_release"
 	//    due to a historical processor bug (legacy docs persisted before the form_type→form fix).
-	filingDates, filingForms := buildFilingIndexes(ctx, store, logger)
+	upsertFilingIndexFromBatch(cfg.filingDB, recs, logger)
+	filingDates, filingForms, err := loadFilingIndexes(cfg.filingDB)
+	if err != nil {
+		logger.Printf("load filing index err=%v (continuing with empty index this batch)", err)
+		filingDates, filingForms = map[string]string{}, map[string]string{}
+	}
 
 	// Compact nodes.ndjson before loading to remove accumulated duplicates.
 	if err := entitygraph.CompactNodes(cfg.graphDir); err != nil {
