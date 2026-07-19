@@ -108,7 +108,11 @@ func FetchAndCleanText(ctx context.Context, docURL, userAgent string, maxBytes i
 		if err != nil {
 			return "", fmt.Errorf("read primary document: %w", err)
 		}
-		cleaned := CleanText(string(raw))
+		body := string(raw)
+		if strings.Contains(host, "prnewswire.com") {
+			body = extractPRNewswireArticleBody(body)
+		}
+		cleaned := CleanText(body)
 		// Truncate cleaned text to maxBytes of UTF-8 characters rather than failing.
 		if int64(len(cleaned)) > maxBytes {
 			cleaned = cleaned[:maxBytes]
@@ -119,6 +123,37 @@ func FetchAndCleanText(ctx context.Context, docURL, userAgent string, maxBytes i
 		}
 		return cleaned, nil
 	}
+}
+
+// prNewswireBodyStart/End bound the actual article content on a
+// prnewswire.com release page. Found live (2026-07-19): CleanText was
+// stripping tags from the *entire* page including PRNewswire's own site
+// navigation -- a category menu of ~80 topic names (one of which is
+// literally "Dividends") that isn't part of the article at all. That
+// menu alone was enough to false-positive dividend-watcher's keyword
+// classifier on unrelated law-firm "INVESTOR ALERT" class-action spam
+// (confirmed: 10 of 13 records in var/dividends/dividends.ndjson were
+// this exact false positive, not real dividend announcements).
+var (
+	prNewswireBodyStart = "release-body container"
+	prNewswireBodyEnd   = "row releaseList-section"
+)
+
+// extractPRNewswireArticleBody isolates the real article HTML on a
+// prnewswire.com page, before tag-stripping. Fails open to the full page
+// (same as before this fix) if either boundary marker isn't found --
+// PRNewswire changing their markup should degrade to the old (noisy but
+// working) behavior, never break body fetching outright.
+func extractPRNewswireArticleBody(html string) string {
+	start := strings.Index(html, prNewswireBodyStart)
+	if start < 0 {
+		return html
+	}
+	end := strings.Index(html[start:], prNewswireBodyEnd)
+	if end < 0 {
+		return html[start:]
+	}
+	return html[start : start+end]
 }
 
 func CleanText(raw string) string {
