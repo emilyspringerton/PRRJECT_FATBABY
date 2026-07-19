@@ -322,6 +322,7 @@ const sharedFragments = `
 <nav class="sections-rail" aria-label="Site sections">
   <a href="/">Front Page</a>
   <a href="/tickers">Tickers</a>
+  <a href="/section/movers">Stocks on the Move</a>
   <a href="/section/governance">Governance</a>
   <a href="/section/activism">Activism Watch</a>
   <a href="/section/boardroom">Boardroom</a>
