@@ -2077,6 +2077,7 @@ signal in Emily's hand-written observations.
 - Implemented file-backed NDJSON event store with contract specs and demo.
 
 ## 2026-07-19
+- Editorial ticker-linking standard: internal/tickerlink formats 'Company Name (EXCHANGE:TICKER)' with the ticker as a real absolute link to our ticker page, wired into movers-watcher. Also fixed a real security gap found in the process: POST /api/commentary had zero authentication -- added bearer-token auth, fails closed if unconfigured
 - Phase 1 of auto-generated articles: daily 'Stocks on the Move' movers article (internal/movers + cmd/movers-watcher), publishes via newssite's commentary API at 9:45am ET on market days (systemd timer, fatbaby-movers-watcher.timer). Also fixed 3 dormant bugs in the commentary integration: missing /commentary/{id} route, discarded article headlines, wrong internal links on list pages
 - Fixed processor mislabeling every non-8-K SEC filing as a press release (source_type default bug) -- newssite's /wire page was showing 10-Q filings mixed with real press releases; new sourceTypeForForm() maps each SEC form to its correct source_type
 - fix(newssite/docindex): front page "recent" sort was ranking every SEC-filing-dated doc above
