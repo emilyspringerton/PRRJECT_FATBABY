@@ -137,7 +137,12 @@ func runPoll(ctx context.Context, logger *log.Logger, client *http.Client, cfg r
 		if !entry.Enabled {
 			continue
 		}
+		// Per-ticker progress line, always -- see form4-watcher/main.go's
+		// identical fix (2026-07-19) for why: a clean multi-minute run with
+		// nothing to report was silently indistinguishable from a hang.
+		checkStart := time.Now()
 		filings, err := fetchSchd13(ctx, client, entry, since)
+		logger.Printf("checked ticker=%s filings=%d took=%s err=%v", entry.Ticker, len(filings), time.Since(checkStart).Round(time.Millisecond), err)
 		if err != nil {
 			logger.Printf("fetch ticker=%s err=%v (skipping)", entry.Ticker, err)
 			continue

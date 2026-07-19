@@ -1,0 +1,37 @@
+# FatBaby schd13-watcher — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-schd13-watcher.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/schd13-watcher ./cmd/schd13-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-schd13-watcher.service
+#
+# Added 2026-07-19 — was never supervised or even run. See
+# fatbaby-form4-watcher.service's header for the "looked like a hang, was
+# actually just slow with no progress logging" story -- same root cause,
+# same fix (checked ticker=... on every ticker now), same day.
+
+[Unit]
+Description=FatBaby schd13-watcher (Schedule 13D/13G ownership filings)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/schd13-watcher \
+    -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \
+    -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
+    -out-dir /home/fatbaby/PRRJECT_FATBABY/var/schd13 \
+    -lookback 90 \
+    -poll-interval 6h
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=30s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/schd13-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/schd13-watcher.log
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

@@ -124,7 +124,16 @@ func runPoll(ctx context.Context, logger *log.Logger, client *http.Client, cfg p
 		if !entry.Enabled {
 			continue
 		}
+		// Per-ticker progress line, always -- not just on error/new-data.
+		// Without this, a clean run silently produces zero output for
+		// minutes (a full watchlist pass genuinely takes 3-4+ min: EDGAR's
+		// rate limit plus tickers with heavy insider-trading volume, e.g.
+		// META alone can carry 100+ Form 4s in a 90-day lookback), which
+		// on first look is indistinguishable from a hang. Found live
+		// 2026-07-19 diagnosing exactly that false alarm.
+		checkStart := time.Now()
 		txns, err := fetchForm4s(ctx, client, entry.Ticker, entry.CIK, since)
+		logger.Printf("checked ticker=%s filings=%d took=%s err=%v", entry.Ticker, len(txns), time.Since(checkStart).Round(time.Millisecond), err)
 		if err != nil {
 			logger.Printf("fetch ticker=%s err=%v (skipping)", entry.Ticker, err)
 			continue

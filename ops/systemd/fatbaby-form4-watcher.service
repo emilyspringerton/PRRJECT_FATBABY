@@ -1,0 +1,42 @@
+# FatBaby form4-watcher — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-form4-watcher.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/form4-watcher ./cmd/form4-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-form4-watcher.service
+#
+# Added 2026-07-19 — was never supervised or even run. Initially
+# misdiagnosed as hanging (a `timeout N ... | tail` test produced zero
+# output and looked stuck); a longer, unpiped run proved it was working
+# correctly the whole time -- a full 50-ticker/90-day-lookback pass
+# genuinely takes 3-4+ minutes (EDGAR rate limit + tickers with heavy
+# insider-trading volume), which looked identical to a hang with no
+# per-ticker progress logging. Fixed the logging gap in the same commit
+# that added this unit (checked ticker=... filings=... took=... on every
+# ticker, not just on error/new-data).
+
+[Unit]
+Description=FatBaby form4-watcher (SEC Form 4 insider transactions)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/form4-watcher \
+    -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \
+    -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \
+    -out-dir /home/fatbaby/PRRJECT_FATBABY/var/form4 \
+    -lookback 90 \
+    -poll-interval 6h
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=30s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/form4-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/form4-watcher.log
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target
