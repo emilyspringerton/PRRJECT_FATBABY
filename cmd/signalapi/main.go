@@ -22,6 +22,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/apiserver"
 	"github.com/example/prrject-fatbaby/internal/cooccurrence"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
+	"github.com/example/prrject-fatbaby/internal/indexcheckpoint"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 	"github.com/example/prrject-fatbaby/internal/store"
@@ -36,6 +37,7 @@ func main() {
 	readTimeout := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTimeout := flag.Duration("write-timeout", 30*time.Second, "")
 	replayFromSeq := flag.Uint64("replay-from-seq", 1, "emergency degraded-mode lever: start index rebuild at this sequence instead of full history (see PRRJECT_FATBABY/docs/northstar/replay-fragility.md §5)")
+	indexDBPath := flag.String("index-db", "", "checkpoint SQLite file (default: <store's parent dir>/signalapi-index.db); a warm checkpoint turns restart cost into a function of downtime, not full history -- see docs/northstar/replay-fragility.md §4b")
 	flag.Parse()
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)
 	if *replayFromSeq != 1 {
@@ -48,20 +50,90 @@ func main() {
 		logger.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
+
+	ckptPath := *indexDBPath
+	if ckptPath == "" {
+		ckptPath = filepath.Join(filepath.Dir(*storeRoot), "signalapi-index.db")
+	}
+	ckpt, err := indexcheckpoint.Open(ckptPath, logger)
+	if err != nil {
+		logger.Fatalf("open index checkpoint: %v", err)
+	}
+	defer ckpt.Close()
+
 	idx := signalindex.NewIndex()
+	docIdx := docindex.NewIndex()
+	signalsFrom, docsFrom := *replayFromSeq, *replayFromSeq
+
+	// Only trust the checkpoint in normal (non-degraded-lever) mode -- an
+	// operator passing -replay-from-seq explicitly wants a controlled
+	// partial rebuild from that exact point, not whatever the checkpoint
+	// happens to hold.
+	if *replayFromSeq == 1 {
+		if cached, cerr := ckpt.LoadSignals(); cerr != nil {
+			logger.Printf("WARNING: load signals checkpoint failed (%v); full rebuild", cerr)
+		} else if len(cached) > 0 {
+			idx.LoadEntries(cached)
+			signalsFrom = ckpt.SignalsLatestSeq() + 1
+			logger.Printf("signalindex warm start from checkpoint: %d entries, resuming at seq %d", len(cached), signalsFrom)
+		}
+		if cachedDocs, cerr := ckpt.LoadDocs(); cerr != nil {
+			logger.Printf("WARNING: load docs checkpoint failed (%v); full rebuild", cerr)
+		} else if len(cachedDocs) > 0 {
+			docIdx.LoadSummaries(cachedDocs)
+			docsFrom = ckpt.DocsLatestSeq() + 1
+			logger.Printf("docindex warm start from checkpoint: %d docs, resuming at seq %d", len(cachedDocs), docsFrom)
+		}
+	}
+
 	scanStart := time.Now()
-	if err := signalindex.Build(ctx, store, idx, *replayFromSeq, logger); err != nil {
+	if err := signalindex.Build(ctx, store, idx, signalsFrom, logger); err != nil {
 		logger.Fatalf("build index: %v", err)
 	}
 	scanTook := time.Since(scanStart)
-	ready := signalindex.Tail(ctx, store, idx, *pollInterval, logger)
-	<-ready
-	docIdx := docindex.NewIndex()
-	if err := docindex.Build(ctx, store, docIdx, *replayFromSeq, logger); err != nil {
+	if err := docindex.Build(ctx, store, docIdx, docsFrom, logger); err != nil {
 		logger.Fatalf("build docindex: %v", err)
 	}
+	// Checkpoint watermark = the store's true current end sequence, NOT
+	// idx.LatestSeq()/docIdx.LatestSeq() (the highest sequence among only
+	// *matching* records). Using the per-type watermark meant a warm start
+	// resumed from "last matching record + 1" and had to re-Scan every
+	// non-matching record between there and the store's real end on every
+	// restart -- on this store that was ~19,000 interleaved records costing
+	// ~5s, most of the warm-start budget, for zero new signals. The store's
+	// actual end is the correct "nothing new to see before this" watermark.
+	if endSeq, err := store.LatestSequence(ctx); err != nil {
+		logger.Printf("WARNING: get store latest sequence failed (%v); checkpointing at index watermark instead", err)
+		saveCheckpoint(ckpt, idx, docIdx, max(idx.LatestSeq(), docIdx.LatestSeq()), logger)
+	} else {
+		saveCheckpoint(ckpt, idx, docIdx, endSeq, logger)
+	}
+	ready := signalindex.Tail(ctx, store, idx, *pollInterval, logger)
+	<-ready
 	docReady := docindex.Tail(ctx, store, docIdx, *pollInterval, logger)
 	<-docReady
+
+	// Periodic checkpoint sync: full-snapshot upsert every pollInterval,
+	// cheap at this index size (thousands of rows, in-process SQLite,
+	// single writer) -- simpler than tracking per-poll deltas, and it's a
+	// disposable cache regardless (deleting it just costs one rebuild).
+	go func() {
+		t := time.NewTicker(*pollInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				endSeq, err := store.LatestSequence(ctx)
+				if err != nil {
+					logger.Printf("WARNING: get store latest sequence failed (%v); skipping this checkpoint sync", err)
+					continue
+				}
+				saveCheckpoint(ckpt, idx, docIdx, endSeq, logger)
+			}
+		}
+	}()
 	cfg := apiserver.ServerConfig{
 		Addr:         *addr,
 		Index:        idx,
@@ -169,6 +241,18 @@ func openSQLiteReadModel(storeRoot string, logger *log.Logger) (*sql.DB, error) 
 	}
 	logger.Printf("SQLite read model at %s", dbPath)
 	return db, nil
+}
+
+// saveCheckpoint upserts both indexes' current full state to the checkpoint
+// under a single shared watermark (the store's true end sequence -- see the
+// call site's comment for why this is not idx.LatestSeq()/docIdx.LatestSeq()).
+func saveCheckpoint(ckpt *indexcheckpoint.DB, idx *signalindex.Index, docIdx *docindex.Index, watermark uint64, logger *log.Logger) {
+	if err := ckpt.SaveSignals(idx.AllEntries(), watermark); err != nil {
+		logger.Printf("WARNING: checkpoint signals save failed: %v", err)
+	}
+	if err := ckpt.SaveDocs(docIdx.AllSummaries(), watermark); err != nil {
+		logger.Printf("WARNING: checkpoint docs save failed: %v", err)
+	}
 }
 
 func envOr(key, fallback string) string {

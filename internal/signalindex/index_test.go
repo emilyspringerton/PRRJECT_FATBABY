@@ -123,3 +123,59 @@ func TestTail_PicksUpNewRecords(t *testing.T) {
 	}
 	t.Fatalf("depth %d", idx.Depth())
 }
+
+func TestAllEntries_ReturnsEverythingAcrossTickers(t *testing.T) {
+	idx := NewIndex()
+	_ = idx.Ingest(sigRec(1, "AAPL", time.Now()))
+	_ = idx.Ingest(sigRec(2, "MSFT", time.Now()))
+	_ = idx.Ingest(sigRec(3, "AAPL", time.Now()))
+
+	all := idx.AllEntries()
+	if len(all) != 3 {
+		t.Fatalf("AllEntries = %d, want 3", len(all))
+	}
+}
+
+func TestLoadEntries_HydratesAndSetsLatestSeq(t *testing.T) {
+	idx := NewIndex()
+	entries := []*SignalEntry{
+		{Seq: 5, Ticker: "AAPL", AccessionNumber: "acc-1", Timestamp: time.Now().Add(-time.Hour)},
+		{Seq: 9, Ticker: "AAPL", AccessionNumber: "acc-2", Timestamp: time.Now()},
+		{Seq: 7, Ticker: "MSFT", AccessionNumber: "acc-3", Timestamp: time.Now()},
+	}
+	idx.LoadEntries(entries)
+
+	if idx.LatestSeq() != 9 {
+		t.Errorf("LatestSeq = %d, want 9 (max of loaded entries)", idx.LatestSeq())
+	}
+	if idx.Depth() != 3 {
+		t.Errorf("Depth = %d, want 3", idx.Depth())
+	}
+	aapl, ok := idx.ForTicker("AAPL")
+	if !ok || len(aapl) != 2 {
+		t.Fatalf("ForTicker(AAPL) = %d entries, want 2", len(aapl))
+	}
+	// ForTicker returns newest-first; the seq-9 entry has the later Timestamp.
+	if aapl[0].Seq != 9 {
+		t.Errorf("expected newest-first ordering after LoadEntries, got seq=%d first", aapl[0].Seq)
+	}
+}
+
+func TestLoadEntries_ThenIngestContinuesCorrectly(t *testing.T) {
+	// Simulates the real startup path: hydrate from checkpoint, then resume
+	// Build/Tail from the watermark -- new Ingest calls must merge cleanly
+	// with pre-loaded data, not clobber it.
+	idx := NewIndex()
+	idx.LoadEntries([]*SignalEntry{
+		{Seq: 5, Ticker: "AAPL", AccessionNumber: "acc-1", Timestamp: time.Now().Add(-time.Hour)},
+	})
+	_ = idx.Ingest(sigRec(6, "AAPL", time.Now()))
+
+	aapl, ok := idx.ForTicker("AAPL")
+	if !ok || len(aapl) != 2 {
+		t.Fatalf("ForTicker(AAPL) = %d, want 2 (1 loaded + 1 ingested)", len(aapl))
+	}
+	if idx.LatestSeq() != 6 {
+		t.Errorf("LatestSeq = %d, want 6", idx.LatestSeq())
+	}
+}

@@ -243,6 +243,39 @@ func (idx *Index) DataQuality(sourceTypeForTicker func(ticker string) string) []
 // LatestSeq returns the highest sequence number ingested so far.
 func (idx *Index) LatestSeq() uint64 { idx.mu.RLock(); defer idx.mu.RUnlock(); return idx.latestSeq }
 
+// AllEntries returns a snapshot of every signal entry across all tickers, in
+// no particular order. Used by internal/indexcheckpoint to persist the full
+// index to a local SQLite checkpoint.
+func (idx *Index) AllEntries() []*SignalEntry {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	out := make([]*SignalEntry, 0, len(idx.byTicker)*4)
+	for _, items := range idx.byTicker {
+		out = append(out, items...)
+	}
+	return out
+}
+
+// LoadEntries hydrates idx directly from previously-checkpointed entries
+// (see internal/indexcheckpoint), bypassing event parsing. Entries are
+// grouped by ticker and sorted oldest-first per ticker, matching Ingest's
+// invariant (ForTicker relies on this order, reversing on read). Call on an
+// empty, freshly-constructed Index before any Ingest calls.
+func (idx *Index) LoadEntries(entries []*SignalEntry) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	for _, e := range entries {
+		idx.byTicker[e.Ticker] = append(idx.byTicker[e.Ticker], e)
+		if e.Seq > idx.latestSeq {
+			idx.latestSeq = e.Seq
+		}
+	}
+	for ticker, items := range idx.byTicker {
+		sort.Slice(items, func(i, j int) bool { return items[i].Timestamp.Before(items[j].Timestamp) })
+		idx.byTicker[ticker] = items
+	}
+}
+
 // Depth returns total signal count across all tickers.
 func (idx *Index) Depth() int {
 	idx.mu.RLock()

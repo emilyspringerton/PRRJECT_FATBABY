@@ -188,6 +188,24 @@ func (idx *Index) LatestSeq() uint64 {
 	return idx.latestSeq
 }
 
+// LoadSummaries hydrates idx directly from previously-checkpointed
+// summaries (see internal/indexcheckpoint), bypassing event parsing. Call
+// on an empty, freshly-constructed Index before any Ingest calls.
+func (idx *Index) LoadSummaries(summaries []*DocSummary) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	for _, ds := range summaries {
+		if _, exists := idx.byIdentity[ds.Identity]; exists {
+			continue
+		}
+		idx.byIdentity[ds.Identity] = ds
+		idx.byTicker[ds.Ticker] = append(idx.byTicker[ds.Ticker], ds)
+		if ds.Sequence > idx.latestSeq {
+			idx.latestSeq = ds.Sequence
+		}
+	}
+}
+
 // Build scans the store from fromSeq and populates idx. fromSeq is normally 1
 // (full history); pass a higher value only via the documented
 // -replay-from-seq emergency degraded-mode lever.

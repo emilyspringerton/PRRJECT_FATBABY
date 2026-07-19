@@ -307,3 +307,58 @@ func TestByIdentity_MissingReturnsFalse(t *testing.T) {
 		t.Fatal("expected ok=false for an unindexed identity")
 	}
 }
+
+func TestLoadSummaries_HydratesAndSetsLatestSeq(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	summaries := []*DocSummary{
+		{Identity: "id-1", Ticker: "AAPL", Sequence: 10, PersistedAt: now},
+		{Identity: "id-2", Ticker: "AAPL", Sequence: 15, PersistedAt: now},
+		{Identity: "id-3", Ticker: "MSFT", Sequence: 12, PersistedAt: now},
+	}
+	idx.LoadSummaries(summaries)
+
+	if idx.LatestSeq() != 15 {
+		t.Errorf("LatestSeq = %d, want 15 (max of loaded)", idx.LatestSeq())
+	}
+	if got, ok := idx.ByIdentity("id-1"); !ok || got.Ticker != "AAPL" {
+		t.Errorf("expected id-1 to be indexed by identity, got %+v ok=%v", got, ok)
+	}
+	if got := idx.ForTicker("AAPL"); len(got) != 2 {
+		t.Errorf("ForTicker(AAPL) = %d, want 2", len(got))
+	}
+}
+
+func TestLoadSummaries_SkipsDuplicateIdentities(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	idx.LoadSummaries([]*DocSummary{
+		{Identity: "id-1", Ticker: "AAPL", Sequence: 10, BodyPreview: "first", PersistedAt: now},
+		{Identity: "id-1", Ticker: "AAPL", Sequence: 20, BodyPreview: "second (should be skipped)", PersistedAt: now},
+	})
+	got, ok := idx.ByIdentity("id-1")
+	if !ok {
+		t.Fatal("expected id-1 present")
+	}
+	if got.BodyPreview != "first" {
+		t.Errorf("expected the first-loaded value to win on duplicate identity, got %q", got.BodyPreview)
+	}
+	if len(idx.ForTicker("AAPL")) != 1 {
+		t.Errorf("duplicate identity should not create two doc entries, got %d", len(idx.ForTicker("AAPL")))
+	}
+}
+
+func TestLoadSummaries_ThenIngestContinuesCorrectly(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	idx.LoadSummaries([]*DocSummary{{Identity: "id-1", Ticker: "AAPL", Sequence: 10, PersistedAt: now}})
+	if err := idx.Ingest(docRec(11, "AAPL", "id-2", "2026-07-19", now)); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(idx.ForTicker("AAPL")) != 2 {
+		t.Fatalf("expected 2 docs (1 loaded + 1 ingested), got %d", len(idx.ForTicker("AAPL")))
+	}
+	if idx.LatestSeq() != 11 {
+		t.Errorf("LatestSeq = %d, want 11", idx.LatestSeq())
+	}
+}
