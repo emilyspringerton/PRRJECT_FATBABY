@@ -2075,3 +2075,11 @@ signal in Emily's hand-written observations.
 ## 2026-04-20
 - Initial repository setup.
 - Implemented file-backed NDJSON event store with contract specs and demo.
+
+## 2026-07-19
+- fix(newssite/docindex): front page "recent" sort was ranking every SEC-filing-dated doc above
+  every undated doc unconditionally, regardless of actual recency -- since press releases never
+  carry an SEC FilingDate, a years-old 8-K always outranked a press release ingested seconds ago.
+  docNewerThan now compares both docs on one unified effectiveDate (FilingDate when present, else
+  PersistedAt) instead of segregating dated from undated. Added
+  TestRecent_MixedDatedAndUndatedSortsUnified regression test.

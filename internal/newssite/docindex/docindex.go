@@ -131,26 +131,36 @@ func (idx *Index) AllSummaries() []*DocSummary {
 	return out
 }
 
-// docNewerThan returns true when a was filed more recently than b.
-// Compares FilingDate first (lexicographic YYYY-MM-DD comparison is correct),
-// falling back to PersistedAt when FilingDate is absent.
+// docNewerThan returns true when a was filed more recently than b, comparing
+// both docs on one unified timeline rather than segregating dated from
+// undated docs. Previously this ranked *every* dated doc above *every*
+// undated one regardless of actual recency ("dated > undated" as an absolute
+// rule) — since press releases never carry an SEC FilingDate, that meant a
+// years-old SEC filing always outranked a press release ingested seconds
+// ago, which is what made the front page's "recent" content look stale.
+// effectiveDate (below) gives every doc a single comparable timestamp
+// instead, so a fresh undated doc correctly outranks a stale dated one.
 func docNewerThan(a, b *DocSummary) bool {
-	fa, fb := a.FilingDate, b.FilingDate
-	switch {
-	case fa != "" && fb != "":
-		return fa > fb
-	case fa != "":
-		return true // dated > undated
-	case fb != "":
-		return false
-	default:
-		return a.PersistedAt.After(b.PersistedAt)
-	}
+	return effectiveDate(a).After(effectiveDate(b))
 }
 
-// Recent returns up to n docs across all tickers, newest-first by PersistedAt.
-// All fields including BodyPreview and FilingDate are populated from the index;
-// no event store I/O is performed.
+// effectiveDate is a doc's best single timestamp for recency comparisons:
+// its SEC FilingDate when present (parsed as a UTC date), else its
+// PersistedAt (pipeline-index) timestamp — which is what press releases and
+// any doc with a missing/unparseable FilingDate fall back to.
+func effectiveDate(d *DocSummary) time.Time {
+	if d.FilingDate != "" {
+		if t, err := time.Parse("2006-01-02", d.FilingDate); err == nil {
+			return t
+		}
+	}
+	return d.PersistedAt
+}
+
+// Recent returns up to n docs across all tickers, newest-first by
+// effectiveDate (FilingDate when present, else PersistedAt — see
+// effectiveDate). All fields including BodyPreview and FilingDate are
+// populated from the index; no event store I/O is performed.
 func (idx *Index) Recent(n int) []*DocSummary {
 	all := idx.AllSummaries()
 	if len(all) > n {

@@ -187,6 +187,34 @@ func TestForTicker_SortsByFilingDate(t *testing.T) {
 	}
 }
 
+func TestRecent_MixedDatedAndUndatedSortsUnified(t *testing.T) {
+	// Regression test for the front-page "stale content" bug: a fresh
+	// undated doc (e.g. a press release, which never carries an SEC
+	// FilingDate) must outrank a stale dated doc (e.g. a years-old 8-K),
+	// not be unconditionally sorted below every dated doc.
+	idx := NewIndex()
+	now := time.Now().UTC()
+
+	// Old, dated SEC filing.
+	_ = idx.Ingest(docRec(1, "AAPL", "old-dated", "2019-01-15", now.Add(-10*time.Hour)))
+	// Fresh, undated press release (FilingDate="" — ingested just now).
+	pr := docRec(2, "AAPL", "fresh-undated", "", now)
+	// Mark it as a press release explicitly, matching real pr_discovered docs.
+	var doc intelligence.SourceDocument
+	_ = json.Unmarshal(pr.Event.Data, &doc)
+	doc.SourceType = "press_release"
+	pr.Event.Data, _ = json.Marshal(doc)
+	_ = idx.Ingest(pr)
+
+	got := idx.Recent(10)
+	if len(got) != 2 {
+		t.Fatalf("want 2, got %d", len(got))
+	}
+	if got[0].Identity != "fresh-undated" {
+		t.Errorf("fresh undated doc should rank first, got order: %s, %s", got[0].Identity, got[1].Identity)
+	}
+}
+
 func TestKnownTickers_SortedAlpha(t *testing.T) {
 	idx := NewIndex()
 	base := time.Now().UTC()
