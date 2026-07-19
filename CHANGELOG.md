@@ -2111,3 +2111,11 @@ signal in Emily's hand-written observations.
   params, matching IDUNA's openapi.go precedent.
 - feat(newssite): /api-playground -- Swagger UI page (CDN-loaded, no build step) pointed at
   signalapi's spec, linked from the site footer. S162-01.
+
+## 2026-07-19 (5)
+- fix(newssite/signalapi): API playground wasn't loading the spec for real visitors -- it embedded
+  an absolute http://localhost:9091 URL, which only ever worked when the browser happened to be on
+  this same box. newssite now reverse-proxies /signalapi/* same-origin (strips the prefix,
+  forwards to the real signalapi process), and the playground + the spec's own "servers" list both
+  use a relative /signalapi URL instead. Works correctly regardless of which domain newssite is
+  actually served on (news.okemily.com in production), no CORS, no hardcoded hostname. 2 new tests.

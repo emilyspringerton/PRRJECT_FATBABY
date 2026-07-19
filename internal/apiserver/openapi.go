@@ -34,7 +34,13 @@ var signalAPIOpenAPISpec = map[string]any{
 		},
 	},
 	"servers": []map[string]any{
-		{"url": "http://localhost:9091", "description": "Local development"},
+		// Relative URL, resolved by Swagger UI against whatever page is
+		// hosting it -- correct whether that's news.okemily.com (proxied
+		// same-origin via newssite's /signalapi/* handler) or any other
+		// domain newssite ends up served on. Listed first since Swagger UI
+		// defaults to the first entry; this is the one real visitors need.
+		{"url": "/signalapi", "description": "Same-origin, proxied by newssite"},
+		{"url": "http://localhost:9091", "description": "Direct, local development only"},
 	},
 	"components": map[string]any{
 		"securitySchemes": map[string]any{

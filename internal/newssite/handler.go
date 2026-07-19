@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -174,6 +176,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.serveArchive(w, r)
 	case path == "/api-playground":
 		status = h.serveAPIPlayground(w, r)
+	case strings.HasPrefix(path, "/signalapi/"):
+		status = h.proxySignalAPI(w, r)
 	case path == "/about":
 		status = h.serveAbout(w, r)
 	case path == "/live":
@@ -563,17 +567,50 @@ func (h *Handler) serveArchive(w http.ResponseWriter, r *http.Request) int {
 	return http.StatusOK
 }
 
-// serveAPIPlayground serves a Swagger UI page against the FatBaby Signal
-// API's OpenAPI spec (signalapi's /v1/openapi.json — see
-// internal/apiserver/openapi.go). Same pattern as OKEMILY's
-// api-playground.html (CDN-loaded Swagger UI, no build step), rendered
-// server-side here since newssite doesn't serve static files from a
-// directory the way OKEMILY does.
-func (h *Handler) serveAPIPlayground(w http.ResponseWriter, r *http.Request) int {
-	specURL := strings.TrimRight(h.signalapiURL, "/") + "/v1/openapi.json"
-	if h.signalapiURL == "" {
-		specURL = "http://localhost:9091/v1/openapi.json"
+// signalAPIProxyTarget is where /signalapi/* requests actually get forwarded.
+// Bug found 2026-07-19: this used to be hardcoded as an absolute
+// http://localhost:9091 URL directly in the Swagger UI page, which only
+// ever worked when the *browser* happened to be running on this same box --
+// for any real visitor, "localhost" resolved to their own machine, so the
+// spec silently failed to load. Fixed by having newssite itself
+// reverse-proxy /signalapi/ same-origin (below), so the playground can use
+// a relative URL that works from any domain newssite is actually served on.
+var signalAPIProxyTarget = &url.URL{Scheme: "http", Host: "127.0.0.1:9091"}
+
+// proxySignalAPI reverse-proxies GET /signalapi/* to the real signalapi
+// process, stripping the /signalapi prefix. Same-origin so the API
+// playground (and anything else) can reach it with a relative URL, no CORS,
+// no hardcoded hostname.
+func (h *Handler) proxySignalAPI(w http.ResponseWriter, r *http.Request) int {
+	target := signalAPIProxyTarget
+	if h.signalapiURL != "" {
+		if u, err := url.Parse(h.signalapiURL); err == nil {
+			target = u
+		}
 	}
+	upstreamStatus := http.StatusOK
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	orig := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		orig(req)
+		req.URL.Path = strings.TrimPrefix(req.URL.Path, "/signalapi")
+	}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		upstreamStatus = resp.StatusCode
+		return nil
+	}
+	proxy.ServeHTTP(w, r)
+	return upstreamStatus
+}
+
+// serveAPIPlayground serves a Swagger UI page against the FatBaby Signal
+// API's OpenAPI spec, fetched same-origin via proxySignalAPI above (not a
+// hardcoded absolute URL -- see the note on signalAPIProxyTarget for why
+// that broke for every real visitor). Same CDN-loaded-Swagger-UI pattern as
+// OKEMILY's api-playground.html, rendered server-side here since newssite
+// doesn't serve static files from a directory the way OKEMILY does.
+func (h *Handler) serveAPIPlayground(w http.ResponseWriter, r *http.Request) int {
+	const specURL = "/signalapi/v1/openapi.json"
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html lang="en">
