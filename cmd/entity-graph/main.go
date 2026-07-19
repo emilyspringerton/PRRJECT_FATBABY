@@ -109,22 +109,60 @@ func main() {
 
 	logger.Printf("starting poll_interval=%s store=%s graph_dir=%s one_shot=%v mongo=%v", *pollInterval, *storeRoot, *graphDir, *oneShot, mongoClient != nil)
 
+	// Graph-lifetime hoist (Phase 2c, docs/northstar/replay-fragility.md §4c
+	// item 3 -- "the riskiest," landing last and alone with Phase 2b's
+	// accuracy-report equivalence check as its regression gate). These used
+	// to be reloaded from scratch inside runBatch on every 30s poll --
+	// NewGraph/LoadNodesFromDir/LoadAuditorsFromDir/LoadSignals/
+	// LoadHealthHistory/CompactNodes. Now loaded exactly once here. graph is
+	// a *Graph (already mutated in place and flushed incrementally by
+	// FlushNodes/FlushEdges -- no change needed there). historicalSignals
+	// and healthHistory are updated in memory after each batch (mirroring
+	// exactly what a fresh reload would have picked up from what that batch
+	// just wrote to disk) instead of being re-read from the files they were
+	// just written to.
+	if err := entitygraph.CompactNodes(*graphDir); err != nil {
+		logger.Printf("compact nodes err=%v (non-fatal)", err)
+	}
+	graph := entitygraph.NewGraph()
+	if err := graph.LoadNodesFromDir(*graphDir); err != nil {
+		logger.Printf("load existing nodes err=%v", err)
+	}
+	if err := graph.LoadAuditorsFromDir(*graphDir); err != nil {
+		logger.Printf("load existing auditors err=%v", err)
+	}
+	historicalSignals, err := entitygraph.LoadSignals(*graphDir)
+	if err != nil {
+		logger.Printf("load historical signals err=%v", err)
+	}
+	historicalSignals = entitygraph.DeduplicateSignals(historicalSignals)
+	healthHistory, err := entitygraph.LoadHealthHistory(*graphDir)
+	if err != nil {
+		logger.Printf("load health history err=%v (non-fatal)", err)
+	}
+	if healthHistory == nil {
+		healthHistory = map[string]entitygraph.HealthSnapshot{}
+	}
+
 	cursor := loadCursor(*cursorPath, logger)
 
 	for {
-		cursor = runBatch(ctx, store, logger, runConfig{
-			graphDir:     *graphDir,
-			schd13Dir:    *schd13Dir,
-			obsDir:       *obsDir,
-			rulesPath:    *rulesPath,
+		cursor, historicalSignals = runBatch(ctx, store, logger, runConfig{
+			graphDir:      *graphDir,
+			schd13Dir:     *schd13Dir,
+			obsDir:        *obsDir,
+			rulesPath:     *rulesPath,
 			watchlistPath: *watchlistPath,
-			cursorPath:   *cursorPath,
-			batchSize:    *batchSize,
-			cursor:       cursor,
-			mongoClient:  mongoClient,
-			mongoDB:      *mongoDB,
-			filingDB:     filingDB,
-			accuracyDB:   accuracyDB,
+			cursorPath:    *cursorPath,
+			batchSize:     *batchSize,
+			cursor:        cursor,
+			mongoClient:   mongoClient,
+			mongoDB:       *mongoDB,
+			filingDB:      filingDB,
+			accuracyDB:    accuracyDB,
+			graph:         graph,
+			healthHistory: healthHistory,
+			historicalSignals: historicalSignals,
 		})
 
 		if *oneShot {
@@ -142,30 +180,37 @@ func main() {
 }
 
 type runConfig struct {
-	graphDir     string
-	schd13Dir    string
-	obsDir       string
-	rulesPath    string
+	graphDir      string
+	schd13Dir     string
+	obsDir        string
+	rulesPath     string
 	watchlistPath string
-	cursorPath   string
-	batchSize    int
-	cursor       uint64
-	mongoClient  *mongo.Client
-	mongoDB      string
-	filingDB     *sql.DB
-	accuracyDB   *sql.DB
+	cursorPath    string
+	batchSize     int
+	cursor        uint64
+	mongoClient   *mongo.Client
+	mongoDB       string
+	filingDB      *sql.DB
+	accuracyDB    *sql.DB
+	graph         *entitygraph.Graph
+	healthHistory map[string]entitygraph.HealthSnapshot
+	historicalSignals []entitygraph.Signal
 }
 
-func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logger, cfg runConfig) uint64 {
+// runBatch returns the new cursor and the updated historicalSignals slice
+// (threaded the same way cursor already was -- see the graph-lifetime hoist
+// comment in main()). cfg.graph and cfg.healthHistory are mutated in place
+// (pointer and map respectively) and don't need to be returned.
+func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logger, cfg runConfig) (uint64, []entitygraph.Signal) {
 	rules := entitygraph.LoadRules(cfg.rulesPath)
 
 	recs, err := store.ReadFrom(ctx, cfg.cursor, cfg.batchSize)
 	if err != nil {
 		logger.Printf("read events cursor=%d err=%v", cfg.cursor, err)
-		return cfg.cursor
+		return cfg.cursor, cfg.historicalSignals
 	}
 	if len(recs) == 0 {
-		return cfg.cursor
+		return cfg.cursor, cfg.historicalSignals
 	}
 
 	// Filing date/form recovery index -- was a full event-store scan every
@@ -186,35 +231,14 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		filingDates, filingForms = map[string]string{}, map[string]string{}
 	}
 
-	// Compact nodes.ndjson before loading to remove accumulated duplicates.
-	if err := entitygraph.CompactNodes(cfg.graphDir); err != nil {
-		logger.Printf("compact nodes err=%v (non-fatal)", err)
-	}
-
-	graph := entitygraph.NewGraph()
-	if err := graph.LoadNodesFromDir(cfg.graphDir); err != nil {
-		logger.Printf("load existing nodes err=%v", err)
-	}
-	if err := graph.LoadAuditorsFromDir(cfg.graphDir); err != nil {
-		logger.Printf("load existing auditors err=%v", err)
-	}
-
-	// Load historical signals for composite scoring (activist_risk, director_link).
-	// Deduplicate by signal_id (keep most recent per id) before use: signals.ndjson
-	// is append-only, so repeated batch runs write duplicate records that share the
-	// same signal_id (e.g. director_long_tenure, director_friction). Without dedup,
-	// ScoreGovernanceHealth over-counts penalties and drives health scores to 0.
-	historicalSignals, err := entitygraph.LoadSignals(cfg.graphDir)
-	if err != nil {
-		logger.Printf("load historical signals err=%v", err)
-	}
-	historicalSignals = entitygraph.DeduplicateSignals(historicalSignals)
-
-	// Load previous governance health snapshots for trend scoring (deteriorating/improving).
-	prevHealthHistory, err := entitygraph.LoadHealthHistory(cfg.graphDir)
-	if err != nil {
-		logger.Printf("load health history err=%v (non-fatal)", err)
-	}
+	// graph, historicalSignals, and prevHealthHistory used to be reloaded from
+	// scratch here on every batch -- now hoisted to process start (main()),
+	// see the graph-lifetime hoist comment there. graph mutates in place and
+	// flushes incrementally as before; prevHealthHistory is a map (mutated in
+	// place, visible to the caller without needing to be returned).
+	graph := cfg.graph
+	historicalSignals := cfg.historicalSignals
+	prevHealthHistory := cfg.healthHistory
 
 	// RSI: load historical accuracy records to calibrate governance health penalty weights.
 	// AccuracyAdjustedPenalties scales down weights for signal types whose empirical
@@ -450,11 +474,13 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	// Uses accuracy-calibrated penalties (healthPenalties) so historically
 	// low-precision signals contribute reduced weight to the composite score.
 	combined = append(combined, linkSigs...)
-	// Deduplicate before governance health scoring. Historical signals were deduped at
-	// load time (line 143), but the current batch may re-generate signals with the same
-	// signal_id (e.g. director_long_tenure_{name}_{ticker} is date-free and identical
-	// across runs). Without this second dedup, combined has 2x copies and the doubled
-	// penalties drive health scores to 0 for clean companies with many long-tenured directors.
+	// Deduplicate before governance health scoring. historicalSignals is kept
+	// deduped (loaded once in main(), re-deduped after each batch's writes --
+	// see the graph-lifetime hoist), but the current batch may re-generate
+	// signals with the same signal_id (e.g. director_long_tenure_{name}_{ticker}
+	// is date-free and identical across runs). Without this second dedup,
+	// combined has 2x copies and the doubled penalties drive health scores to
+	// 0 for clean companies with many long-tenured directors.
 	combined = entitygraph.DeduplicateSignals(combined)
 	healthScores := map[string]float64{}
 	for ticker := range batchTickers {
@@ -485,6 +511,15 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	if len(newHealthSnapshots) > 0 {
 		if err := entitygraph.AppendHealthSnapshot(cfg.graphDir, newHealthSnapshots); err != nil {
 			logger.Printf("append health snapshots err=%v (non-fatal)", err)
+		}
+		// Mirror the append into the long-lived in-memory map (graph-lifetime
+		// hoist) -- a fresh LoadHealthHistory next batch would have picked up
+		// exactly these new per-ticker snapshots; this keeps that behavior
+		// without re-reading the file. prevHealthHistory is cfg.healthHistory
+		// (a map, reference type) so this mutation is visible to main()'s
+		// loop without needing to be returned.
+		for _, snap := range newHealthSnapshots {
+			prevHealthHistory[snap.Ticker] = snap
 		}
 	}
 
@@ -520,6 +555,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		if err != nil {
 			logger.Printf("load schd13 filings err=%v (non-fatal)", err)
 		}
+		// NOTE: intentionally still a fresh disk reload, not the hoisted
+		// historicalSignals above -- out of scope for the graph-lifetime
+		// hoist (Phase 2c), which only moved the specific functions named in
+		// docs/northstar/replay-fragility.md §4c item 3 to keep that change
+		// minimal and behavior-preserving. This is the same class of
+		// per-batch reload cost and a legitimate follow-up, not fixed here.
 		allHistorical, _ := entitygraph.LoadSignals(cfg.graphDir)
 		allForAccuracy := append(allHistorical, allSignals...)
 
@@ -684,6 +725,14 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 			if err := entitygraph.WriteSignals(cfg.graphDir, allSignals); err != nil {
 				logger.Printf("write signals err=%v", err)
 			}
+			// Mirror the write into the long-lived in-memory historicalSignals
+			// (graph-lifetime hoist) -- a fresh LoadSignals+Dedupe next batch
+			// would have picked up exactly these newly-written signals; this
+			// keeps that behavior without re-reading the file. Re-dedupe
+			// (cheap: in-memory, not a disk scan) since allSignals can
+			// legitimately repeat a signal_id already in historicalSignals
+			// (e.g. director_long_tenure re-fires identically every batch).
+			historicalSignals = entitygraph.DeduplicateSignals(append(historicalSignals, allSignals...))
 		}
 		if cfg.mongoClient != nil {
 			if err := mongowriter.WriteEntities(ctx, cfg.mongoClient, cfg.mongoDB, graph, allSignals, logger); err != nil {
@@ -701,7 +750,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	}
 
 	saveCursor(cfg.cursorPath, newCursor, logger)
-	return newCursor
+	return newCursor, historicalSignals
 }
 
 // buildFilingIndexes scans all filing_discovered events in the store and returns
