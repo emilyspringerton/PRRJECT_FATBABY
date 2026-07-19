@@ -2077,6 +2077,7 @@ signal in Emily's hand-written observations.
 - Implemented file-backed NDJSON event store with contract specs and demo.
 
 ## 2026-07-19
+- Fixed a real false-positive bug: FetchAndCleanText was scraping PRNewswire's entire site navigation (including a category menu containing the word 'Dividends') as if it were article text, causing dividend-watcher to misclassify law-firm INVESTOR ALERT spam as dividend cuts (10 of 13 live records were false positives). New extractPRNewswireArticleBody isolates the real release-body content, host-scoped so SEC filing extraction is untouched. Redeployed prwatch-body (the only fetcher in the pipeline).
 - Phase 5 of auto-generated articles: bond-watcher, daily treasury yield (2Y/10Y/30Y) + high-yield credit spread snapshot via FRED's free API, gated on market days, systemd timer 6pm ET. Live-verified against real FRED data
 - Corrected S168-04: form4-watcher and schd13-watcher were never hanging -- misdiagnosed by a piped timeout test. Both work correctly (verified: 332 transactions/59 signals, 3-4min full run for form4; schd13 completes in seconds). Added per-ticker progress logging (was silent for minutes on a clean run) and real systemd units for both
 - Fixed secwatch crash-loop (raised MemoryMax 384M->768M) after it OOM-killed 4x in 6 minutes -- caused by launching 7 newly-supervised watchers plus a GPT-2 training run simultaneously without checking headroom. Real root cause: secwatch's already_seen dedup set has grown past its original 2026-07-17 memory budget
