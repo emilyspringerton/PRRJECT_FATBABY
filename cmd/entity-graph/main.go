@@ -50,6 +50,7 @@ func main() {
 	mongoURL := flag.String("mongo-url", os.Getenv("MONGODB_URL"), "MongoDB connection string (default: $MONGODB_URL); empty = no MongoDB write")
 	mongoDB := flag.String("mongo-db", envOr("MONGODB_DB", "fatbaby"), "MongoDB database name")
 	filingIndexPath := flag.String("filing-index-db", "", "incremental filing-date/form index (default: <graph-dir>/filings-index.db) -- see docs/northstar/replay-fragility.md §4c")
+	accuracyIndexPath := flag.String("accuracy-index-db", "", "incremental deduplicated accuracy-verdict index (default: <graph-dir>/accuracy-index.db) -- see docs/northstar/replay-fragility.md §4c Phase 2b")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "entity-graph ", log.LstdFlags|log.LUTC)
@@ -78,6 +79,19 @@ func main() {
 	defer filingDB.Close()
 	if err := ensureFilingIndexBackfilled(ctx, filingDB, store, logger); err != nil {
 		logger.Fatalf("backfill filing index: %v", err)
+	}
+
+	accuracyDBPath := *accuracyIndexPath
+	if accuracyDBPath == "" {
+		accuracyDBPath = filepath.Join(*graphDir, "accuracy-index.db")
+	}
+	accuracyDB, err := openAccuracyIndexDB(accuracyDBPath)
+	if err != nil {
+		logger.Fatalf("open accuracy index: %v", err)
+	}
+	defer accuracyDB.Close()
+	if err := ensureAccuracyIndexBackfilled(accuracyDB, *graphDir, logger); err != nil {
+		logger.Fatalf("backfill accuracy index: %v", err)
 	}
 
 	// Optional MongoDB write (S20-04). Nil client = graceful no-op.
@@ -110,6 +124,7 @@ func main() {
 			mongoClient:  mongoClient,
 			mongoDB:      *mongoDB,
 			filingDB:     filingDB,
+			accuracyDB:   accuracyDB,
 		})
 
 		if *oneShot {
@@ -138,6 +153,7 @@ type runConfig struct {
 	mongoClient  *mongo.Client
 	mongoDB      string
 	filingDB     *sql.DB
+	accuracyDB   *sql.DB
 }
 
 func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logger, cfg runConfig) uint64 {
@@ -203,7 +219,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 	// RSI: load historical accuracy records to calibrate governance health penalty weights.
 	// AccuracyAdjustedPenalties scales down weights for signal types whose empirical
 	// precision is below the configured threshold, closing the RSI feedback loop.
-	prevAccuracyRecords, _ := entitygraph.LoadAccuracyRecords(cfg.graphDir)
+	prevAccuracyRecords, _ := loadAccuracyIndex(cfg.accuracyDB)
 	prevAccuracyReports := entitygraph.BuildAccuracyReports(prevAccuracyRecords)
 	healthPenalties := entitygraph.AccuracyAdjustedPenalties(
 		entitygraph.DefaultGovernanceHealthPenalties(),
@@ -634,6 +650,12 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		if len(accuracyRecords) > 0 {
 			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
+			}
+			// Keep the deduplicated index current for the next batch's
+			// prevAccuracyRecords load -- accuracy.ndjson above is still the
+			// raw append-only history, this is the fast query-of-truth cache.
+			if err := upsertAccuracyRecords(cfg.accuracyDB, accuracyRecords, logger); err != nil {
+				logger.Printf("accuracy_index: upsert err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
 			logger.Printf("accuracy records=%d reports=%d (decay=%d auditor=%d ins_buy=%d ins_sell=%d cfo=%d dir_fric=%d div_cut=%d late=%d lead=%d bb_susp=%d abst=%d board_decay=%d div_raise=%d gov_det=%d gov_imp=%d gov_entr=%d abst_out=%d post_fail=%d bb_auth=%d broker=%d spec_div=%d eps_rev=%d comp=%d nom_rej=%d hi_trust=%d fam_ctrl=%d dir_link=%d peer_under=%d gov_health=%d long_tenure=%d)",
