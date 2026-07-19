@@ -65,7 +65,7 @@ func TestBuildArticleBody_HandlesEmptySections(t *testing.T) {
 
 func TestBuildArticle_HeadlineAndKind(t *testing.T) {
 	snap := movers.Snapshot{Gainers: []movers.Quote{{Symbol: "X", ChangePercent: 1}}}
-	art := buildArticle(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	art := buildArticle(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
 
 	if art["kind"] != "market_movers" {
 		t.Errorf("kind = %v, want market_movers", art["kind"])
@@ -77,5 +77,53 @@ func TestBuildArticle_HeadlineAndKind(t *testing.T) {
 	id, _ := art["id"].(string)
 	if id != "movers-2026-07-20" {
 		t.Errorf("id = %q, want movers-2026-07-20", id)
+	}
+}
+
+func TestBuildArticle_BodyHTML_HasRealAbsoluteTickerLinks(t *testing.T) {
+	snap := movers.Snapshot{
+		Gainers: []movers.Quote{{Symbol: "aapl", Name: "Apple Inc.", Exchange: "NasdaqGS", ChangePercent: 3.5}},
+	}
+	art := buildArticle(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
+
+	bodyHTML, _ := art["body_html"].(string)
+	if bodyHTML == "" {
+		t.Fatal("expected body_html to be set")
+	}
+	if !strings.Contains(bodyHTML, `<a href="https://news.okemily.com/ticker/AAPL">AAPL</a>`) {
+		t.Errorf("expected a real absolute ticker link per the editorial standard, got:\n%s", bodyHTML)
+	}
+	if !strings.Contains(bodyHTML, "Apple Inc. (NASDAQ:") {
+		t.Errorf("expected 'Company Name (EXCHANGE:...)' format with normalized exchange, got:\n%s", bodyHTML)
+	}
+}
+
+func TestBuildArticleBody_PlainTextHasNoMarkup(t *testing.T) {
+	snap := movers.Snapshot{
+		Gainers: []movers.Quote{{Symbol: "AAPL", Name: "Apple Inc.", Exchange: "NYSE", ChangePercent: 3.5}},
+	}
+	body := buildArticleBody(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	if strings.Contains(body, "<a ") {
+		t.Errorf("plain-text body must not contain HTML markup, got:\n%s", body)
+	}
+	if !strings.Contains(body, "Apple Inc. (NYSE:AAPL)") {
+		t.Errorf("expected plain 'Company Name (EXCHANGE:TICKER)' format, got:\n%s", body)
+	}
+}
+
+func TestNormalizeExchange(t *testing.T) {
+	cases := map[string]string{
+		"NasdaqGS":     "NASDAQ",
+		"NasdaqGM":     "NASDAQ",
+		"NYSE":         "NYSE",
+		"NYSEArca":     "NYSE Arca",
+		"NYSEAmerican": "NYSE American",
+		"":             "",
+		"SomeNewExch":  "SOMENEWEXCH",
+	}
+	for in, want := range cases {
+		if got := normalizeExchange(in); got != want {
+			t.Errorf("normalizeExchange(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

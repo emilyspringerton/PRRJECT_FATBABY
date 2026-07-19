@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/marketcal"
 	"github.com/example/prrject-fatbaby/internal/movers"
+	"github.com/example/prrject-fatbaby/internal/tickerlink"
 	"github.com/example/prrject-fatbaby/secwatch"
 )
 
@@ -36,6 +38,8 @@ func main() {
 	watchlistPath := flag.String("watchlist", "config/watchlist.json", "path to watchlist.json")
 	count := flag.Int("count", 15, "number of gainers/losers to fetch and publish")
 	commentaryURL := flag.String("commentary-url", "http://localhost:8082/api/commentary", "newssite POST /api/commentary endpoint")
+	baseURL := flag.String("base-url", envOr("NEWSSITE_BASE_URL", "https://news.okemily.com"), "canonical public origin used for absolute ticker links (editorial standard, EMILY/BACKLOG.md SECTION 167)")
+	apiKey := flag.String("api-key", os.Getenv("COMMENTARY_API_KEY"), "bearer token for POST /api/commentary (default: $COMMENTARY_API_KEY)")
 	force := flag.Bool("force", false, "publish even if today is not a recognized market day (testing only)")
 	dryRun := flag.Bool("dry-run", false, "fetch and build the article but do not post it or write to the event store")
 	flag.Parse()
@@ -87,11 +91,18 @@ func main() {
 		logger.Printf("WARNING: failed to record snapshot event (continuing anyway): %v", err)
 	}
 
-	art := buildArticle(snap, tracked, now)
-	if err := postCommentary(ctx, client, *commentaryURL, art); err != nil {
+	art := buildArticle(snap, tracked, now, *baseURL)
+	if err := postCommentary(ctx, client, *commentaryURL, *apiKey, art); err != nil {
 		logger.Fatalf("publish article: %v", err)
 	}
 	logger.Printf("published %s", art["id"])
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 // emitSnapshotEvent records the raw fetched quotes into the event store as
@@ -119,17 +130,19 @@ func emitSnapshotEvent(ctx context.Context, store eventstore.EventStore, snap mo
 // same boundary every other watcher uses, not a direct Go import.
 type commentaryArticle map[string]any
 
-func buildArticle(snap movers.Snapshot, tracked map[string]bool, now time.Time) commentaryArticle {
+func buildArticle(snap movers.Snapshot, tracked map[string]bool, now time.Time, baseURL string) commentaryArticle {
 	dateStr := now.Format("January 2, 2006")
 	id := "movers-" + now.Format("2006-01-02")
 	headline := "Stocks on the Move — " + dateStr
 	body := buildArticleBody(snap, tracked, now)
+	bodyHTML := buildArticleBodyHTML(snap, tracked, now, baseURL)
 	preview := "Today's biggest market-wide gainers and losers, tracked live."
 
 	return commentaryArticle{
 		"id":           id,
 		"headline":     headline,
 		"body":         body,
+		"body_html":    bodyHTML,
 		"preview":      preview,
 		"byline":       "The Markets Desk",
 		"kind":         "market_movers",
@@ -156,12 +169,7 @@ func writeMoverSection(b *strings.Builder, title string, quotes []movers.Quote, 
 		fmt.Fprintf(b, "No qualifying names today.\n\n")
 		return
 	}
-	sorted := make([]movers.Quote, len(quotes))
-	copy(sorted, quotes)
-	sort.Slice(sorted, func(i, j int) bool {
-		return abs(sorted[i].ChangePercent) > abs(sorted[j].ChangePercent)
-	})
-	for _, q := range sorted {
+	for _, q := range sortByAbsChangeDesc(quotes) {
 		sign := ""
 		if q.ChangePercent > 0 {
 			sign = "+"
@@ -170,10 +178,82 @@ func writeMoverSection(b *strings.Builder, title string, quotes []movers.Quote, 
 		if tracked[q.Symbol] {
 			coverage = " (tracked — see filings and signal history on its ticker page)"
 		}
-		fmt.Fprintf(b, "%s (%s) — %s%.2f%%, $%.2f, volume %s%s\n",
-			q.Name, q.Symbol, sign, q.ChangePercent, q.Price, formatVolume(q.Volume), coverage)
+		fmt.Fprintf(b, "%s — %s%.2f%%, $%.2f, volume %s%s\n",
+			tickerlink.PlainRef(q.Name, normalizeExchange(q.Exchange), q.Symbol),
+			sign, q.ChangePercent, q.Price, formatVolume(q.Volume), coverage)
 	}
 	fmt.Fprintf(b, "\n")
+}
+
+// buildArticleBodyHTML is the trusted-HTML counterpart to buildArticleBody --
+// same content, real <a> links to our ticker pages via tickerlink.FormatRef
+// (EMILY/BACKLOG.md SECTION 167), rendered in a <div>, not a <pre>, so it
+// needs its own block-level structure rather than relying on preserved
+// whitespace.
+func buildArticleBodyHTML(snap movers.Snapshot, tracked map[string]bool, now time.Time, baseURL string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "<p>A look at today's biggest market-wide gainers and losers, sourced live "+
+		"from the market. Names we track closely for filings and signals are marked below; "+
+		"everything else here is price action alone.</p>\n")
+
+	writeMoverSectionHTML(&b, "Top Gainers", snap.Gainers, tracked, baseURL)
+	writeMoverSectionHTML(&b, "Top Losers", snap.Losers, tracked, baseURL)
+
+	return b.String()
+}
+
+func writeMoverSectionHTML(b *strings.Builder, title string, quotes []movers.Quote, tracked map[string]bool, baseURL string) {
+	fmt.Fprintf(b, "<h3>%s</h3>\n", html.EscapeString(title))
+	if len(quotes) == 0 {
+		fmt.Fprintf(b, "<p>No qualifying names today.</p>\n")
+		return
+	}
+	fmt.Fprintf(b, "<ul>\n")
+	for _, q := range sortByAbsChangeDesc(quotes) {
+		sign := ""
+		if q.ChangePercent > 0 {
+			sign = "+"
+		}
+		coverage := ""
+		if tracked[q.Symbol] {
+			coverage = ` <span class="tracked-note">(tracked — see filings and signal history on its ticker page)</span>`
+		}
+		ref := tickerlink.FormatRef(baseURL, q.Name, normalizeExchange(q.Exchange), q.Symbol)
+		fmt.Fprintf(b, "<li>%s — %s%.2f%%, $%.2f, volume %s%s</li>\n",
+			ref, sign, q.ChangePercent, q.Price, formatVolume(q.Volume), coverage)
+	}
+	fmt.Fprintf(b, "</ul>\n")
+}
+
+func sortByAbsChangeDesc(quotes []movers.Quote) []movers.Quote {
+	sorted := make([]movers.Quote, len(quotes))
+	copy(sorted, quotes)
+	sort.Slice(sorted, func(i, j int) bool {
+		return abs(sorted[i].ChangePercent) > abs(sorted[j].ChangePercent)
+	})
+	return sorted
+}
+
+// normalizeExchange maps Yahoo's fullExchangeName values (e.g. "NasdaqGS",
+// "NasdaqGM") to the canonical exchange labels the editorial standard uses
+// ("NASDAQ", "NYSE"). Unrecognized values pass through uppercased rather
+// than being dropped, so a new/rare exchange code still shows something
+// reasonable instead of silently losing the exchange entirely.
+func normalizeExchange(yahooExchange string) string {
+	switch strings.ToUpper(strings.TrimSpace(yahooExchange)) {
+	case "NASDAQGS", "NASDAQGM", "NASDAQCM", "NCM", "NGM", "NMS":
+		return "NASDAQ"
+	case "NYSE", "NYQ":
+		return "NYSE"
+	case "NYSEARCA", "PCX", "ARCA":
+		return "NYSE Arca"
+	case "NYSEAMERICAN", "ASE", "AMEX":
+		return "NYSE American"
+	case "":
+		return ""
+	default:
+		return strings.ToUpper(strings.TrimSpace(yahooExchange))
+	}
 }
 
 func abs(f float64) float64 {
@@ -187,7 +267,7 @@ func formatVolume(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
-func postCommentary(ctx context.Context, client *http.Client, url string, art commentaryArticle) error {
+func postCommentary(ctx context.Context, client *http.Client, url, apiKey string, art commentaryArticle) error {
 	payload, err := json.Marshal(art)
 	if err != nil {
 		return err
@@ -197,6 +277,9 @@ func postCommentary(ctx context.Context, client *http.Client, url string, art co
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("post commentary: %w", err)

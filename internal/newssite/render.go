@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html/template"
 	"io"
 	"sort"
 	"strings"
@@ -107,7 +108,11 @@ type DetailPageView struct {
 	DocumentURL    string
 	IsExternalLink bool
 	FullText       string
-	Ticker         string
+	// BodyHTML, when set, is rendered in place of FullText -- trusted raw
+	// HTML instead of escaped plain text. Only ever populated for
+	// commentary-derived entries; see DocEntry.BodyHTML.
+	BodyHTML template.HTML
+	Ticker   string
 }
 
 // ── Breaking page ─────────────────────────────────────────────────────────────
@@ -791,6 +796,7 @@ func buildDetailPage(entry DocEntry) DetailPageView {
 		DocumentURL:    entry.DocumentURL,
 		IsExternalLink: isSafeLink(entry.DocumentURL),
 		FullText:       entry.FullText,
+		BodyHTML:       entry.BodyHTML,
 		Ticker:         normTicker(entry.Ticker),
 	}
 }

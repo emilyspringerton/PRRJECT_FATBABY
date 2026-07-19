@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -46,6 +47,7 @@ func main() {
 	graphDir         := flag.String("graph-dir", "var/entity-graph", "path to entity-graph directory (empty to disable)")
 	epsDir           := flag.String("eps-dir", "var/eps", "path to eps output directory (empty to disable)")
 	commentaryDir    := flag.String("commentary-dir", "var/commentary", "path to Emily commentary directory (empty to disable)")
+	commentaryAPIKeys := flag.String("commentary-api-keys", os.Getenv("COMMENTARY_API_KEY"), "comma-separated bearer tokens allowed to POST /api/commentary (default: $COMMENTARY_API_KEY); empty disables the endpoint (fails closed)")
 	guidanceDir      := flag.String("guidance-dir", "var/guidance", "path to guidance articles directory (empty to disable)")
 	earningsCalDir   := flag.String("earnings-cal-dir", "var/earnings-calendar", "path to earnings calendar directory (empty to disable)")
 	marketDataDir    := flag.String("market-data-dir", "var/market-data", "path to market-data eventstore root (empty to disable; charts fall back to a transparent placeholder)")
@@ -137,6 +139,11 @@ func main() {
 			logger.Printf("newssite commentary loaded from %s", *commentaryDir)
 		}
 		h.SetCommentaryStore(cs, *commentaryDir)
+		if *commentaryAPIKeys != "" {
+			h.SetCommentaryAPIKeys(splitCSV(*commentaryAPIKeys))
+		} else {
+			logger.Printf("WARNING: no commentary API keys configured -- POST /api/commentary will fail closed (503)")
+		}
 	}
 
 	// ── Guidance store ───────────────────────────────────────────────────────────
@@ -285,4 +292,18 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
 	}
+}
+
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }

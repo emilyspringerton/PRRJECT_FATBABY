@@ -519,7 +519,7 @@ const detailTemplate = `{{define "detail"}}<!doctype html>
     {{if .DocumentURL}}<dt>Original</dt><dd>{{if .IsExternalLink}}<a href="{{.DocumentURL}}" rel="noopener">{{.DocumentURL}}</a>{{else}}{{.DocumentURL}}{{end}}</dd>{{end}}
   </dl></div>
   <hr class="rule">
-  <div class="doc-body"><pre>{{.FullText}}</pre></div>
+  {{if .BodyHTML}}<div class="doc-body commentary-body">{{.BodyHTML}}</div>{{else}}<div class="doc-body"><pre>{{.FullText}}</pre></div>{{end}}
 </main>
 </div>{{template "footer" .}}</body></html>{{end}}`
 

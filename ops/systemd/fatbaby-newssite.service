@@ -26,6 +26,12 @@ After=network-online.target fatbaby-processor.service
 [Service]
 Type=simple
 WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+# COMMENTARY_API_KEY (POST /api/commentary auth, see SECTION 167 S167-01) --
+# the "-" prefix makes a missing file non-fatal; the endpoint just fails
+# closed (503) rather than the whole service failing to start. No need to
+# pass -commentary-api-keys explicitly: its flag default already reads
+# $COMMENTARY_API_KEY, and EnvironmentFile= puts it in the process env.
+EnvironmentFile=-%h/.config/fatbaby-newssite/env
 ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/newssite \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
     -graph-dir /home/fatbaby/PRRJECT_FATBABY/var/entity-graph \

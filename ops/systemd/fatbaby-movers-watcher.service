@@ -21,6 +21,10 @@ After=network-online.target fatbaby-newssite.service
 [Service]
 Type=oneshot
 WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+# COMMENTARY_API_KEY: same shared secret as fatbaby-newssite.service's
+# EnvironmentFile (POST /api/commentary auth, SECTION 167 S167-01) -- picked
+# up automatically via -api-key's flag default ($COMMENTARY_API_KEY).
+EnvironmentFile=-%h/.config/fatbaby-newssite/env
 ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/movers-watcher \
     -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
     -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \

@@ -3,6 +3,7 @@ package newssite
 import (
 	"context"
 	"encoding/json"
+	"html/template"
 	"sort"
 	"strings"
 	"time"
@@ -31,6 +32,13 @@ type DocEntry struct {
 	// commentary, market-wide pieces like "Stocks on the Move" that have a
 	// real authored title and aren't about exactly one ticker).
 	Headline string
+	// BodyHTML, when set, renders as trusted raw HTML on the detail page
+	// instead of FullText's escaped-plain-text-in-<pre> default. ONLY ever
+	// set for commentary.Article-derived entries whose source published
+	// through an authenticated path (see commentary.Article.BodyHTML doc
+	// comment) -- FullText for ordinary filings is arbitrary scraped
+	// external text and must never be trusted this way.
+	BodyHTML template.HTML
 }
 
 // readChunkSize is the number of event store records fetched per backward step.

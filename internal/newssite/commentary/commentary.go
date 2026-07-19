@@ -17,13 +17,22 @@ import (
 
 // Article is one Emily-authored governance commentary piece.
 type Article struct {
-	ID          string    `json:"id"`
-	Ticker      string    `json:"ticker"`
-	Headline    string    `json:"headline"`
-	Body        string    `json:"body"`
+	ID       string `json:"id"`
+	Ticker   string `json:"ticker"`
+	Headline string `json:"headline"`
+	Body     string `json:"body"`
+	// BodyHTML, when set, is rendered as trusted raw HTML instead of Body's
+	// escaped plain text -- e.g. real <a> links to our own ticker pages,
+	// per the editorial ticker-linking standard (EMILY/BACKLOG.md SECTION
+	// 167). Only ever populate this from our own generators (movers-watcher
+	// and similar); never from anything that echoes external/scraped text,
+	// and only through an authenticated ingest path -- see
+	// newssite.Handler.checkCommentaryAuth. Body should still be set
+	// alongside it as the plain-text fallback/preview source.
+	BodyHTML    string    `json:"body_html,omitempty"`
 	Preview     string    `json:"preview"`
 	Byline      string    `json:"byline"`
-	Kind        string    `json:"kind"`       // signal_commentary|governance_alert|eps_reconciliation|cross_ticker_summary
+	Kind        string    `json:"kind"`       // signal_commentary|governance_alert|eps_reconciliation|cross_ticker_summary|market_movers
 	FilingDate  string    `json:"filing_date,omitempty"` // SEC filing date being discussed
 	PublishedAt time.Time `json:"published_at"`
 	SignalIDs   []string  `json:"signal_ids,omitempty"`

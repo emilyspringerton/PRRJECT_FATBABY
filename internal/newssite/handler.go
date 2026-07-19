@@ -3,8 +3,10 @@ package newssite
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -56,6 +58,7 @@ type Handler struct {
 	epsStore             *epsread.Store      // nil if eps-dir not configured
 	commentaryStore      *commentary.Store   // nil if commentary-dir not configured
 	commentaryDir        string              // path for POST /api/commentary writes
+	commentaryAPIKeys    []string            // bearer tokens allowed to POST /api/commentary; empty = endpoint disabled (fails closed, see servePostCommentary)
 	guidanceStore        *guidanceread.Store // nil if guidance-dir not configured
 	earningsCalStore     *earningscal.Store  // nil if earnings-cal-dir not configured
 	marketData           *marketdata.Store   // nil if market-data-dir not configured
@@ -102,6 +105,13 @@ func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 	h.commentaryStore = cs
 	h.commentaryDir = dir
 }
+
+// SetCommentaryAPIKeys configures the bearer tokens accepted by POST
+// /api/commentary. Until called (or called with an empty slice), the
+// endpoint fails closed with 503 -- added 2026-07-19 after finding it had
+// no authentication at all despite being a public write endpoint (see
+// EMILY/BACKLOG.md SECTION 167 S167-01).
+func (h *Handler) SetCommentaryAPIKeys(keys []string) { h.commentaryAPIKeys = keys }
 func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)  { h.guidanceStore = gs }
 func (h *Handler) SetEarningsCalStore(s *earningscal.Store) { h.earningsCalStore = s }
 
@@ -946,6 +956,22 @@ func (h *Handler) liveRanked() []edition.Ranked {
 	return edition.Rank(h.graph.LiveSignals("", today), today)
 }
 
+// checkCommentaryAuth reports whether header is a valid "Bearer <key>" for
+// one of h.commentaryAPIKeys, using a constant-time comparison per key
+// (same pattern as internal/apiserver's existing static-API-key check).
+func (h *Handler) checkCommentaryAuth(header string) bool {
+	if !strings.HasPrefix(header, "Bearer ") {
+		return false
+	}
+	tok := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	for _, key := range h.commentaryAPIKeys {
+		if subtle.ConstantTimeCompare([]byte(tok), []byte(key)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // commentaryToEntry converts an Emily-authored Article to the DocEntry shape
 // used by all newssite renderers. SourceType is derived from a.Kind for the
 // kinds that get their own kicker/byline treatment in render.go
@@ -965,7 +991,7 @@ func commentaryToEntry(a *commentary.Article) DocEntry {
 	if a.Kind == "market_movers" {
 		sourceType = "market_movers"
 	}
-	return DocEntry{
+	entry := DocEntry{
 		Identity:    a.ID,
 		Headline:    a.Headline,
 		Ticker:      strings.ToUpper(strings.TrimSpace(a.Ticker)),
@@ -977,6 +1003,10 @@ func commentaryToEntry(a *commentary.Article) DocEntry {
 		FilingDate:  a.FilingDate,
 		PersistedAt: a.PublishedAt,
 	}
+	if a.BodyHTML != "" {
+		entry.BodyHTML = template.HTML(a.BodyHTML) //nolint:gosec // trusted: see commentary.Article.BodyHTML doc comment
+	}
+	return entry
 }
 
 func (h *Handler) symbols() []string {
@@ -987,12 +1017,20 @@ func (h *Handler) symbols() []string {
 }
 
 // servePostCommentary handles POST /api/commentary — Emily publishes a governance article.
-// Accepts JSON body matching commentary.Article. Requires commentaryStore to be wired.
+// Accepts JSON body matching commentary.Article. Requires commentaryStore to be wired and a
+// valid Authorization: Bearer token matching one of commentaryAPIKeys. Fails closed (503) if no
+// keys are configured at all -- this endpoint had no authentication whatsoever until 2026-07-19
+// (see EMILY/BACKLOG.md SECTION 167 S167-01); an open write endpoint defaulting to "on" was not
+// an acceptable interim state once discovered.
 // Returns 201 Created on success with the article ID.
 func (h *Handler) servePostCommentary(w http.ResponseWriter, r *http.Request) int {
-	if h.commentaryStore == nil || h.commentaryDir == "" {
-		http.Error(w, `{"error":"commentary not configured"}`, http.StatusServiceUnavailable)
+	if h.commentaryStore == nil || h.commentaryDir == "" || len(h.commentaryAPIKeys) == 0 {
+		http.Error(w, `{"error":"commentary publishing not configured"}`, http.StatusServiceUnavailable)
 		return http.StatusServiceUnavailable
+	}
+	if !h.checkCommentaryAuth(r.Header.Get("Authorization")) {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return http.StatusUnauthorized
 	}
 	var art commentary.Article
 	if err := json.NewDecoder(r.Body).Decode(&art); err != nil {
