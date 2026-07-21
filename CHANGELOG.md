@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-07-21
+
+- Director-network ticker discovery northstar written — real finding: DEF 14A proxy statements (where director 'other directorships' bios live) aren't ingested at all today, only 8-K Item 5.07 vote tallies. Scopes DEF 14A ingestion + bio parser + human-reviewed candidate list (explicitly not auto-add to watchlist)
+
+
 ## 2026-07-18 (6)
 - fix: 4 more replay-fragility instances found in a full process-sync sweep -- eps-processor's loadTickerMap (live, 30s poll, most severe of these four), buyback/dividend/guidance-watcher's buildTickerMap (identical copy-pasted pattern, startup-only), and processor's dead-code sourceDocumentExists. All migrated to eventstore.Scan. Total now 9 instances of this bug class found+fixed today. PRRJECT_FATBABY ad3d69c.
 - fix(eps-reconciler): migrate full-history scan onto eventstore.Scan -- 5th instance of the replay-fragility pattern (after signalapi/newssite/entity-graph/processor), found during a full-process-sync audit rather than an incident. Live-verified: 81s -> 26s for the same reconcile scan. PRRJECT_FATBABY 84b7148.
