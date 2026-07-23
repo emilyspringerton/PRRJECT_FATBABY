@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-07-23
+
+- backlog: closed out SECTION 1 Phase 2c (entity-graph graph-lifetime hoist) retroactively — the code landed and was live-verified in `d450635` (2026-07-19) but was never closed per protocol: no Apple, no CHANGELOG entry, BACKLOG.md checkbox left unchecked. Verified the fix is real before closing (read `cmd/entity-graph/main.go`, confirmed `NewGraph`/`LoadNodesFromDir`/`LoadAuditorsFromDir`/`LoadSignals`/`LoadHealthHistory`/`CompactNodes` run once at process start, not per-batch) and `go test ./...` still green. This closes all of Phase 2 (2a filing index + 2b accuracy upsert + 2c graph-lifetime hoist). Apple #10503.
+
 ## 2026-07-21
 
 - Director-network ticker discovery northstar written — real finding: DEF 14A proxy statements (where director 'other directorships' bios live) aren't ingested at all today, only 8-K Item 5.07 vote tallies. Scopes DEF 14A ingestion + bio parser + human-reviewed candidate list (explicitly not auto-add to watchlist)
