@@ -43,6 +43,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	"github.com/example/prrject-fatbaby/internal/store"
@@ -149,6 +150,19 @@ func upsertAccuracyRecords(db *sql.DB, records []entitygraph.AccuracyRecord, log
 		return err
 	}
 	return nil
+}
+
+// touchAccuracyIndexSnapshot updates meta.snapshot_at to now, unconditionally
+// -- same heartbeat rationale as touchFilingIndexSnapshot in filingindex.go
+// (see docs/northstar/replay-fragility.md §4c/§9 Phase 3): most batches
+// produce zero new accuracyRecords (only newly-resolved signals do), so
+// gating this on upsertAccuracyRecords running would leave the checkpoint
+// looking "stale" for hours at a time even on a perfectly healthy process.
+func touchAccuracyIndexSnapshot(db *sql.DB, logger *log.Logger) {
+	if _, err := db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('snapshot_at', ?)`,
+		time.Now().UTC().Format(time.RFC3339)); err != nil {
+		logger.Printf("accuracy_index: snapshot_at touch err=%v", err)
+	}
 }
 
 // loadAccuracyIndex reads the full (deduplicated) table back into

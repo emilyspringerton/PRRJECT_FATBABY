@@ -150,6 +150,57 @@ sudo systemctl reload nginx
 
 ---
 
+## Index Checkpoints
+
+`signalapi`, `newssite`, and `entity-graph` each persist their in-memory index to a local
+SQLite file so a restart resumes from a watermark instead of replaying the full event store
+(see `docs/northstar/replay-fragility.md`):
+
+| Process | Checkpoint file | Rebuilds from |
+|---|---|---|
+| signalapi | `var/signalapi-index.db` | full `eventstore.Scan` from seq 1 |
+| newssite | `var/newssite-index.db` | full `eventstore.Scan` from seq 1 |
+| entity-graph | `var/entity-graph/filings-index.db` | one-time `buildFilingIndexes` scan |
+| entity-graph | `var/entity-graph/accuracy-index.db` | one-time `accuracy.ndjson` scan |
+
+**Operator invariant: every checkpoint file above is a disposable cache of the event store,
+never a source of truth. Deleting any one of them is always a safe move** — the owning
+process detects the missing/corrupt/version-mismatched file on next start (or next batch,
+for entity-graph's two) and rebuilds it automatically. The event store (`var/secwatch/events/
+*.ndjson`) remains the only durable, authoritative data; nothing is lost by deleting a
+checkpoint, only some rebuild time is spent (seconds for signalapi/newssite post-Phase-0,
+one incremental backfill pass for entity-graph's two).
+
+Use this when a checkpoint looks corrupted, wildly out of sync with the store, or is
+suspected as the cause of bad served data:
+
+```bash
+sudo systemctl stop fatbaby-signalapi        # or fatbaby-entity-graph, etc.
+rm var/signalapi-index.db                     # -wal/-journal siblings too, if present
+sudo systemctl start fatbaby-signalapi        # rebuilds from the event store on this start
+```
+
+### Checkpoint freshness alerting
+
+Emily Prime's watchdog (`EMILY/emily-agent/watchdog.go`, `CheckCheckpointHealth`) reads each
+checkpoint's `meta.snapshot_at` column every cron cycle and fires an escalation Apple if it
+hasn't advanced within 5 minutes (each process syncs its checkpoint roughly every 30s poll
+interval, so 5 minutes is generous headroom). This catches a distinct failure mode that
+`CheckServiceHealth`/`CheckPollerHealth` can miss: the owning process still looks alive (HTTP
+200, log lines still being written), but its checkpoint write path is wedged — e.g. a batch
+stuck mid-transaction, a full disk, or a corrupted file the process is silently failing to
+reopen. If you see a "Checkpoint `<name>` has not advanced" alert:
+
+1. Confirm the owning process is actually alive (`systemctl status fatbaby-<name>`, tail its
+   log for recent activity).
+2. If the process looks healthy but the alert persists, delete the checkpoint file per the
+   invariant above and restart — this is always safe and forces a fresh rebuild.
+3. If deletion doesn't clear the alert on the next cron cycle, the problem is more likely disk
+   space or file permissions on the checkpoint's directory (`var/`, `var/entity-graph/`) —
+   check `df -h` and ownership before escalating further.
+
+---
+
 ## Log Rotation
 
 Install `/etc/logrotate.d/fatbaby`:

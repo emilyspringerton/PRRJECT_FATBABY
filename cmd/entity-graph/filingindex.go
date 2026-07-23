@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/store"
@@ -139,6 +140,21 @@ func upsertFilingIndexFromBatch(db *sql.DB, recs []eventstore.Record, logger *lo
 	}
 	if err := tx.Commit(); err != nil {
 		logger.Printf("filing_index: commit err=%v", err)
+	}
+}
+
+// touchFilingIndexSnapshot updates meta.snapshot_at to now, unconditionally --
+// called once per runBatch tick regardless of whether this batch contained
+// any filing_discovered records, so the timestamp is a genuine "runBatch
+// completed a poll successfully" heartbeat rather than only advancing when
+// this specific table happens to get new rows. See docs/northstar/
+// replay-fragility.md §4c/§9 Phase 3: a freshness check on meta.snapshot_at
+// needs this to actually advance every poll to be able to catch a stalled
+// checkpoint (write path wedged, batch hung) within minutes.
+func touchFilingIndexSnapshot(db *sql.DB, logger *log.Logger) {
+	if _, err := db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('snapshot_at', ?)`,
+		time.Now().UTC().Format(time.RFC3339)); err != nil {
+		logger.Printf("filing_index: snapshot_at touch err=%v", err)
 	}
 }
 

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
 )
@@ -262,5 +264,33 @@ func TestEnsureAccuracyIndexBackfilled_IdempotentAndDeduplicates(t *testing.T) {
 	}
 	if len(records) != 1 {
 		t.Fatalf("expected backfill to be idempotent (still 1 record, sig-2 not picked up), got %d", len(records))
+	}
+}
+
+// TestTouchAccuracyIndexSnapshot_AdvancesEvenWithNoNewRows mirrors
+// TestTouchFilingIndexSnapshot_AdvancesEvenWithNoNewRows in filingindex_test.go:
+// most batches produce zero new accuracy records (only newly-resolved
+// signals do), so meta.snapshot_at must still advance on an idle batch or a
+// Phase 3 freshness check would misreport a healthy process as stalled.
+func TestTouchAccuracyIndexSnapshot_AdvancesEvenWithNoNewRows(t *testing.T) {
+	db, err := openAccuracyIndexDB(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("openAccuracyIndexDB: %v", err)
+	}
+	defer db.Close()
+
+	var before string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='snapshot_at'`).Scan(&before); err != sql.ErrNoRows {
+		t.Fatalf("expected no snapshot_at before first touch, got value=%q err=%v", before, err)
+	}
+
+	touchAccuracyIndexSnapshot(db, discardLogger())
+
+	var after string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='snapshot_at'`).Scan(&after); err != nil {
+		t.Fatalf("expected snapshot_at after touch, err=%v", err)
+	}
+	if _, err := time.Parse(time.RFC3339, after); err != nil {
+		t.Errorf("snapshot_at %q not RFC3339: %v", after, err)
 	}
 }

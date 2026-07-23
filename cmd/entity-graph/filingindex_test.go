@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/secwatch"
@@ -214,4 +216,41 @@ func mustEvent(t *testing.T, id, typ string, data any) eventstore.Event {
 		t.Fatalf("marshal: %v", err)
 	}
 	return eventstore.Event{ID: id, Type: typ, Data: b}
+}
+
+// TestTouchFilingIndexSnapshot_AdvancesEvenWithNoNewRows covers the Phase 3
+// freshness-check gap this was written to close: a batch with zero new
+// filing_discovered records must still advance meta.snapshot_at, otherwise a
+// freshness check reading it would flag a perfectly healthy, idle process as
+// stalled. See docs/northstar/replay-fragility.md §4c/§9 Phase 3.
+func TestTouchFilingIndexSnapshot_AdvancesEvenWithNoNewRows(t *testing.T) {
+	db, err := openFilingIndexDB(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("openFilingIndexDB: %v", err)
+	}
+	defer db.Close()
+
+	var before string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='snapshot_at'`).Scan(&before); err != sql.ErrNoRows {
+		t.Fatalf("expected no snapshot_at before first touch, got value=%q err=%v", before, err)
+	}
+
+	touchFilingIndexSnapshot(db, discardLogger())
+
+	var after string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='snapshot_at'`).Scan(&after); err != nil {
+		t.Fatalf("expected snapshot_at after touch, err=%v", err)
+	}
+	if _, err := time.Parse(time.RFC3339, after); err != nil {
+		t.Errorf("snapshot_at %q not RFC3339: %v", after, err)
+	}
+
+	touchFilingIndexSnapshot(db, discardLogger())
+	var again string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='snapshot_at'`).Scan(&again); err != nil {
+		t.Fatalf("expected snapshot_at after second touch, err=%v", err)
+	}
+	if _, err := time.Parse(time.RFC3339, again); err != nil {
+		t.Errorf("second snapshot_at %q not RFC3339: %v", again, err)
+	}
 }

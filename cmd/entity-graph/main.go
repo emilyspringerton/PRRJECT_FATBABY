@@ -209,6 +209,16 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		logger.Printf("read events cursor=%d err=%v", cfg.cursor, err)
 		return cfg.cursor, cfg.historicalSignals
 	}
+
+	// Phase 3 checkpoint freshness heartbeat (docs/northstar/replay-fragility.md
+	// §4c/§9 Phase 3) -- touch both index checkpoints' meta.snapshot_at every
+	// successful poll tick, not just when this batch happens to produce new
+	// filing/accuracy rows, mirroring how CheckPollerHealth's log-mtime
+	// heartbeat already treats "checked, nothing new" as proof of life for
+	// headless pollers with no HTTP endpoint.
+	touchFilingIndexSnapshot(cfg.filingDB, logger)
+	touchAccuracyIndexSnapshot(cfg.accuracyDB, logger)
+
 	if len(recs) == 0 {
 		return cfg.cursor, cfg.historicalSignals
 	}
