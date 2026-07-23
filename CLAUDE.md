@@ -127,3 +127,7 @@ tail -f ./var/logs/processor.log
 - `config/watchlist.json` — don't remove tickers without understanding downstream impact
 - `broker/registry.go` hot-reload — the proxy depends on atomic registry swaps
 - The framed TCP protocol in `feedserver/frame.go` — clients depend on exact wire format
+
+## Commit Protocol (standing instruction)
+
+Always commit and push completed work immediately — don't wait to be asked. This is the default for every repo in this monorepo.
