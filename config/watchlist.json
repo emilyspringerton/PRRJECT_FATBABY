@@ -699,6 +699,19 @@
       "poll_priority": 2,
       "sector": "energy",
       "notes": "S&P 100 expansion: E&P energy \u2014 CIK verified; enabled 2026-06-23"
+    },
+    {
+      "ticker": "TRI",
+      "company_name": "Thomson Reuters Corporation",
+      "cik": "1075124",
+      "allowed_forms": [
+        "6-K",
+        "40-F"
+      ],
+      "enabled": true,
+      "poll_priority": 3,
+      "sector": "legal/information services",
+      "notes": "competitive intel: parent of West Publishing/Westlaw (court opinions + statutory code ingestion) \u2014 founder-flagged competitor watch, S170-20; Canadian foreign private issuer, files 6-K/40-F not 10-K/10-Q; enabled 2026-07-24"
     }
   ]
 }

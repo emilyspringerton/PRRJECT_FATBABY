@@ -1,66 +1,65 @@
-# Competitor Watch: "WEST" (Intrado) — Northstar
+# Competitor Watch: "WEST" (West Publishing / Thomson Reuters) — Northstar
 
 ## What this is
 
-A northstar for tracking Intrado (internal shorthand: **WEST**) as a named competitor inside
-PRRJECT_FATBABY's signal pipeline. Founder direction, real-time (2026-07-24): "northstar WEST opo
-(competitor) ingesting court and code data" → "also we need to add west press releases" →
-confirmed on follow-up: WEST is **Intrado**, a private company (no ticker, no SEC filings), track
-by name only. Logged to `EMILY/BACKLOG.md` S170-20 before this doc was written, per Principle 1.
+A northstar for tracking Thomson Reuters' West Publishing business (internal shorthand: **WEST**)
+as a competitor inside PRRJECT_FATBABY's signal pipeline. Founder direction, real-time
+(2026-07-24): "northstar WEST opo (competitor) ingesting court and code data" → "also we need to
+add west press releases" → an initial identity guess (Intrado) was raised, tried, confirmed by the
+founder, then corrected back: "not intrado do WEST publishing court data." Logged to
+`EMILY/BACKLOG.md` S170-20 before/alongside this doc, per Principle 1 — including the identity
+back-and-forth itself, not just the final answer.
 
-This is a northstar, not an implementation. Nothing described below is built yet.
+This is a northstar, not an implementation beyond the one concrete, low-risk step described below
+(adding the parent company to the existing watchlist).
 
-## Why Intrado is on the radar
+## Who WEST actually is
 
-Intrado is an emergency-communications / public-safety tech company (911 routing, NG9-1-1,
-GIS/address data for emergency dispatch). The founder's framing — "ingesting court and code
-data" — points at the adjacent data Intrado's 911/GIS business depends on: jurisdictional
-boundary data (which court/PSAP has authority over a given location) and municipal/address
-"code" data (road centerlines, address ranges, zoning) used to route emergency calls correctly.
-This is a different shape of data-ingestion competitor than PRRJECT_FATBABY's usual SEC/PR-driven
-universe — worth watching as an adjacent-market signal source, not a ticker to trade against.
+**West Publishing** is the legal-publishing division of **Thomson Reuters Corporation**
+(NYSE/TSX: `TRI`), best known for **Westlaw**, one of the two dominant legal-research platforms
+(alongside LexisNexis). Its core business is exactly what the founder described: ingesting and
+organizing **court opinions/case law** ("court data") and **statutes/regulations** ("code data")
+at massive scale, then selling access to lawyers and researchers — plus the historical West
+"key number" case-classification system that's been central to U.S. legal research for over a
+century. West doesn't trade separately; it's wholly owned by Thomson Reuters, so tracking it
+means tracking the parent.
 
-## Why the existing pipeline doesn't fit as-is
+## What changed from the first draft of this doc
 
-Every existing watcher (`secwatch`, `prwatch`, `form4-watcher`, `dividend-watcher`, etc.) is built
-around a **CIK or ticker** key from `config/watchlist.json`. Intrado is private: no CIK, no ticker,
-no EDGAR filings, no PR-Newswire wire feed. It publishes its own press releases directly:
+The first pass of this northstar guessed **Intrado** (a private 911/emergency-communications
+company) based on a "private, track by name only" answer during scoping. That answer has been
+superseded by the founder's direct correction. Intrado is **not** part of this competitor watch —
+this doc replaces that content rather than layering on top of it, to avoid leaving a stale,
+wrong lead in a golden doc.
 
-- Newsroom root: `intrado.com/news-releases`
-- Pagination: `intrado.com/news-releases/page/[1-5]`
-- Individual posts: `intrado.com/news-releases/[article-slug]`
+## Why the existing pipeline fits here (unlike the Intrado guess)
 
-Confirmed live 2026-07-24 (most recent post at the time: "Intrado Appoints Damon Covey as Chief
-Executive Officer," 2026-07-20).
+Unlike Intrado, Thomson Reuters is **public** and already files with the SEC (foreign private
+issuer forms — `6-K`, `40-F`, not `10-K`/`10-Q`, since it's a Canadian company) under
+**CIK 1075124**. That means it fits the existing `secwatch`/`prwatch` CIK-based pipeline exactly
+as-is — no new "named competitor" watcher needed, unlike what the (incorrect) Intrado guess would
+have required.
 
-## Proposed shape (not built)
+**Done, this pass:** added `TRI` to `config/watchlist.json` (6-K/40-F, sector
+"legal/information services", poll priority 3) — this is the concrete "add west press releases"
+ask, now served by the existing pipeline rather than a bespoke build.
 
-A new, small watcher — tentatively `cmd/named-competitor-watcher` — that:
+## What's still just a northstar (not built)
 
-1. Polls a configured list of **named competitors** (starting with just Intrado), each defined by
-   a direct newsroom URL rather than a CIK/ticker. New config file, e.g.
-   `config/named_competitors.json`, parallel to `watchlist.json` but without the SEC-specific
-   fields (`cik`, `allowed_forms`).
-2. Fetches the newsroom index page, diffs against a seen-slugs cursor (same pattern as
-   `observation-watcher`'s `.last-processed` cursor file), and emits a `filing_discovered`-shaped
-   event into the existing event store for any new post — reusing the event store and downstream
-   processor/signal pipeline rather than building a parallel one.
-3. Feeds the same `processor` pipeline used for SEC/PR content, so Intrado press releases get the
-   same sentiment/importance/summary treatment as everything else, without a bespoke UI.
-
-## Explicitly out of scope for now
-
-- No attempt to scrape or reverse-engineer Intrado's actual 911/GIS data products or ingestion
-  pipeline itself — this tracks their **public announcements**, not their internal data.
-- No second named competitor beyond Intrado yet — the config shape should allow more, but only
-  Intrado is in scope for the first pass.
-- No ticker/ownership research — Intrado is confirmed private; this is a name-based news watch,
-  not a financial-signal watch.
-
-## Open question
-
-The founder's original phrase "ingesting court and code data" hasn't been fully unpacked — it's
-read here as referring to Intrado's 911/GIS jurisdictional and address-code data ingestion, but
-that's an inference, not a confirmed scope statement. If there's a more specific competitive angle
-intended (e.g. a specific Intrado product line, or a different company doing literal legal
-court-opinion ingestion), flag it and this doc gets revised before Phase 1 build starts.
+- **Westlaw-specific signal extraction.** The existing pipeline will now catch Thomson Reuters'
+  own corporate filings/press releases (earnings, M&A, leadership), but it has no special handling
+  to surface Westlaw/legal-tech-specific news buried inside those (e.g. a new AI legal-research
+  product launch) versus the rest of Thomson Reuters' businesses (Reuters News, tax/accounting
+  software, etc.). A future pass could add keyword-tagged filtering scoped to the legal-services
+  segment specifically.
+- **Direct competitive framing for FatBaby's own roadmap.** No FatBaby feature currently competes
+  with Westlaw's court-opinion/case-law ingestion directly — this is being tracked as market
+  intelligence (what a dominant player in "ingest structured public-record data at scale" is doing)
+  rather than because FatBaby is entering legal research. Worth revisiting if that changes.
+- **Connection to S170-21 (lawsuit-filing alerts).** The founder's separate, real-time ask for
+  "alerts when big time lawsuits get filed against public companies" sits right next to this
+  thread conceptually — West/Westlaw is exactly the kind of company that already sells that
+  capability. If FatBaby ever builds real docket-level lawsuit detection, Westlaw's product
+  approach (and PACER/state-court integration patterns generally) is the natural prior art to
+  study, not reinvent blind. See S170-21 in `EMILY/BACKLOG.md` for that item's own scope, which is
+  intentionally kept separate from this one for now.
