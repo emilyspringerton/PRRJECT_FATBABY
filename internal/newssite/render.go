@@ -213,6 +213,7 @@ type TickerPageView struct {
 	NextEarnings *UpcomingEarningsView
 	PastEarnings []UpcomingEarningsView // most recent first
 	Facts        TickerFactBox
+	Bio          string // draft company bio, S166-03/S170-22; empty if none loaded
 }
 
 // ── Ticker 404 ────────────────────────────────────────────────────────────────
@@ -385,7 +386,7 @@ func RenderSectionPage(w io.Writer, slug string, ranked []edition.Ranked, symbol
 func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 	ranked []edition.Ranked, directors []*entitygraph.PersonNode,
 	secDocs []DocEntry, wireDocs []DocEntry, earnings []EarningsItemView,
-	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView, symbols []string) {
+	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView, symbols []string, bio string) {
 
 	var lead *ArticleView
 	var signals []ArticleView
@@ -487,6 +488,7 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		NextEarnings: nextEarnings,
 		PastEarnings: pastEarnings,
 		Facts:        facts,
+		Bio:          bio,
 	}
 	if err := tickerTmpl.Execute(w, view); err != nil {
 		fmt.Fprintf(w, "render error: %v", err)

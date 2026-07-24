@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-24
+- feat(newssite): wire draft company bios into live ticker pages. New `internal/newssite/companybios`
+  store reads `config/company_bios.json` (a flat ticker→bio map), loaded in `cmd/newssite` via
+  `-company-bios-path` and rendered on `/ticker/{symbol}` above the lead story, with a small
+  "not yet editorially reviewed" note. Closes the deferred half of S166-03's one-shot bio pass
+  (S170-22). 2 new tests.
+- feat(intel): added `TRI` (Thomson Reuters, parent of West Publishing/Westlaw) to
+  `config/watchlist.json` + a matching bio — the competitive-intel "WEST" northstar (S170-20),
+  corrected from an initial wrong guess (Intrado) to the right one (Westlaw, court + code data).
+- feat(intel): one-shot draft company bios (7 sentences each, name/sector/scale/watch-item) for
+  all 50 watchlist tickers in new `config/company_bios.json` (S166-03). Draft pass, not yet run
+  through formal editorial review.
+
 ## 2026-07-23 (2)
 
 - docs: `docs/northstar/family-relationship-linkage.md` — founder proposed enriching the entity graph with a family/kinship network via public marriage records. Investigated and rejected marriage records as the primary source (3,000+ county jurisdictions, no federal API, many states restrict recent-record access, high false-positive identity-matching risk given common names and no unique identifier) in favor of two sources that are already structured, machine-parseable, and legally mandatory: Form 4's `directOrIndirectOwnership`/`footnotes` fields (spouse/family-trust holdings — `internal/insider` ingests Form 4 today but has never parsed these fields) and DEF 14A's Item 401(d) family-relationship disclosure (shares the DEF 14A ingestion prerequisite with `director-network-ticker-discovery.md`). Also found the current `family_control` signal is a 4-hardcoded-surname keyword match on a director's own name (`schwab`/`walton`/`mars`/`buffett`), not an actual relationship between two people — the graph has exactly one `EdgeType` (`board_co_member`) and no kinship edge at all. Scopes a new `EdgeFamilyRelationship` primitive to eventually replace the keyword heuristic. Design only, no code yet. Golden-indexed as FAMILY-LINK-NORTH.

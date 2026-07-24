@@ -20,6 +20,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite"
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
+	"github.com/example/prrject-fatbaby/internal/newssite/companybios"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
 	"github.com/example/prrject-fatbaby/internal/newssite/marketdata"
@@ -53,6 +54,7 @@ func main() {
 	guidanceDir      := flag.String("guidance-dir", "var/guidance", "path to guidance articles directory (empty to disable)")
 	earningsCalDir   := flag.String("earnings-cal-dir", "var/earnings-calendar", "path to earnings calendar directory (empty to disable)")
 	marketDataDir    := flag.String("market-data-dir", "var/market-data", "path to market-data eventstore root (empty to disable; charts fall back to a transparent placeholder)")
+	companyBiosPath  := flag.String("company-bios-path", "config/company_bios.json", "path to draft company bios JSON (empty to disable)")
 	emilyURL         := flag.String("emily-url", os.Getenv("EMILY_BASE_URL"), "Emily Prime base URL for /api/ask (default: $EMILY_BASE_URL)")
 	signalapiURL     := flag.String("signalapi-url", os.Getenv("SIGNALAPI_URL"), "signalapi base URL for ticker context injection (default: $SIGNALAPI_URL)")
 	googleClientID   := flag.String("google-client-id", os.Getenv("GOOGLE_CLIENT_ID"), "Google OAuth client ID for Sign in with Google (default: $GOOGLE_CLIENT_ID)")
@@ -161,6 +163,17 @@ func main() {
 		done := make(chan struct{})
 		gs.StartRefresh(60*time.Second, func(f string, a ...any) { logger.Printf(f, a...) }, done)
 		defer close(done)
+	}
+
+	// ── Company bios (draft, one-shot LLM pass; EMILY/BACKLOG.md S166-03/S170-22) ─
+	if *companyBiosPath != "" {
+		cb := companybios.NewStore(*companyBiosPath)
+		if err := cb.Refresh(); err != nil {
+			logger.Printf("newssite company-bios load: %v", err)
+		} else {
+			logger.Printf("newssite company-bios loaded count=%d from %s", cb.Count(), *companyBiosPath)
+		}
+		h.SetCompanyBiosStore(cb)
 	}
 
 	// ── Earnings calendar store ──────────────────────────────────────────────────

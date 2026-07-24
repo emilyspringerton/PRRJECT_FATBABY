@@ -22,6 +22,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/newssite/catalog"
 	"github.com/example/prrject-fatbaby/internal/newssite/chart"
 	"github.com/example/prrject-fatbaby/internal/newssite/commentary"
+	"github.com/example/prrject-fatbaby/internal/newssite/companybios"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/edition"
 	"github.com/example/prrject-fatbaby/internal/newssite/epsread"
@@ -62,6 +63,7 @@ type Handler struct {
 	guidanceStore        *guidanceread.Store // nil if guidance-dir not configured
 	earningsCalStore     *earningscal.Store  // nil if earnings-cal-dir not configured
 	marketData           *marketdata.Store   // nil if market-data-dir not configured
+	companyBios          *companybios.Store  // nil if company-bios-path not configured
 	emilyBaseURL         string              // Emily Prime base URL for /api/ask; empty disables
 	signalapiURL         string              // signalapi base URL for ticker context injection; empty skips
 	googleClientID       string              // Google OAuth client ID for Sign in with Google; empty disables auth flow
@@ -114,6 +116,7 @@ func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 func (h *Handler) SetCommentaryAPIKeys(keys []string) { h.commentaryAPIKeys = keys }
 func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)  { h.guidanceStore = gs }
 func (h *Handler) SetEarningsCalStore(s *earningscal.Store) { h.earningsCalStore = s }
+func (h *Handler) SetCompanyBiosStore(cb *companybios.Store) { h.companyBios = cb }
 
 // ServeHTTP dispatches routes.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -518,7 +521,11 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 			pastEarnings[i], pastEarnings[j] = pastEarnings[j], pastEarnings[i]
 		}
 	}
-	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, h.symbols())
+	var bio string
+	if h.companyBios != nil {
+		bio = h.companyBios.Bio(symbol)
+	}
+	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, h.symbols(), bio)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK

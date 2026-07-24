@@ -579,6 +579,12 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
 {{template "sectionsrail" .}}
 <div class="ticker-body">
   <main>
+    {{if .Bio}}
+    <div style="font-size:0.88rem;line-height:1.5;padding:0.75rem 0;border-bottom:1px solid #ddd;margin-bottom:1rem;">
+      {{.Bio}}
+      <div style="font-size:0.72rem;color:#888;margin-top:0.35rem;">Draft company overview, not yet editorially reviewed.</div>
+    </div>
+    {{end}}
     {{if .Lead}}
     <article class="lead-story">
       <span class="kicker {{.Lead.KickerClass}}">{{.Lead.Kicker}}</span>
