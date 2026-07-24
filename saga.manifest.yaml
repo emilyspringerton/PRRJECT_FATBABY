@@ -1,0 +1,15 @@
+# saga.manifest.yaml — SAGA (HQ-SPEC-DOC-102) claim-to-verification binding
+# for this repo. Format: EMILY/docs/hq-specs/HQ-SPEC-DOC-102-saga-curation-
+# lifecycle.md §2. Checked via `emily saga gaps --repo <this repo>`.
+#
+# Honestly empty as of 2026-07-24 (S143-02, build-sequence step 2): no
+# existing HQ-SPEC doc has any claims anchored in this repo's code yet --
+# grepped all 7 live docs, none cite PRRJECT_FATBABY. Writing this file as
+# non-empty would mean inventing claims (and probably a whole new HQ-SPEC
+# doc to own them) that don't exist yet, which is a real authorship/design
+# task of its own, not this pass's scope. An empty manifest against a real,
+# running ~20-process pipeline is itself the correct first output of this
+# tool -- it makes every one of this repo's real event types show up as
+# dark matter, visible debt from day one, exactly as DOC-102 §2 intends
+# ("unbound claims are visible debt from day one"). See `emily saga gaps
+# --repo .` output, captured in EMILY/BACKLOG.md's S143-02 entry.
