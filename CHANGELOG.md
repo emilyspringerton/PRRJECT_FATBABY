@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-07-25
+
+- fix(buyback): four real classification/extraction bugs found investigating S170-06 ("buyback-
+  watcher residual noise... determine how much traces back to the nav-chrome path vs. a separate
+  cause"). Root cause was NOT the nav-chrome bug (S170-05) at all -- a distinct, dead-code bug:
+  `reComplete`, a properly proximity-scoped regex, was defined but never referenced; the switch
+  statement instead checked "does a completion verb appear anywhere" AND "does a buyback word
+  appear anywhere" independently, with no proximity requirement between them at all. Confirmed
+  live: a customer-retention marketing press release ("repurchase rate" as an ecommerce metric)
+  and a proxy-vote press release's forward-looking-statements boilerplate ("our share repurchase
+  program" as one of many listed risk factors) both got misclassified as real buyback completions.
+  Also tightened `reBuybackCore` (bare "repurchase" matched irrelevant uses like "customer
+  repurchase rate" and "securities sold under agreements to repurchase" -- a repo financing
+  instrument, not a stock buyback) and widened `reAuthorize`/`reComplete`'s proximity windows
+  (too tight for real dollar-figure-laden prose; also added "normal course issuer bid"/"NCIB" as
+  Canadian buyback terminology, confirmed missing via a real CAE renewal that used no other
+  recognizable authorization language). Separately, `extractUSD`/`extractShares` took "the first
+  dollar/share figure anywhere in the document" with no proximity to the buyback mention at all --
+  confirmed live: Docusign's real buyback figure is $317.5M, but the first dollar figure in the
+  press release is unrelated revenue, $830.2M, several paragraphs earlier. Fixed by anchoring
+  extraction to the same regex that drove classification, plus excluding "$X compared to $Y in the
+  same period last year" prior-period comparison figures (a very common earnings-release idiom)
+  from ever being selected. 6 new regression tests using real captured false-positive/false-
+  extraction text, all passing alongside the existing suite. Corrected the live entity-graph:
+  removed 8 fabricated/reclassified-away buyback signals (PCRX -- entirely fabricated from
+  boilerplate; DOCU/PMET/ISTR/FUNC/MBWM/EFX/KEY/PANW -- routine mentions or, for MBWM, a repo
+  financing instrument misread as a buyback), corrected 2 real signals' amounts (TOUR $19.2M
+  (unrelated revenue) -> $10M (actual authorized cap); CAE completion/$20M (fabricated) ->
+  authorization/no dollar figure (real NCIB renewal, share-count cap only, no dollar cap stated)).
+  Regenerated `var/buybacks/buybacks.ndjson` (14 -> 4 records) by reclassifying each of the
+  original 14 records' real captured press-release bodies through the fixed classifier.
+
 ## 2026-07-24
 - feat(newssite): wire draft company bios into live ticker pages. New `internal/newssite/companybios`
   store reads `config/company_bios.json` (a flat ticker→bio map), loaded in `cmd/newssite` via
