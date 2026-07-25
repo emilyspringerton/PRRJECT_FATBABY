@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-25 (4)
+
+- fix(gitignore): `/prwatch` (meant to ignore a stray `./prwatch` binary from a bare `go build
+  ./cmd/...`) also shadowed the real `prwatch/` library package directory, silently blocking any
+  new file added there without `git add -f`. Found for real: `crawler_test.go` (added in the
+  previous entry's commit) got dropped from that commit without any warning. Added `!/prwatch/`
+  to unshadow the directory while still catching the actual accidental-binary case. Same class of
+  bug as the DIS unanchored-`dis/` fix (S23-07).
+
 ## 2026-07-25 (3)
 
 - feat(prwatch-body): persist the discovery-store read cursor across restarts (S24-07,
