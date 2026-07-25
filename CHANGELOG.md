@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-25 (3)
+
+- feat(prwatch-body): persist the discovery-store read cursor across restarts (S24-07,
+  follow-up from the S24-06 deadlock fix). `RunBodyCrawler` always started `lastSeq` at 1 on
+  every process start with no way to remember where it left off -- harmless (loadBodySeenIDs
+  dedupes) but wasteful, and gets slower every day as the discovery store grows: every restart
+  re-paged the *entire* discovery history in 512-record batches, one poll-interval apart, before
+  reaching the live frontier. Added `CrawlerConfig.CursorPath`, wired to
+  `var/prwatch-body/.cursor` (same `.cursor`-file idiom eps-processor/guidance-watcher/
+  dividend-watcher already use for their own body-store cursors), loaded on start and saved after
+  each processed batch. 3 new unit tests for the load/save helpers. Verified live: first restart
+  saved cursor=513, second restart resumed from `from_sequence=513` instead of 1.
+
 ## 2026-07-25 (2)
 
 - fix(prwatch-body): root-caused "newssite content feels stale except Stocks on the Move / no

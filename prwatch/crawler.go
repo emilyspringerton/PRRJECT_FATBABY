@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -65,6 +67,14 @@ type CrawlerConfig struct {
 	// Defaults to 4 MiB.
 	MaxDocBytes int64
 
+	// CursorPath, if set, persists the discovery-store read position
+	// (lastSeq) across restarts -- without it, every restart starts back
+	// at sequence 1 and re-pages the entire discovery history (harmless,
+	// since loadBodySeenIDs dedupes, but wasteful and grows slower every
+	// day as the discovery store grows). Left empty in tests that don't
+	// care about restart behavior.
+	CursorPath string
+
 	// Now returns the current time.  Override in tests.
 	Now func() time.Time
 
@@ -102,6 +112,9 @@ func RunBodyCrawler(ctx context.Context, cfg CrawlerConfig) error {
 	var seenMu sync.Mutex
 
 	lastSeq := uint64(1)
+	if cfg.CursorPath != "" {
+		lastSeq = loadDiscoveryCursor(cfg.CursorPath, cfg.Logger)
+	}
 	cfg.Logger.Printf("body_crawler start from_sequence=%d workers=%d poll_interval=%s", lastSeq, cfg.Workers, cfg.PollInterval)
 
 	for {
@@ -113,6 +126,9 @@ func RunBodyCrawler(ctx context.Context, cfg CrawlerConfig) error {
 		if len(recs) > 0 {
 			lastSeq = recs[len(recs)-1].Sequence + 1
 			crawlBatch(ctx, cfg, recs, seen, &seenMu)
+			if cfg.CursorPath != "" {
+				saveDiscoveryCursor(cfg.CursorPath, lastSeq, cfg.Logger)
+			}
 		}
 
 		select {
@@ -263,6 +279,36 @@ func loadBodySeenIDs(ctx context.Context, store eventstore.EventStore) (map[stri
 			}
 		}
 		from = recs[len(recs)-1].Sequence + 1
+	}
+}
+
+// loadDiscoveryCursor/saveDiscoveryCursor mirror the same .cursor-file
+// pattern cmd/eps-processor, cmd/guidance-watcher, and cmd/dividend-watcher
+// already use for their own body-store read positions -- same idiom,
+// applied here to prwatch-body's discovery-store read position.
+func loadDiscoveryCursor(path string, logger Logger) uint64 {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 1
+	}
+	var seq uint64
+	if _, err := fmt.Sscan(string(data), &seq); err != nil {
+		logger.Printf("bad discovery cursor in %s: %v", path, err)
+		return 1
+	}
+	if seq == 0 {
+		return 1
+	}
+	return seq
+}
+
+func saveDiscoveryCursor(path string, seq uint64, logger Logger) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		logger.Printf("discovery cursor dir: %v", err)
+		return
+	}
+	if err := os.WriteFile(path, []byte(fmt.Sprint(seq)), 0o644); err != nil {
+		logger.Printf("save discovery cursor: %v", err)
 	}
 }
 
