@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-07-25 (2)
+
+- fix(prwatch-body): root-caused "newssite content feels stale except Stocks on the Move / no
+  press releases for days" (founder real-time report, S24-06). eps-processor/guidance-watcher/
+  dividend-watcher were correctly reporting "nothing new" -- their cursors were fully caught up to
+  prwatch-body's own event store. The real stall was one level further upstream: prwatch-body's
+  crawler uses `http.DefaultClient` with no timeout and no context deadline; `crawlBatch` blocks on
+  `wg.Wait()` for all 4 workers before the outer poll loop can run again, so a single hung PR
+  Newswire connection freezes the entire crawler indefinitely -- confirmed live (process alive
+  since Jul 21, ~6min total CPU time, zero log output for 4+ hours while `prwatch` discovery kept
+  finding new releases the whole time). Fixed by wrapping each fetch's context with a 30s timeout
+  in `crawlOne` (`prwatch/crawler.go`). Also noted: `RunBodyCrawler` doesn't persist its discovery-
+  store read cursor across restarts (`lastSeq` always starts at 1) -- not the cause of this stall,
+  but means every restart re-pages the full discovery history before reaching the live frontier;
+  worth a follow-up if restarts become frequent.
+
 ## 2026-07-25
 
 - fix(buyback): four real classification/extraction bugs found investigating S170-06 ("buyback-
