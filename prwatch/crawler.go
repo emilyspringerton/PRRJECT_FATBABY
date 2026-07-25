@@ -193,7 +193,13 @@ func crawlOne(ctx context.Context, cfg CrawlerConfig, prID string, ev PressRelea
 	now := cfg.Now()
 	nowStr := now.Format(time.RFC3339Nano)
 
-	clean, err := processor.FetchAndCleanText(ctx, ev.URL, cfg.UserAgent, cfg.MaxDocBytes)
+	// FetchAndCleanText uses http.DefaultClient, which has no timeout. A
+	// single hung connection would otherwise block this worker forever,
+	// and since crawlBatch waits on all workers before the outer poll
+	// loop can run again, one stuck fetch freezes the entire crawler.
+	fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	clean, err := processor.FetchAndCleanText(fetchCtx, ev.URL, cfg.UserAgent, cfg.MaxDocBytes)
 	if err != nil {
 		// Persist a failure event so we don't retry endlessly on restart.
 		payload, _ := json.Marshal(BodyFailedEvent{
