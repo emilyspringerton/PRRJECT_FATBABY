@@ -101,7 +101,7 @@ func eventData(ctx context.Context, cfg RunnerConfig, pr PRDiscovery, now time.T
 	if !pr.Timestamp.IsZero() {
 		e.PublishedAt = pr.Timestamp.UTC().Format(time.RFC3339Nano)
 	}
-	if refs, snippet := discoverTickers(ctx, cfg.Client, pr.URL); len(refs) > 0 {
+	if refs, snippet := discoverTickers(ctx, cfg.Client, cfg.Logger, pr.URL); len(refs) > 0 {
 		e.Identity.AllTickers = refs
 		first := refs[0]
 		e.Identity.PrimaryTicker = &first
@@ -147,22 +147,70 @@ func mustJSON(v any) json.RawMessage {
 	return b
 }
 
-func discoverTickers(ctx context.Context, c *Client, u string) ([]identitypkg.SecurityRef, string) {
+// discoverTickerRetryDelay is how long to wait before a single retry when the first fetch
+// succeeds (200 OK) but yields zero ticker refs -- the leading hypothesis (S160-01) is a timing
+// race: discovery fires near publish time, while the page's ticker text isn't reliably live at
+// the CDN edge yet (prwatch-body's own later-polling fetch of the exact same URL does find the
+// ticker text). One bounded retry tests that hypothesis directly without redesigning the event
+// model to depend on prwatch-body's separately-scheduled fetch.
+var discoverTickerRetryDelay = 5 * time.Second
+
+func discoverTickers(ctx context.Context, c *Client, logger Logger, u string) ([]identitypkg.SecurityRef, string) {
+	refs, snippet, ok := fetchAndExtractTickers(ctx, c, logger, u)
+	if ok && len(refs) == 0 {
+		if logger != nil {
+			logger.Printf("prwatch: discoverTickers: no ticker refs on first fetch of %s, retrying once after %s", u, discoverTickerRetryDelay)
+		}
+		select {
+		case <-time.After(discoverTickerRetryDelay):
+		case <-ctx.Done():
+			return refs, snippet
+		}
+		if retryRefs, retrySnippet, retryOK := fetchAndExtractTickers(ctx, c, logger, u); retryOK && len(retryRefs) > 0 {
+			return retryRefs, retrySnippet
+		}
+	}
+	return refs, snippet
+}
+
+// fetchAndExtractTickers does one fetch+extract attempt. The bool return is whether the fetch
+// itself succeeded (as opposed to a request/network/read failure) -- distinct from whether any
+// ticker refs were found, so discoverTickers can tell "the page loaded but had no tickers yet"
+// (worth retrying) apart from "the fetch itself is broken" (retrying won't help).
+func fetchAndExtractTickers(ctx context.Context, c *Client, logger Logger, u string) ([]identitypkg.SecurityRef, string, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, ""
+		if logger != nil {
+			logger.Printf("prwatch: discoverTickers: request creation failed for %s: %v", u, err)
+		}
+		return nil, "", false
 	}
 	req.Header.Set("User-Agent", c.ua)
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return nil, ""
+		if logger != nil {
+			logger.Printf("prwatch: discoverTickers: fetch failed for %s: %v", u, err)
+		}
+		return nil, "", false
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+	if resp.StatusCode != http.StatusOK {
+		if logger != nil {
+			logger.Printf("prwatch: discoverTickers: non-200 status %d for %s", resp.StatusCode, u)
+		}
+		return nil, "", false
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+	if err != nil {
+		if logger != nil {
+			logger.Printf("prwatch: discoverTickers: body read failed for %s: %v", u, err)
+		}
+		return nil, "", false
+	}
 	refs := prid.ExtractFromHTML(body)
 	snippet := string(body)
 	if len(snippet) > 256 {
 		snippet = snippet[:256]
 	}
-	return refs, snippet
+	return refs, snippet, true
 }

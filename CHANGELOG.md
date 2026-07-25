@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-25 (5)
+
+- fix(prwatch): `discoverTickers` silently returning empty on live discovery (S160-01/S159-01,
+  EMILY/BACKLOG.md). Confirmed live: every recent `pr_discovered` record had `"identity":{}`
+  empty, yet the same URLs, fetched moments later by `prwatch-body`'s separate crawler, contained
+  real ticker text (`(NASDAQ: ZG)`, `(NYSE: ZTS)`, etc.). Root cause was two things layered: (1)
+  every silent-failure branch in `discoverTickers` swallowed its error with zero logging, so
+  there was no way to tell fetch failure from a genuine empty result; (2) the leading hypothesis
+  (a timing race — discovery fires near publish time, before the page's ticker text is reliably
+  live at the CDN edge) had no mitigation at all. Fixed: added structured logging to every
+  failure branch (request-creation, fetch, non-200 status, body-read), and a single bounded
+  retry (5s delay) when the fetch itself succeeds (200 OK) but yields zero ticker refs — the
+  exact case the timing-race hypothesis predicts, distinct from a genuine fetch failure (which
+  does not retry, since retrying a broken fetch doesn't help). 6 new tests (`prwatch/
+  runner_test.go`) against a fake HTTP server, covering first-fetch success, retry-then-success,
+  retry-then-still-empty, no-retry-on-fetch-failure, and nil-logger safety. `go test ./...`
+  green. Live: rebuilt and restarted `fatbaby-prwatch.service`, monitored real traffic for ~90
+  minutes. Multiple real discoveries processed correctly during the window, including two with
+  real tickers found (NASDAQ: BRCB, sequence 6332; and a TripCom Group release, sequence 6324,
+  predating the restart) — no regressions. The specific empty-then-retry-succeeds race didn't
+  recur during this particular window (real PR Newswire traffic is bursty, not something that
+  can be forced on demand), so the retry path itself hasn't yet been observed firing against a
+  genuine live race — that half is proven by the 6 deterministic unit tests against a fake
+  server, not yet by a live occurrence. The diagnostic logging is in place either way and will
+  surface the next time the race actually happens. **Forward-only**, same caveat as S160-03: the
+  event store is append-only, so already-persisted empty-identity records (including S159-01's
+  own stuck EPS case, `eps:4905f716794c7f58`) stay empty historically — a backfill would be a
+  separate item (S160-05 already tracks this, low priority).
+
 ## 2026-07-25 (4)
 
 - fix(gitignore): `/prwatch` (meant to ignore a stray `./prwatch` binary from a bare `go build
