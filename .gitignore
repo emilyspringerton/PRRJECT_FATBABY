@@ -16,6 +16,7 @@
 /entity-graph
 /secwatch
 /prwatch
+!/prwatch/
 /processor
 /dashboard
 /feedserver
