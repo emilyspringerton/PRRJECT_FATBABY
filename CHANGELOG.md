@@ -28,7 +28,7 @@
   (109 -> 47 records; original backed up to `var/guidance/pre-s170-07-backup/`), verified zero
   spam terms remain. Rebuilt and restarted `fatbaby-guidance-watcher.service`; confirmed live
   on `news.okemily.com/section/guidance` (200 OK, zero litigation-alert terms found on the
-  rendered page after `newssite`'s own 60s guidance-store refresh). Commit TBD.
+  rendered page after `newssite`'s own 60s guidance-store refresh). Commit `17b69a2`.
 
 ## 2026-07-25 (5)
 
