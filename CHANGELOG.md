@@ -22,7 +22,7 @@
   `fatbaby-dividend-watcher.service`. Not checked this pass: whether the same "Also from this
   source" contamination affects guidance-watcher's, buyback-watcher's, or eps-processor's
   historical data -- flagged as a possible, unconfirmed follow-up, not chased speculatively.
-  PRRJECT_FATBABY commit follows.
+  PRRJECT_FATBABY `daaa917`.
 
 - fix(dividend-watcher): same litigation-alert-spam contamination as S170-07's guidance-watcher
   fix, found while continuing the "check the fatbaby data ingestion" audit -- checked every other
