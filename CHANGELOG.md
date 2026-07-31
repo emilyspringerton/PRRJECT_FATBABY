@@ -2,6 +2,28 @@
 
 ## 2026-07-31
 
+- fix(dividend-watcher): S170-231, a real Target press release ("Announces Voting Results from
+  2026 Annual Meeting of Shareholders") was misclassified as a dividend "raise" event and
+  written to entity-graph. Root-caused, not guessed: `dividend.Classify`'s trigger regex ran
+  over the FULL page body, which -- confirmed live -- includes PRNewswire's own "Also from this
+  source" related-articles widget, teasing a real but DIFFERENT press release ("Target
+  Corporation Increases Quarterly Dividend by 1.8 Percent") a few paragraphs down the same page.
+  The classifier had no way to know that dividend language belonged to a release it wasn't
+  actually looking at. Extremely common across the corpus (2358 occurrences in
+  `var/prwatch-body`) -- not a rare edge case, though most occurrences are harmless. Added
+  `prspam.StripRelatedArticles` (truncates body at the widget marker, same fail-open philosophy
+  as the existing nav-chrome fix) to the shared `internal/prspam` package from S170-07, wired
+  into dividend-watcher before classification. Checked the one other borderline record
+  (OceanaGold, also `EventType: raise`, `$0.00/share`) by hand before touching anything -- it's
+  real: the CEO's own quote in OceanaGold's actual buyback-renewal release says "return more to
+  shareholders in 2026 via a higher dividend," a genuine soft capital-return signal with no
+  declared amount, not a bug. `go test ./...` green. Regenerated `var/dividends/dividends.ndjson`
+  (7 -> 6 records, TGT's fabricated signal gone). Rebuilt and restarted
+  `fatbaby-dividend-watcher.service`. Not checked this pass: whether the same "Also from this
+  source" contamination affects guidance-watcher's, buyback-watcher's, or eps-processor's
+  historical data -- flagged as a possible, unconfirmed follow-up, not chased speculatively.
+  PRRJECT_FATBABY commit follows.
+
 - fix(dividend-watcher): same litigation-alert-spam contamination as S170-07's guidance-watcher
   fix, found while continuing the "check the fatbaby data ingestion" audit -- checked every other
   `prwatch-body` consumer (buyback-watcher and eps-processor were clean; earnings-calendar had 4

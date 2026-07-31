@@ -1,6 +1,9 @@
 package prspam
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Real litigation-alert headlines captured live from var/prwatch (S170-07)
 // -- every one of these previously produced a fabricated financial-event
@@ -52,6 +55,32 @@ func TestIsLitigationAlertHeadline(t *testing.T) {
 		if IsLitigationAlertHeadline(h) {
 			t.Errorf("IsLitigationAlertHeadline(%q) = true, want false (real release)", h)
 		}
+	}
+}
+
+// S170-231: real body text captured live (var/prwatch-body) from the
+// Target "Annual Meeting of Shareholders" press release that produced a
+// fabricated dividend "raise" signal -- the real dividend language belongs
+// to a DIFFERENT, related Target press release teased by PRNewswire's
+// "Also from this source" widget further down the same page, not to the
+// release actually being classified.
+func TestStripRelatedArticles(t *testing.T) {
+	body := "Target Announces Voting Results from 2026 Annual Meeting of Shareholders " +
+		"the annual meeting was held virtually and all proposals passed. " +
+		"Also from this source Target Corporation Increases Quarterly Dividend by 1.8 Percent " +
+		"The board of directors of Target Corporation (NYSE:TGT) has declared a quarterly " +
+		"dividend of $1.16 per common share, a 1.8% increase from the prior quarter."
+	got := StripRelatedArticles(body)
+	if strings.Contains(got, "Increases Quarterly Dividend") {
+		t.Errorf("StripRelatedArticles did not remove the related-article widget: %q", got)
+	}
+	if !strings.Contains(got, "all proposals passed") {
+		t.Errorf("StripRelatedArticles removed real article content it shouldn't have: %q", got)
+	}
+
+	noMarker := "A real press release with no related-articles widget at all."
+	if got := StripRelatedArticles(noMarker); got != noMarker {
+		t.Errorf("StripRelatedArticles(%q) = %q, want unchanged", noMarker, got)
 	}
 }
 

@@ -152,7 +152,17 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerMap ma
 			continue
 		}
 
-		ev := dividend.Classify(body.Headline, body.Body)
+		// S170-231: a real, non-spam release's own page can embed PRNewswire's
+		// "Also from this source" widget teasing a DIFFERENT press release from
+		// the same company -- confirmed live, a "Target Announces Voting Results
+		// from Annual Meeting of Shareholders" release fabricated a dividend
+		// "raise" signal from a teased, unrelated "Target Corporation Increases
+		// Quarterly Dividend" article a few paragraphs down the same page.
+		// Truncate before classifying, not after -- same reasoning as the
+		// litigation-alert filter just above.
+		classifyBody := prspam.StripRelatedArticles(body.Body)
+
+		ev := dividend.Classify(body.Headline, classifyBody)
 		if ev == nil || ev.EventType == dividend.EventRegular {
 			continue
 		}

@@ -17,9 +17,18 @@
 // litigation-alert copy, attributed to a company that never issued it --
 // this package exists so every prwatch-body consumer shares one filter
 // instead of each reinventing (and independently under-covering) it.
+//
+// Also covers StripRelatedArticles (S170-231): a second, unrelated class of
+// page cruft -- PRNewswire's "Also from this source" related-articles
+// widget, which can tease a DIFFERENT real press release from the same
+// company and fool a trigger-word classifier just as easily as litigation
+// spam does.
 package prspam
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // reHeadlineTimePrefix strips a leading "HH:MM ET" scrape artifact -- and the
 // blank/tab-indented lines PRNewswire's own listing markup wraps around it --
@@ -68,4 +77,40 @@ func IsLitigationAlertHeadline(title string) bool {
 // off the start of the headline isn't contaminated by it.
 func StripTimePrefix(title string) string {
 	return reHeadlineTimePrefix.ReplaceAllString(title, "")
+}
+
+// relatedArticlesMarker is PRNewswire's own "Also from this source" related-
+// articles recommendation widget header. It sits inside the same page (often
+// inside the release-body boundary extract_clean.go's own
+// extractPRNewswireArticleBody looks for), teasing OTHER, unrelated press
+// releases from the same company -- e.g. a "Target Announces Voting Results
+// from 2026 Annual Meeting of Shareholders" release's own page embeds "Also
+// from this source Target Corporation Increases Quarterly Dividend by 1.8
+// Percent" a few paragraphs down. A trigger-word classifier over the full
+// body text has no way to know that snippet describes a DIFFERENT press
+// release, not the one it's actually classifying -- confirmed live, S170-231
+// (EMILY/BACKLOG.md): this exact widget produced a fabricated dividend
+// "raise" signal attributed to a routine shareholder-meeting-voting-results
+// release that never announced a dividend change at all. Extremely common
+// (2358 occurrences across the full var/prwatch-body corpus at the time this
+// was found) -- not a rare edge case, though most occurrences are harmless
+// (the teased related article doesn't happen to trip a trigger-word
+// classifier). Same "strip known page cruft before classifying" philosophy
+// as extractPRNewswireArticleBody's own nav-chrome fix, just for a different
+// piece of surrounding-page noise, and applied at read-time rather than
+// fetch-time since these watchers only ever read prwatch-body's already-
+// stored bodies, never re-fetch.
+const relatedArticlesMarker = "Also from this source"
+
+// StripRelatedArticles truncates body at PRNewswire's "Also from this
+// source" widget marker (see relatedArticlesMarker's own doc comment),
+// discarding everything from that point on. Returns body unchanged if the
+// marker isn't present -- same fail-open-to-the-original philosophy
+// extractPRNewswireArticleBody already uses, never breaks classification
+// outright if the marker moves or isn't there.
+func StripRelatedArticles(body string) string {
+	if idx := strings.Index(body, relatedArticlesMarker); idx >= 0 {
+		return body[:idx]
+	}
+	return body
 }
