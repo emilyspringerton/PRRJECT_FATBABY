@@ -23,7 +23,7 @@
   Shareholders" voting results) is real but still misclassified as a dividend "raise" with
   $0.00/share -- a different root cause (the core classifier's own false-positive rate on
   dividend-adjacent text in an unrelated real release, not litigation spam), logged as a new
-  BACKLOG follow-up rather than scope-crept into this fix. PRRJECT_FATBABY commit follows.
+  BACKLOG follow-up rather than scope-crept into this fix. PRRJECT_FATBABY `14c2930`.
 
 - fix(guidance-watcher): pulling a `[ ]` from the lowest-numbered open BACKLOG section
   (S170-07, "investigate where issuer gets set in internal/guidance and whether INVESTOR
