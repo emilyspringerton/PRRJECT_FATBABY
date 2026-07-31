@@ -30,6 +30,7 @@ import (
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/dividend"
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
+	"github.com/example/prrject-fatbaby/internal/prspam"
 	"github.com/example/prrject-fatbaby/prwatch"
 )
 
@@ -134,6 +135,20 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerMap ma
 
 		ticker := tickerMap[body.PRDiscoveryID]
 		if ticker == "" {
+			continue
+		}
+
+		// S170-07 follow-up: dividend.Classify's own core regex only requires
+		// "dividend"/"distribution" to appear anywhere in headline+body -- a
+		// securities-litigation-alert press release about a dividend-paying
+		// company (a BDC's own regular distribution is exactly the kind of
+		// detail that ends up quoted in the litigation copy) trips that just
+		// as easily as a real announcement. Confirmed live: 14 of 20 records
+		// in var/dividends/dividends.ndjson were this exact contamination,
+		// including at least one real "raise" event fabricated from an
+		// INVESTOR ALERT. Same prspam filter guidance-watcher uses for the
+		// identical reason (S170-07), applied here before classification.
+		if prspam.IsLitigationAlertHeadline(body.Headline) {
 			continue
 		}
 

@@ -2,6 +2,29 @@
 
 ## 2026-07-31
 
+- fix(dividend-watcher): same litigation-alert-spam contamination as S170-07's guidance-watcher
+  fix, found while continuing the "check the fatbaby data ingestion" audit -- checked every other
+  `prwatch-body` consumer (buyback-watcher and eps-processor were clean; earnings-calendar had 4
+  stale, low-volume, empty-ticker records dated 2026-06-07, predating a guard already in the
+  current code, not worth chasing). `var/dividends/dividends.ndjson` was 70% contaminated (14 of
+  20 records): `dividend.Classify`'s core regex only needs "dividend"/"distribution" to appear
+  anywhere in headline+body, and a securities-litigation alert about a dividend-paying company
+  (FS KKR Capital Corp., a BDC whose own regular distribution shows up in the litigation copy)
+  trips that as easily as a real announcement -- including at least one real "raise" signal
+  fabricated from an "FSK INVESTOR ALERT" and written to entity-graph. Extracted the litigation-
+  alert filter and the headline-timestamp-prefix strip out of guidance-watcher into a new shared
+  `internal/prspam` package (two independent consumers needing the identical logic was the
+  concrete trigger for pulling it out, not speculative reuse) -- `cmd/guidance-watcher` refactored
+  to use it too, no behavior change there. Wired into `cmd/dividend-watcher` before
+  `dividend.Classify` runs. `go test ./...` green. Regenerated `var/dividends/dividends.ndjson`
+  through the fixed pipeline (20 -> 7 records, original backed up to
+  `var/dividends/pre-s170-07-backup/`), rebuilt and restarted `fatbaby-dividend-watcher.service`.
+  **New finding, not fixed this pass**: one surviving record (Target, "Annual Meeting of
+  Shareholders" voting results) is real but still misclassified as a dividend "raise" with
+  $0.00/share -- a different root cause (the core classifier's own false-positive rate on
+  dividend-adjacent text in an unrelated real release, not litigation spam), logged as a new
+  BACKLOG follow-up rather than scope-crept into this fix. PRRJECT_FATBABY commit follows.
+
 - fix(guidance-watcher): pulling a `[ ]` from the lowest-numbered open BACKLOG section
   (S170-07, "investigate where issuer gets set in internal/guidance and whether INVESTOR
   ALERT/SHAREHOLDER-style headlines should be filtered pre-extraction") found the bug was
