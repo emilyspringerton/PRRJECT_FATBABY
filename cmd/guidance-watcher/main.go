@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -119,6 +120,11 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerByID m
 			continue
 		}
 
+		if isLitigationAlertHeadline(ev.Headline) {
+			skipped++
+			continue
+		}
+
 		sourceIdentity := "pr:" + ev.PRDiscoveryID
 		g := guidance.Extract(ev.Body, sourceIdentity, ticker)
 		if !g.HasGuidance {
@@ -212,10 +218,68 @@ func buildTickerMap(ctx context.Context, store eventstore.EventStore, logger *lo
 	return m
 }
 
+// reHeadlineTimePrefix strips a leading "HH:MM ET" scrape artifact -- and the
+// blank/tab-indented lines PRNewswire's own listing markup wraps around it --
+// that prwatch's discovery scraper (prwatch/client.go's h3Re) captures
+// alongside the real title text. Confirmed live, S170-07: essentially every
+// ev.Headline in var/guidance carries this, e.g. "13:46 ET\n\t\t\t\n\t\t\t\n
+// \t\t\tPNR SHAREHOLDER INVESTIGATION: ...". Left unfixed, it either garbles
+// the "Reports/Announces/..." keyword split below (the keyword still matches,
+// but the returned issuer carries the timestamp prefix) or, worse, dominates
+// the 40-char fallback so the "issuer" is mostly timestamp noise plus a few
+// truncated real characters. Fixing this at the scrape source (prwatch/
+// client.go) would touch every other watcher reading ev.Headline -- out of
+// this ticket's scope, so it's stripped defensively here instead.
+var reHeadlineTimePrefix = regexp.MustCompile(`(?s)^\s*\d{1,2}:\d{2}\s*ET\s*`)
+
+// reLitigationAlertHeadline matches the securities-litigation-solicitation
+// genre of PRNewswire press release: a law firm (SueWallSt, Pomerantz, Levi &
+// Korsinsky, Rosen, Robbins Geller, Wolf Haldenstein, Hagens Berman, The
+// Gross Law Firm, Kahn Swick, Bragar Eagel, and others not worth enumerating
+// individually) soliciting plaintiffs against a company whose ticker just
+// happens to appear in the release, e.g. "PNR SHAREHOLDER INVESTIGATION:
+// SueWallSt Notifies Investors of Potential Securities Claims Involving
+// Pentair plc". These aren't guidance from the company at all -- confirmed
+// live, S170-07: pulling var/guidance/articles.ndjson found this genre was
+// not a rare edge case but the overwhelming majority of the live dataset,
+// each one a fabricated "guidance" article (a real EPS figure quoted
+// somewhere *inside* the litigation-alert copy, attributed to a company that
+// never issued it) attached to a garbled issuer name via the fallback path
+// above. Matched on phrase, not law-firm name, since the roster of firms
+// running this playbook is long and any name list would immediately go
+// stale; these phrases are near-universal boilerplate across the entire
+// genre regardless of which firm wrote it (also covers the closely-related
+// data-breach-class-action genre, e.g. Edelson Lechtzin's "Data Breach"
+// alerts, and generic M&A-fairness solicitations like "Investigating
+// Whether X Are Obtaining Fair Deals for their Shareholders" -- same
+// solicit-plaintiffs playbook, different pretext). Measured against the
+// full var/prwatch headline corpus (9625 unique headlines) before shipping:
+// flags ~12%, with a manual review of both the flagged and unflagged sides
+// finding no genuine company press release caught and no more than a stray,
+// low-volume long tail of spam phrasing left uncaught -- good enough to
+// stop fabricating guidance data, not a claim of exhaustive coverage.
+var reLitigationAlertHeadline = regexp.MustCompile(`(?i)\b(shareholder alert|shareholder investigation|investor alert|` +
+	`investor investigation|class action|securities claims|securities fraud|securities lawsuit|` +
+	`securities law violations|notifies investors|reminds (?:shareholders|investors)|deadline alert|` +
+	`lead plaintiff deadline|encourages investors|opportunity to lead|fair deals for|fiduciary duties|` +
+	`data breach|law firm|lost money|investigat\w*)\b`)
+
+// isLitigationAlertHeadline reports whether title reads as a securities-
+// litigation solicitation rather than a real company press release -- see
+// reLitigationAlertHeadline's own doc comment. Applied before extraction
+// (not after): unlike extractIssuerFromTitle's fallback, which just produces
+// an ugly issuer name, letting one of these through guidance.Extract can
+// fabricate an entire "company raises guidance" article from numbers quoted
+// out of context inside the litigation copy.
+func isLitigationAlertHeadline(title string) bool {
+	return reLitigationAlertHeadline.MatchString(title)
+}
+
 // extractIssuerFromTitle pulls the company name from a press release title.
 // Press release titles often start with "Company Name Reports ..." or
 // "Company Name Announces ...".
 func extractIssuerFromTitle(title string) string {
+	title = strings.TrimSpace(reHeadlineTimePrefix.ReplaceAllString(title, ""))
 	for _, kw := range []string{" Reports ", " Announces ", " Provides ", " Issues ", " Updates "} {
 		if idx := strings.Index(title, kw); idx > 0 {
 			return strings.TrimSpace(title[:idx])

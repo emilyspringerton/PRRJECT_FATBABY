@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-31
+
+- fix(guidance-watcher): pulling a `[ ]` from the lowest-numbered open BACKLOG section
+  (S170-07, "investigate where issuer gets set in internal/guidance and whether INVESTOR
+  ALERT/SHAREHOLDER-style headlines should be filtered pre-extraction") found the bug was
+  far bigger than the ticket's own single-record example suggested: pulling the live
+  `var/guidance/articles.ndjson` dataset showed the overwhelming majority of it (58 of 109
+  records) was fabricated. Securities-litigation-solicitation press releases (SueWallSt,
+  Pomerantz, Levi & Korsinsky, Robbins Geller/LLP, Wolf Haldenstein, Hagens Berman, The Gross
+  Law Firm, DJS Law Group, Kahn Swick, and others) name a real company's ticker while
+  soliciting plaintiffs against it, sometimes quoting a real EPS figure out of context inside
+  the litigation copy -- `guidance.Extract`'s trigger-word regex has no way to tell that
+  apart from genuine forward guidance, so it fabricated a "company raises guidance" article
+  attributed to a company that never issued one. Two fixes in `cmd/guidance-watcher/main.go`:
+  (1) `isLitigationAlertHeadline` -- a phrase-matched pre-extraction filter (not a law-firm
+  name list, which would go stale; matched against the full 9625-headline `var/prwatch`
+  corpus before shipping, ~12% flagged, manually verified no real company release caught and
+  the residual unflagged long tail is genuinely negligible) -- skips these entirely, before
+  `guidance.Extract` ever runs; (2) `reHeadlineTimePrefix` strips a leading "HH:MM ET" scrape
+  artifact from `prwatch`'s own discovery scraper that was contaminating every extracted
+  issuer name, real or spam (worst-case on `extractIssuerFromTitle`'s 40-char fallback, e.g.
+  `issuer="PNR SHAREHOLDER INV"` on a genuinely non-Pentair-authored record -- the specific
+  symptom S170-07 named). 6 new/expanded tests using real headline strings pulled from
+  `var/prwatch`, not invented ones. `go test ./...` green. Regenerated
+  `var/guidance/articles.ndjson` from the full body-store history through the fixed pipeline
+  (109 -> 47 records; original backed up to `var/guidance/pre-s170-07-backup/`), verified zero
+  spam terms remain. Rebuilt and restarted `fatbaby-guidance-watcher.service`; confirmed live
+  on `news.okemily.com/section/guidance` (200 OK, zero litigation-alert terms found on the
+  rendered page after `newssite`'s own 60s guidance-store refresh). Commit TBD.
+
 ## 2026-07-25 (5)
 
 - fix(prwatch): `discoverTickers` silently returning empty on live discovery (S160-01/S159-01,
