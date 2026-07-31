@@ -272,6 +272,11 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		totalProposals      int
 		seenSourceDocs      int
 		directorsThisBatch  int
+		is8KCount           int // S159-02: distinct from `processed`, which gets decremented back
+		                        // down for legitimate 8-Ks with no Item 5.07 content (most
+		                        // subtypes -- earnings, appointments, M&A -- don't have it, and
+		                        // that's expected, not a detection failure). is8KCount only
+		                        // tracks whether the classifier itself found any 8-Ks at all.
 	)
 
 	for _, r := range recs {
@@ -298,6 +303,7 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		if !is8K {
 			continue
 		}
+		is8KCount++
 
 		logger.Printf("processing seq=%d ticker=%s identity=%s chars=%d", r.Sequence, doc.Ticker, doc.Identity, doc.CleanedCharCount)
 		processed++
@@ -553,8 +559,25 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 
 	newCursor := recs[len(recs)-1].Sequence + 1
 
-	if seenSourceDocs > 0 && processed == 0 {
-		logger.Printf("WARNING: saw %d source_document_persisted records but found 0 8-K documents to process — check form/source_type/url detection logic", seenSourceDocs)
+	// S159-02 (EMILY/BACKLOG.md): this used to warn on processed==0, which fires just as often
+	// for a genuine detection gap as for the completely normal case of a batch full of real
+	// 8-Ks that simply don't contain Item 5.07 (most subtypes don't -- earnings, appointments,
+	// M&A). Investigated every historical firing of the old warning, including the exact case
+	// the backlog item named (2026-07-17 23:14:33, seq=108601): pulled the raw
+	// source_document_persisted event straight from var/secwatch/events/2026-07-17.ndjson --
+	// a Netflix 10-Q (`"form":"10-Q","source_type":"press_release"`), correctly rejected by all
+	// 4 signals because it genuinely isn't an 8-K. Every other firing checked the same way:
+	// either a lone non-8-K document (routine -- most SEC filings on any given day aren't
+	// 8-Ks) or a batch where real 8-Ks were found and processed, just without Item 5.07
+	// content. Zero real detection gaps found anywhere in this pipeline's history, so neither
+	// branch below is actionable -- both demoted from WARNING to info. seenSourceDocs/
+	// is8KCount/processed stay split three ways (rather than collapsing back to one message)
+	// so a real future regression -- e.g. is8KCount dropping to 0 for a batch that's actually
+	// full of 8-Ks -- is still distinguishable in the logs from routine off-cycle batches.
+	if seenSourceDocs > 0 && is8KCount == 0 {
+		logger.Printf("info: saw %d source_document_persisted record(s) this batch, none were 8-Ks (routine for small/off-cycle batches)", seenSourceDocs)
+	} else if is8KCount > 0 && processed == 0 {
+		logger.Printf("info: found %d 8-K document(s) this batch, none contained Item 5.07 (voting results) — expected for most 8-K subtypes, not a detection issue", is8KCount)
 	}
 
 	// Retrospective accuracy: correlate activist_risk predictions with 13D filings

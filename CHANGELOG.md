@@ -2,6 +2,20 @@
 
 ## 2026-07-31
 
+- fix(entity-graph): S159-02, resolved the "found 0 8-K documents to process" WARNING —
+  investigated the exact case the backlog item named (2026-07-17 23:14:33, seq=108601) by
+  pulling the raw event straight from `var/secwatch/events/2026-07-17.ndjson`: a Netflix 10-Q
+  (`"form":"10-Q","source_type":"press_release"`), correctly rejected by all 4 of the
+  classifier's 8-K signals because it genuinely isn't an 8-K. Checked every other historical
+  firing of this warning (16 total, back to 2026-06-17) the same way — none were an actual
+  detection gap, either a lone non-8-K document (routine — most SEC filings on any given day
+  aren't 8-Ks) or a batch where real 8-Ks were correctly found and processed, just without Item
+  5.07 (voting results) content. Built on an existing uncommitted fix in `cmd/entity-graph/main.go`
+  that had already split `is8KCount` from `processed` for this exact reason but left the
+  `is8KCount==0` branch as an actionable-sounding WARNING despite its own comment concluding
+  there was nothing to act on — demoted both branches to `info`, since the pipeline's classifier
+  isn't broken and never was. `go build ./...` + `go test ./...` clean.
+
 - fix(dividend-watcher): S170-231, a real Target press release ("Announces Voting Results from
   2026 Annual Meeting of Shareholders") was misclassified as a dividend "raise" event and
   written to entity-graph. Root-caused, not guessed: `dividend.Classify`'s trigger regex ran
