@@ -259,27 +259,31 @@ func crawlOne(ctx context.Context, cfg CrawlerConfig, prID string, ev PressRelea
 // of PartitionKeys for events that have already been processed (both
 // pr_body_fetched and pr_body_failed count as "seen" to avoid re-fetching
 // known-bad URLs on every restart).
+// loadBodySeenIDs builds the crawler's dedupe set by streaming the body
+// store exactly once (eventstore.Scan), not the paged from:=1/ReadFrom(...,
+// 512) loop this used to be -- the same O(n^2) re-read-the-whole-file-per-
+// page pattern already found and fixed in 9 other places this session
+// (signalindex/docindex/entity-graph/processor/eps-reconciler/eps-processor/
+// loadTickerMap/buildTickerMap x3, see docs/northstar/replay-fragility.md).
+// Missed here because this file lives under prwatch/, outside the grep
+// sweep's own scope at the time. Runs once at every process start, before
+// the main loop -- on a body store with real history, the old version's
+// cost grows with the store's total size on every single restart.
 func loadBodySeenIDs(ctx context.Context, store eventstore.EventStore) (map[string]struct{}, error) {
 	seen := map[string]struct{}{}
-	from := uint64(1)
-	for {
-		recs, err := store.ReadFrom(ctx, from, 512)
-		if err != nil {
-			return nil, fmt.Errorf("read body store for dedupe: %w", err)
-		}
-		if len(recs) == 0 {
-			return seen, nil
-		}
-		for _, rec := range recs {
-			switch rec.Event.Type {
-			case "pr_body_fetched", "pr_body_failed":
-				if rec.Event.PartitionKey != "" {
-					seen[rec.Event.PartitionKey] = struct{}{}
-				}
+	err := store.Scan(ctx, 1, func(rec eventstore.Record) error {
+		switch rec.Event.Type {
+		case "pr_body_fetched", "pr_body_failed":
+			if rec.Event.PartitionKey != "" {
+				seen[rec.Event.PartitionKey] = struct{}{}
 			}
 		}
-		from = recs[len(recs)-1].Sequence + 1
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan body store for dedupe: %w", err)
 	}
+	return seen, nil
 }
 
 // loadDiscoveryCursor/saveDiscoveryCursor mirror the same .cursor-file
