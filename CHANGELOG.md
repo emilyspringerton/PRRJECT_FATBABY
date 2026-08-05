@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-05
+
+- saga.manifest.yaml added (S143-02) -- honestly empty (no HQ-SPEC claim anchors this repo yet); emily saga gaps confirms 8 real event types are unclaimed dark matter (sess-20260723-2347-df115bd5)
+
+
 ## 2026-07-31
 
 - fix(entity-graph): S159-02, resolved the "found 0 8-K documents to process" WARNING —
