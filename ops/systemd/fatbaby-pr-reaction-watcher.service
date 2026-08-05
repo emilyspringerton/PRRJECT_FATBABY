@@ -1,0 +1,40 @@
+# /home/fatbaby/.config/systemd/user/fatbaby-pr-reaction-watcher.service
+# FatBaby pr-reaction-watcher — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-pr-reaction-watcher.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/pr-reaction-watcher ./cmd/pr-reaction-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-pr-reaction-watcher.service
+#
+# Added 2026-08-05 -- founder: "we need to start tracking price action/
+# reaction when a pr is released and then at certain time intervals after
+# the release so we can start tracking how certain companies respond to
+# news." Tracks 6 real sample points per ticker-bearing filing/press
+# release (T+0, +15min, +1h, EOD, +1 trading day, +3 trading days) via
+# Yahoo Finance quotes. See internal/prreaction for the market-calendar-
+# aware scheduling math.
+
+[Unit]
+Description=FatBaby pr-reaction-watcher (price reaction tracking after PR/filing release)
+After=network-online.target fatbaby-secwatch.service fatbaby-prwatch.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/pr-reaction-watcher \
+    -secwatch-store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
+    -prwatch-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/pr-reaction \
+    -poll-interval 60s
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/pr-reaction-watcher.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/pr-reaction-watcher.log
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=default.target
