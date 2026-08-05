@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-05
+- fix(processor): LLM taken out of the critical path -- new HeuristicProvider (never fails) is the default, Haiku/ArchetypeProvider now require -enable-llm. fix(prwatch): loadBodySeenIDs migrated to eventstore.Scan (was the same O(n^2) paged-ReadFrom bug class already fixed elsewhere); resolved an 11-day prwatch-body stall (sess-20260723-2347-df115bd5)
 - fix(entity-graph): stop discarding freshly-computed signals (governance_health, decay, board_decay) on any batch whose new records weren't a new 8-K -- root cause of newssite header pages/live feeds being stale for 5 days (sess-20260723-2347-df115bd5)
 
 - saga.manifest.yaml added (S143-02) -- honestly empty (no HQ-SPEC claim anchors this repo yet); emily saga gaps confirms 8 real event types are unclaimed dark matter (sess-20260723-2347-df115bd5)
