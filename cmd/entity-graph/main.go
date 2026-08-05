@@ -744,6 +744,10 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		}
 	}
 
+	// FlushNodes/FlushEdges/FlushAuditors re-serialize the ENTIRE current graph on every call (no
+	// diffing against what's already on disk -- see their own doc comments), so they must stay
+	// gated on processed > 0 specifically: firing them every tick would redump the whole graph
+	// every 30s forever, unbounded file growth far worse than the bug below.
 	if processed > 0 {
 		if err := graph.FlushNodes(cfg.graphDir); err != nil {
 			logger.Printf("flush nodes err=%v", err)
@@ -754,19 +758,40 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		if err := graph.FlushAuditors(cfg.graphDir); err != nil {
 			logger.Printf("flush auditors err=%v", err)
 		}
-		if len(allSignals) > 0 {
-			if err := entitygraph.WriteSignals(cfg.graphDir, allSignals); err != nil {
-				logger.Printf("write signals err=%v", err)
-			}
-			// Mirror the write into the long-lived in-memory historicalSignals
-			// (graph-lifetime hoist) -- a fresh LoadSignals+Dedupe next batch
-			// would have picked up exactly these newly-written signals; this
-			// keeps that behavior without re-reading the file. Re-dedupe
-			// (cheap: in-memory, not a disk scan) since allSignals can
-			// legitimately repeat a signal_id already in historicalSignals
-			// (e.g. director_long_tenure re-fires identically every batch).
-			historicalSignals = entitygraph.DeduplicateSignals(append(historicalSignals, allSignals...))
+	}
+
+	// Real gap found live 2026-08-05 diagnosing "almost all newssite header pages stale, ~3 live
+	// feeds none work, governance stuff stale": this whole block used to sit inside the
+	// `if processed > 0` guard above -- but processed only counts genuinely NEW 8-K filings parsed
+	// THIS batch (the is8K branch earlier in this function). ScoreLongTenure ("Runs against the
+	// full graph, not just this batch" -- its own doc comment) and everything cascading from it
+	// (board_decay_concern, governance_health, decay signals) compute fresh, real signals every
+	// single tick regardless of whether a new 8-K arrived. Confirmed live: a batch that only saw a
+	// non-8-K record (a market-data event) still logged real, freshly-computed "governance_health
+	// ticker=BA score=0.000" lines -- and then silently discarded all of it, because processed
+	// stayed 0. signals.ndjson's last real write was 2026-07-31; every batch since computed and
+	// logged fresh signals into the void. Cursor still advanced (saveCursor is unconditional,
+	// below) and the checkpoint DBs still touched fresh (touchFilingIndexSnapshot/
+	// touchAccuracyIndexSnapshot fire before either gate, see their own comment) -- so nothing here
+	// ever looked stuck to systemd or to the checkpoint-freshness watchdog. Unlike the flush calls
+	// above, WriteSignals only appends allSignals (this batch's own output, not the full graph), so
+	// firing it more often than `processed > 0` used to is safe -- it's the exact same per-batch
+	// repeat-write shape director_long_tenure's own comment already documents as expected,
+	// resolved on the read side (SignalID dedup), not by writing less.
+	if len(allSignals) > 0 {
+		if err := entitygraph.WriteSignals(cfg.graphDir, allSignals); err != nil {
+			logger.Printf("write signals err=%v", err)
 		}
+		// Mirror the write into the long-lived in-memory historicalSignals
+		// (graph-lifetime hoist) -- a fresh LoadSignals+Dedupe next batch
+		// would have picked up exactly these newly-written signals; this
+		// keeps that behavior without re-reading the file. Re-dedupe
+		// (cheap: in-memory, not a disk scan) since allSignals can
+		// legitimately repeat a signal_id already in historicalSignals
+		// (e.g. director_long_tenure re-fires identically every batch).
+		historicalSignals = entitygraph.DeduplicateSignals(append(historicalSignals, allSignals...))
+	}
+	if processed > 0 || len(allSignals) > 0 {
 		if cfg.mongoClient != nil {
 			if err := mongowriter.WriteEntities(ctx, cfg.mongoClient, cfg.mongoDB, graph, allSignals, logger); err != nil {
 				logger.Printf("mongowriter err=%v", err)
