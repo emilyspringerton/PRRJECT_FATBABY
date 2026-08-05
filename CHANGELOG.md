@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-05
+- fix(entity-graph): stop discarding freshly-computed signals (governance_health, decay, board_decay) on any batch whose new records weren't a new 8-K -- root cause of newssite header pages/live feeds being stale for 5 days (sess-20260723-2347-df115bd5)
 
 - saga.manifest.yaml added (S143-02) -- honestly empty (no HQ-SPEC claim anchors this repo yet); emily saga gaps confirms 8 real event types are unclaimed dark matter (sess-20260723-2347-df115bd5)
 
