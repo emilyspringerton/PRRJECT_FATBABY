@@ -9,17 +9,17 @@ type ExtractionFlag string
 
 const (
 	// Extraction quality flags.
-	FlagLowConfidence      ExtractionFlag = "low_confidence"       // confidence < 0.70
+	FlagLowConfidence      ExtractionFlag = "low_confidence"          // confidence < 0.70
 	FlagMultipleCandidates ExtractionFlag = "multiple_eps_candidates" // ambiguous source text
-	FlagNoGAAP             ExtractionFlag = "no_gaap_eps_found"    // only non-GAAP present
-	FlagAdjustedOnly       ExtractionFlag = "adjusted_only"        // release lacks GAAP line
+	FlagNoGAAP             ExtractionFlag = "no_gaap_eps_found"       // only non-GAAP present
+	FlagAdjustedOnly       ExtractionFlag = "adjusted_only"           // release lacks GAAP line
 
 	// Validation gate flags.
-	FlagSignMismatch       ExtractionFlag = "sign_mismatch"        // loss language ≠ positive sign
-	FlagReconcileFail      ExtractionFlag = "reconcile_fail"       // net_income/shares ≠ eps
-	FlagPeriodAmbiguous    ExtractionFlag = "period_ambiguous"     // quarter unclear from text
-	FlagTraceFailure       ExtractionFlag = "trace_failure"        // headline number not in source
-	FlagPriorPeriod        ExtractionFlag = "prior_period_risk"    // likely grabbed comparison figure
+	FlagSignMismatch    ExtractionFlag = "sign_mismatch"     // loss language ≠ positive sign
+	FlagReconcileFail   ExtractionFlag = "reconcile_fail"    // net_income/shares ≠ eps
+	FlagPeriodAmbiguous ExtractionFlag = "period_ambiguous"  // quarter unclear from text
+	FlagTraceFailure    ExtractionFlag = "trace_failure"     // headline number not in source
+	FlagPriorPeriod     ExtractionFlag = "prior_period_risk" // likely grabbed comparison figure
 )
 
 // EarningsPeriod identifies the fiscal period an earnings release covers.
@@ -38,9 +38,9 @@ type EarningsPeriod struct {
 // Nil pointer fields mean the value was not found or could not be reliably extracted.
 type EarningsData struct {
 	// SourceIdentity links back to the intelligence.SourceDocument this was extracted from.
-	SourceIdentity string `json:"source_identity"`
-	Issuer         string `json:"issuer"`
-	Ticker         string `json:"ticker"`
+	SourceIdentity string         `json:"source_identity"`
+	Issuer         string         `json:"issuer"`
+	Ticker         string         `json:"ticker"`
 	Period         EarningsPeriod `json:"period"`
 
 	// EPSGAAPDiluted is the headline number: GAAP diluted EPS for the current period.
@@ -56,8 +56,8 @@ type EarningsData struct {
 	// "total" | "continuing_ops" | ""
 	EPSBasis string `json:"eps_basis"`
 
-	Currency      string   `json:"currency"`      // ISO 4217; "USD" when not specified
-	NetIncome     *float64 `json:"net_income"`    // in millions USD
+	Currency      string   `json:"currency"`       // ISO 4217; "USD" when not specified
+	NetIncome     *float64 `json:"net_income"`     // in millions USD
 	SharesDiluted *float64 `json:"shares_diluted"` // in millions
 	Revenue       *float64 `json:"revenue"`        // in millions USD
 
@@ -66,7 +66,7 @@ type EarningsData struct {
 
 	// ExtractionConfidence is a [0.0, 1.0] score produced by Extract.
 	// Below 0.70 the flag FlagLowConfidence is set and auto-publish is blocked.
-	ExtractionConfidence float64        `json:"extraction_confidence"`
+	ExtractionConfidence float64          `json:"extraction_confidence"`
 	ExtractionFlags      []ExtractionFlag `json:"extraction_flags,omitempty"`
 }
 
@@ -103,27 +103,33 @@ func (e *EarningsData) HeadlineEPS() (float64, bool) {
 type OracleVerdict string
 
 const (
-	VerdictConfirmed   OracleVerdict = "confirmed"    // filed EPS matches headline
-	VerdictContradicts OracleVerdict = "contradicts"  // filed EPS differs from headline
-	VerdictPending     OracleVerdict = "pending"      // 8-K not yet filed or not found
-	VerdictUnavailable OracleVerdict = "unavailable"  // 8-K exists but EPS not extractable
+	VerdictConfirmed   OracleVerdict = "confirmed"   // filed EPS matches headline
+	VerdictContradicts OracleVerdict = "contradicts" // filed EPS differs from headline
+	VerdictPending     OracleVerdict = "pending"     // 8-K not yet filed or not found
+	VerdictUnavailable OracleVerdict = "unavailable" // 8-K exists but EPS not extractable
+	// VerdictUnresolvable marks a case recorded without a ticker: the
+	// reconciler has no identity to match a future 8-K against, so it can
+	// never resolve no matter how long it waits. Distinct from Pending
+	// (which genuinely will resolve once the company files) so the two
+	// aren't indistinguishable in the oracle store (S159-01).
+	VerdictUnresolvable OracleVerdict = "unresolvable"
 )
 
 // OracleCase is one labeled entry in the oracle store.
 // Persisted in var/eps/oracle.ndjson.
 type OracleCase struct {
-	CaseID         string        `json:"case_id"`
-	SourceIdentity string        `json:"source_identity"`
-	Ticker         string        `json:"ticker"`
+	CaseID         string         `json:"case_id"`
+	SourceIdentity string         `json:"source_identity"`
+	Ticker         string         `json:"ticker"`
 	Period         EarningsPeriod `json:"period"`
 	// ExtractedEPS is the headline EPS from the press release.
-	ExtractedEPS   *float64      `json:"extracted_eps"`
+	ExtractedEPS *float64 `json:"extracted_eps"`
 	// FiledEPS is the GAAP diluted EPS from the matching 8-K/Item 2.02.
 	FiledEPS       *float64      `json:"filed_eps"`
 	FiledAccession string        `json:"filed_accession,omitempty"`
 	Verdict        OracleVerdict `json:"verdict"`
 	// Delta is FiledEPS - ExtractedEPS; nil when either is nil.
-	Delta          *float64      `json:"delta,omitempty"`
-	RecordedAt     string        `json:"recorded_at"`
-	Notes          string        `json:"notes,omitempty"`
+	Delta      *float64 `json:"delta,omitempty"`
+	RecordedAt string   `json:"recorded_at"`
+	Notes      string   `json:"notes,omitempty"`
 }

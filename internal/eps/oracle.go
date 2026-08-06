@@ -10,11 +10,12 @@ import (
 
 // OracleSummary aggregates oracle case verdicts for accuracy reporting.
 type OracleSummary struct {
-	Total       int     `json:"total"`
-	Confirmed   int     `json:"confirmed"`
-	Contradicts int     `json:"contradicts"`
-	Pending     int     `json:"pending"`
-	Unavailable int     `json:"unavailable"`
+	Total        int `json:"total"`
+	Confirmed    int `json:"confirmed"`
+	Contradicts  int `json:"contradicts"`
+	Pending      int `json:"pending"`
+	Unavailable  int `json:"unavailable"`
+	Unresolvable int `json:"unresolvable"`
 	// Precision = confirmed / (confirmed + contradicts); 0 when no resolved cases.
 	Precision float64 `json:"precision"`
 }
@@ -33,6 +34,8 @@ func BuildOracleSummary(cases []OracleCase) OracleSummary {
 			s.Pending++
 		case VerdictUnavailable:
 			s.Unavailable++
+		case VerdictUnresolvable:
+			s.Unresolvable++
 		}
 	}
 	resolved := s.Confirmed + s.Contradicts

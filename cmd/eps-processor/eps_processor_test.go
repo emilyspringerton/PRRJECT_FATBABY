@@ -57,3 +57,23 @@ func TestCaseID_Format(t *testing.T) {
 		}
 	}
 }
+
+func TestOracleInitialVerdict_EmptyTicker(t *testing.T) {
+	verdict, notes := oracleInitialVerdict("")
+	if verdict != eps.VerdictUnresolvable {
+		t.Errorf("verdict = %q, want %q", verdict, eps.VerdictUnresolvable)
+	}
+	if notes == "" {
+		t.Error("expected a non-empty explanation in notes for an unresolvable case")
+	}
+}
+
+func TestOracleInitialVerdict_RealTicker(t *testing.T) {
+	verdict, notes := oracleInitialVerdict("AAPL")
+	if verdict != eps.VerdictPending {
+		t.Errorf("verdict = %q, want %q", verdict, eps.VerdictPending)
+	}
+	if notes != "" {
+		t.Errorf("expected no notes for a normal pending case, got %q", notes)
+	}
+}

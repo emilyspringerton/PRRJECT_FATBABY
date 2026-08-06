@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-06
+- fix(eps): S159-01 -- oracle cases recorded without a ticker now get a distinct `unresolvable` verdict at record time (with an explanatory note) instead of blending into `pending`. A pending case genuinely resolves once the company files; an unresolvable one never can, since the reconciler has no identity to match a future 8-K against. New `oracleInitialVerdict` helper, `OracleSummary.Unresolvable` field, 3 new tests. Forward-only -- the specific already-stuck case (`eps:4905f716794c7f58`) stays as-is, per S160-05. Rebuilt and restarted the live `fatbaby-eps-processor` service.
+
 ## 2026-08-05
 - feat: pr-reaction-watcher -- tracks real stock price reaction after a PR/filing release at 6 sample points (T+0, +15min, +1h, EOD, +1d, +3d trading days), via Yahoo Finance quotes. New internal/prreaction package, deployed live via systemd. (sess-20260723-2347-df115bd5)
 - fix(processor): LLM taken out of the critical path -- new HeuristicProvider (never fails) is the default, Haiku/ArchetypeProvider now require -enable-llm. fix(prwatch): loadBodySeenIDs migrated to eventstore.Scan (was the same O(n^2) paged-ReadFrom bug class already fixed elsewhere); resolved an 11-day prwatch-body stall (sess-20260723-2347-df115bd5)

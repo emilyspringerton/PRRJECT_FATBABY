@@ -149,3 +149,23 @@ func TestBuildOracleSummary_AllPending(t *testing.T) {
 		t.Errorf("Precision = %.4f, want 0 when no resolved cases", s.Precision)
 	}
 }
+
+// TestBuildOracleSummary_UnresolvableDistinctFromPending is S159-01's own
+// acceptance check: a case recorded without a ticker must count separately
+// from genuinely pending cases, not blend into the same bucket.
+func TestBuildOracleSummary_UnresolvableDistinctFromPending(t *testing.T) {
+	cases := []OracleCase{
+		{CaseID: "a", Verdict: VerdictPending},
+		{CaseID: "b", Verdict: VerdictUnresolvable, Notes: "no ticker attribution at record time"},
+	}
+	s := BuildOracleSummary(cases)
+	if s.Pending != 1 {
+		t.Errorf("Pending = %d, want 1", s.Pending)
+	}
+	if s.Unresolvable != 1 {
+		t.Errorf("Unresolvable = %d, want 1", s.Unresolvable)
+	}
+	if s.Total != 2 {
+		t.Errorf("Total = %d, want 2", s.Total)
+	}
+}

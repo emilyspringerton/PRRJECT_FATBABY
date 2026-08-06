@@ -166,13 +166,15 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerMap ma
 		_ = delta
 		now := time.Now().UTC().Format("2006-01-02")
 		extracted := val
+		initialVerdict, initialNotes := oracleInitialVerdict(ticker)
 		oCase := eps.OracleCase{
 			CaseID:         caseID(sourceIdentity, e.Period),
 			SourceIdentity: sourceIdentity,
 			Ticker:         ticker,
 			Period:         e.Period,
 			ExtractedEPS:   &extracted,
-			Verdict:        eps.VerdictPending,
+			Verdict:        initialVerdict,
+			Notes:          initialNotes,
 			RecordedAt:     now,
 		}
 		if err := eps.AppendOracleCase(cfg.epsDir, oCase); err != nil {
@@ -237,6 +239,18 @@ func appendArticle(dir string, art eps.Article) error {
 		return err
 	}
 	return w.Flush()
+}
+
+// oracleInitialVerdict decides the verdict an oracle case is recorded with.
+// A missing ticker means the reconciler has no identity to match a future
+// 8-K against -- that case can never resolve, unlike a normal pending case
+// that's genuinely just waiting on a filing. Flagged distinctly at record
+// time rather than left indistinguishable from real pending cases (S159-01).
+func oracleInitialVerdict(ticker string) (eps.OracleVerdict, string) {
+	if ticker == "" {
+		return eps.VerdictUnresolvable, "no ticker attribution at record time -- cannot be matched against a future 8-K"
+	}
+	return eps.VerdictPending, ""
 }
 
 // caseID derives a stable case ID from source identity and period.
