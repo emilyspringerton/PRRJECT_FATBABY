@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-06
+- feat(newssite): S160-04 -- "The Wire" nav label renamed to "Press Releases," new `/press-releases` route alias (same handler, `/wire` still works for existing links). Founder didn't recognize "The Wire" as the press-releases page; this is the discoverability fix. Also fixed a real, unrelated pre-existing go.sum gap (missing go.mod checksum for golang.org/x/sys v0.46.0) that was silently blocking `go build ./cmd/newssite` -- purely additive, no dependency version changed.
 - fix(eps): S159-01 -- oracle cases recorded without a ticker now get a distinct `unresolvable` verdict at record time (with an explanatory note) instead of blending into `pending`. A pending case genuinely resolves once the company files; an unresolvable one never can, since the reconciler has no identity to match a future 8-K against. New `oracleInitialVerdict` helper, `OracleSummary.Unresolvable` field, 3 new tests. Forward-only -- the specific already-stuck case (`eps:4905f716794c7f58`) stays as-is, per S160-05. Rebuilt and restarted the live `fatbaby-eps-processor` service.
 
 ## 2026-08-05

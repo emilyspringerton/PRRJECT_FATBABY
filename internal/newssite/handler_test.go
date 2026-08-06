@@ -162,6 +162,18 @@ func TestHandler(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
+			name:       "press-releases alias serves the same page as /wire",
+			path:       "/press-releases",
+			wantStatus: http.StatusOK,
+			seed: func(t *testing.T, store eventstore.EventStore) {
+				writeSourceDoc(t, store, intelligence.SourceDocument{
+					Identity: "pr:2", Ticker: "MSFT", SourceType: "press_release",
+					CleanedText: "earnings beat", CleanedCharCount: 13, PersistedAt: now,
+				})
+			},
+			wantContains: []string{"MSFT"},
+		},
+		{
 			name: "wire shows press release",
 			path: "/wire",
 			seed: func(t *testing.T, store eventstore.EventStore) {

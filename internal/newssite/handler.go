@@ -177,7 +177,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/healthz":
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintln(w, "ok")
-	case path == "/wire":
+	case path == "/wire", path == "/press-releases":
+		// /press-releases is an alias for discoverability (S160-04: founder
+		// didn't recognize "/wire" as the press-releases page). /wire stays
+		// working for any existing links/bookmarks -- same handler either way.
 		status = h.serveWire(w, r)
 	case path == "/breaking":
 		status = h.serveBreaking(w, r)
