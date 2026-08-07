@@ -25,25 +25,25 @@ const (
 // AccuracyRecord tracks ground truth for a single signal prediction.
 // Persisted in var/entity-graph/accuracy.ndjson as append-only NDJSON.
 type AccuracyRecord struct {
-	SignalID      string      `json:"signal_id"`
-	Ticker        string      `json:"ticker"`
-	SignalType    SignalType  `json:"signal_type"`
-	PredictedAt   string      `json:"predicted_at"`
-	ValidThrough  string      `json:"valid_through"`
-	Outcome       GroundTruth `json:"outcome"`
-	EvidenceDate  string      `json:"evidence_date,omitempty"`
-	EvidenceType  string      `json:"evidence_type,omitempty"` // "activist_13d", etc.
-	Notes         string      `json:"notes,omitempty"`
-	RecordedAt    string      `json:"recorded_at"`
+	SignalID     string      `json:"signal_id"`
+	Ticker       string      `json:"ticker"`
+	SignalType   SignalType  `json:"signal_type"`
+	PredictedAt  string      `json:"predicted_at"`
+	ValidThrough string      `json:"valid_through"`
+	Outcome      GroundTruth `json:"outcome"`
+	EvidenceDate string      `json:"evidence_date,omitempty"`
+	EvidenceType string      `json:"evidence_type,omitempty"` // "activist_13d", etc.
+	Notes        string      `json:"notes,omitempty"`
+	RecordedAt   string      `json:"recorded_at"`
 }
 
 // AccuracyReport summarises prediction performance for one signal type.
 type AccuracyReport struct {
 	SignalType       SignalType `json:"signal_type"`
-	TotalPredictions int       `json:"total_predictions"`
-	Confirmed        int       `json:"confirmed"`
-	Refuted          int       `json:"refuted"`
-	Pending          int       `json:"pending"`
+	TotalPredictions int        `json:"total_predictions"`
+	Confirmed        int        `json:"confirmed"`
+	Refuted          int        `json:"refuted"`
+	Pending          int        `json:"pending"`
 	// Precision = confirmed / (confirmed + refuted); 0 when no resolved predictions.
 	Precision float64 `json:"precision"`
 }
@@ -2084,9 +2084,9 @@ func WriteAccuracyRecords(dir string, records []AccuracyRecord) error {
 
 // HealthSnapshot is one entry in the health history file.
 type HealthSnapshot struct {
-	Ticker    string  `json:"ticker"`
-	Score     float64 `json:"score"`
-	RecordedAt string `json:"recorded_at"` // YYYY-MM-DD
+	Ticker     string  `json:"ticker"`
+	Score      float64 `json:"score"`
+	RecordedAt string  `json:"recorded_at"` // YYYY-MM-DD
 }
 
 // LoadHealthHistory reads the latest snapshot per ticker from
@@ -2113,6 +2113,35 @@ func LoadHealthHistory(dir string) (map[string]HealthSnapshot, error) {
 		}
 	}
 	return latest, sc.Err()
+}
+
+// LoadHealthHistorySeries reads every snapshot from <dir>/health_history.ndjson,
+// grouped by ticker in file (chronological) order. Unlike LoadHealthHistory
+// (latest-only, for the reconciliation loop's own use), this keeps the full
+// series so a caller can show a trend, not just a point-in-time score
+// (S161-02: ticker pages surfacing the already-computed health score).
+// Returns an empty map when the file doesn't exist.
+func LoadHealthHistorySeries(dir string) (map[string][]HealthSnapshot, error) {
+	p := filepath.Join(dir, "health_history.ndjson")
+	f, err := os.Open(p)
+	if os.IsNotExist(err) {
+		return map[string][]HealthSnapshot{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open health_history: %w", err)
+	}
+	defer f.Close()
+
+	series := map[string][]HealthSnapshot{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var s HealthSnapshot
+		if json.Unmarshal(sc.Bytes(), &s) == nil && s.Ticker != "" {
+			series[s.Ticker] = append(series[s.Ticker], s)
+		}
+	}
+	return series, sc.Err()
 }
 
 // AppendHealthSnapshot appends new health snapshots to <dir>/health_history.ndjson.

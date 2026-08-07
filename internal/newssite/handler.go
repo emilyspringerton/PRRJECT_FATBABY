@@ -113,9 +113,9 @@ func (h *Handler) SetCommentaryStore(cs *commentary.Store, dir string) {
 // endpoint fails closed with 503 -- added 2026-07-19 after finding it had
 // no authentication at all despite being a public write endpoint (see
 // EMILY/BACKLOG.md SECTION 167 S167-01).
-func (h *Handler) SetCommentaryAPIKeys(keys []string) { h.commentaryAPIKeys = keys }
-func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)  { h.guidanceStore = gs }
-func (h *Handler) SetEarningsCalStore(s *earningscal.Store) { h.earningsCalStore = s }
+func (h *Handler) SetCommentaryAPIKeys(keys []string)        { h.commentaryAPIKeys = keys }
+func (h *Handler) SetGuidanceStore(gs *guidanceread.Store)   { h.guidanceStore = gs }
+func (h *Handler) SetEarningsCalStore(s *earningscal.Store)  { h.earningsCalStore = s }
 func (h *Handler) SetCompanyBiosStore(cb *companybios.Store) { h.companyBios = cb }
 
 // ServeHTTP dispatches routes.
@@ -528,7 +528,11 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 	if h.companyBios != nil {
 		bio = h.companyBios.Bio(symbol)
 	}
-	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, h.symbols(), bio)
+	var healthCurrent, healthPrevious *entitygraph.HealthSnapshot
+	if h.graph != nil {
+		healthCurrent, healthPrevious, _ = h.graph.HealthTrendFor(symbol)
+	}
+	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, h.symbols(), bio, healthCurrent, healthPrevious)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK

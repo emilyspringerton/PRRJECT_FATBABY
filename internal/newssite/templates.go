@@ -8,21 +8,21 @@ var tmpl = template.Must(template.New("").Parse(sharedFragments + allPageTemplat
 
 // Convenience lookups — panic at init if a name is missing (programming error).
 var (
-	frontTmpl   = mustLookup("front")
-	detailTmpl  = mustLookup("detail")
-	breakTmpl   = mustLookup("breaking")
-	sectionTmpl = mustLookup("section")
-	tickerTmpl  = mustLookup("ticker")
-	ticker404Tmpl = mustLookup("ticker404")
-	tickersTmpl = mustLookup("tickers")
-	searchTmpl  = mustLookup("search")
-	archiveTmpl = mustLookup("archive")
-	aboutTmpl   = mustLookup("about")
-	personTmpl   = mustLookup("person")
-	liveTmpl     = mustLookup("live")
-	earningsTmpl    = mustLookup("earnings")
-	guidanceTmpl    = mustLookup("guidance")
-	askLandingTmpl  = mustLookup("ask-landing")
+	frontTmpl      = mustLookup("front")
+	detailTmpl     = mustLookup("detail")
+	breakTmpl      = mustLookup("breaking")
+	sectionTmpl    = mustLookup("section")
+	tickerTmpl     = mustLookup("ticker")
+	ticker404Tmpl  = mustLookup("ticker404")
+	tickersTmpl    = mustLookup("tickers")
+	searchTmpl     = mustLookup("search")
+	archiveTmpl    = mustLookup("archive")
+	aboutTmpl      = mustLookup("about")
+	personTmpl     = mustLookup("person")
+	liveTmpl       = mustLookup("live")
+	earningsTmpl   = mustLookup("earnings")
+	guidanceTmpl   = mustLookup("guidance")
+	askLandingTmpl = mustLookup("ask-landing")
 )
 
 func mustLookup(name string) *template.Template {
@@ -643,6 +643,7 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
         {{if .Facts.CritHighCount}}<dt>Critical / high</dt><dd>{{.Facts.CritHighCount}}</dd>{{end}}
         <dt>Directors tracked</dt><dd>{{.Facts.DirectorCount}}</dd>
         <dt>Documents</dt><dd>{{.Facts.DocCount}}</dd>
+        {{if .HealthTrend}}<dt>Governance health</dt><dd>{{.HealthTrend.ScoreStr}} {{.HealthTrend.TrendArrow}}{{if .HealthTrend.TrendLabel}} <span style="font-size:0.8em;color:#888;">({{.HealthTrend.TrendLabel}})</span>{{end}}</dd>{{end}}
       </dl>
     </div>
     {{if or .NextEarnings .PastEarnings}}

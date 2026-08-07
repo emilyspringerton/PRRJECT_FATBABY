@@ -136,14 +136,14 @@ type SectionView struct {
 
 // EarningsItemView is one EPS article card.
 type EarningsItemView struct {
-	Link       string
-	Ticker     string
-	Headline   string
-	Dek        string
-	PeriodStr  string // "Q1 2026" or "FY 2025"
-	DateStr    string // "29 May 2026"
-	EPSStr     string // "$1.23" or "($0.45)"
-	IsGAAP     bool
+	Link      string
+	Ticker    string
+	Headline  string
+	Dek       string
+	PeriodStr string // "Q1 2026" or "FY 2025"
+	DateStr   string // "29 May 2026"
+	EPSStr    string // "$1.23" or "($0.45)"
+	IsGAAP    bool
 }
 
 // UpcomingEarningsView is one upcoming earnings date row.
@@ -213,7 +213,18 @@ type TickerPageView struct {
 	NextEarnings *UpcomingEarningsView
 	PastEarnings []UpcomingEarningsView // most recent first
 	Facts        TickerFactBox
-	Bio          string // draft company bio, S166-03/S170-22; empty if none loaded
+	Bio          string           // draft company bio, S166-03/S170-22; empty if none loaded
+	HealthTrend  *HealthTrendView // nil when no health_history data exists for this ticker
+}
+
+// HealthTrendView is the governance health score + trend arrow shown in the
+// ticker page's Fact Box (S161-02: entitygraph already computes this per
+// entity-graph batch; this surfaces it for the first time).
+type HealthTrendView struct {
+	ScoreStr   string // e.g. "72%"
+	TrendArrow string // "▲" | "▼" | "—"
+	TrendLabel string // "improving" | "deteriorating" | "steady"; "" when no previous snapshot
+	RecordedAt string // formatted date of the current snapshot
 }
 
 // ── Ticker 404 ────────────────────────────────────────────────────────────────
@@ -247,7 +258,7 @@ type TickerDirView struct {
 type SearchResultView struct {
 	Symbol      string
 	MaxSeverity string
-	SignalCount  int
+	SignalCount int
 	LatestStr   string
 }
 
@@ -299,8 +310,8 @@ type BoardEntryView struct {
 
 // InterlockView is one co-director relationship surfaced on the person page.
 type InterlockView struct {
-	Name        string
-	CanonicalID string
+	Name         string
+	CanonicalID  string
 	SharedBoards []string // tickers where they co-appear
 }
 
@@ -386,7 +397,8 @@ func RenderSectionPage(w io.Writer, slug string, ranked []edition.Ranked, symbol
 func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 	ranked []edition.Ranked, directors []*entitygraph.PersonNode,
 	secDocs []DocEntry, wireDocs []DocEntry, earnings []EarningsItemView,
-	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView, symbols []string, bio string) {
+	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView, symbols []string, bio string,
+	healthCurrent *entitygraph.HealthSnapshot, healthPrevious *entitygraph.HealthSnapshot) {
 
 	var lead *ArticleView
 	var signals []ArticleView
@@ -473,6 +485,32 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		facts.DirectorCount = row.DirectorCount
 	}
 
+	var healthView *HealthTrendView
+	if healthCurrent != nil {
+		htv := &HealthTrendView{
+			ScoreStr:   fmt.Sprintf("%.0f%%", healthCurrent.Score*100),
+			TrendArrow: "—",
+		}
+		if t, err := time.Parse("2006-01-02", healthCurrent.RecordedAt); err == nil {
+			htv.RecordedAt = t.Format("2 Jan 2006")
+		}
+		if healthPrevious != nil {
+			delta := healthCurrent.Score - healthPrevious.Score
+			switch {
+			case delta > 0.001:
+				htv.TrendArrow = "▲"
+				htv.TrendLabel = "improving"
+			case delta < -0.001:
+				htv.TrendArrow = "▼"
+				htv.TrendLabel = "deteriorating"
+			default:
+				htv.TrendArrow = "—"
+				htv.TrendLabel = "steady"
+			}
+		}
+		healthView = htv
+	}
+
 	view := TickerPageView{
 		Base:         Base{Symbols: symbols},
 		Symbol:       symbol,
@@ -489,6 +527,7 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		PastEarnings: pastEarnings,
 		Facts:        facts,
 		Bio:          bio,
+		HealthTrend:  healthView,
 	}
 	if err := tickerTmpl.Execute(w, view); err != nil {
 		fmt.Fprintf(w, "render error: %v", err)
@@ -1223,11 +1262,11 @@ func latestApprovalAt(node *entitygraph.PersonNode, ticker string) float64 {
 // SparklineView holds the pre-computed SVG polyline attributes for the approval
 // trend chart. Width=260 Height=50; Y scaled so 100%=0 and 60%=50 (typical range).
 type SparklineView struct {
-	HasData      bool
-	Points       string // SVG polyline points attribute, e.g. "0,12.5 130,25 260,37.5"
-	ThresholdY   string // Y coordinate of the 90% friction-threshold line
-	Width        int
-	Height       int
+	HasData    bool
+	Points     string // SVG polyline points attribute, e.g. "0,12.5 130,25 260,37.5"
+	ThresholdY string // Y coordinate of the 90% friction-threshold line
+	Width      int
+	Height     int
 }
 
 func buildSparkline(appearances []AppearanceView) SparklineView {
@@ -1615,9 +1654,9 @@ type TickerAPIResult struct {
 // TickerAPIEntry is one item in the /api/tickers response.
 type TickerAPIEntry struct {
 	Symbol         string    `json:"symbol"`
-	SignalCount     int       `json:"signal_count"`
-	MaxSeverity     string    `json:"max_severity,omitempty"`
-	LatestActivity  time.Time `json:"latest_activity,omitempty"`
+	SignalCount    int       `json:"signal_count"`
+	MaxSeverity    string    `json:"max_severity,omitempty"`
+	LatestActivity time.Time `json:"latest_activity,omitempty"`
 }
 
 // WriteTickerAPIJSON serialises search results as the /api/tickers JSON response.
@@ -1629,9 +1668,9 @@ func WriteTickerAPIJSON(w io.Writer, query string, results []catalog.SearchResul
 	entries := make([]TickerAPIEntry, 0, len(results))
 	for _, r := range results {
 		entries = append(entries, TickerAPIEntry{
-			Symbol:        r.Symbol,
-			SignalCount:   r.SignalCount,
-			MaxSeverity:   r.MaxSeverity,
+			Symbol:         r.Symbol,
+			SignalCount:    r.SignalCount,
+			MaxSeverity:    r.MaxSeverity,
 			LatestActivity: r.LatestActivity,
 		})
 	}

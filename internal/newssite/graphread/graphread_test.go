@@ -170,6 +170,62 @@ func TestRefresh_LoadsAuditors(t *testing.T) {
 	}
 }
 
+func TestHealthTrendFor_WithPreviousSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	history := []any{
+		entitygraph.HealthSnapshot{Ticker: "SCHW", Score: 0.50, RecordedAt: "2026-05-01"},
+		entitygraph.HealthSnapshot{Ticker: "SCHW", Score: 0.35, RecordedAt: "2026-06-01"},
+	}
+	writeNDJSON(t, dir, "health_history.ndjson", history)
+	s := NewStore(dir)
+	if err := s.Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	current, previous, ok := s.HealthTrendFor("schw")
+	if !ok {
+		t.Fatal("HealthTrendFor(schw) not found")
+	}
+	if current.Score != 0.35 {
+		t.Errorf("current.Score = %.2f, want 0.35", current.Score)
+	}
+	if previous == nil || previous.Score != 0.50 {
+		t.Errorf("previous = %+v, want Score 0.50", previous)
+	}
+}
+
+func TestHealthTrendFor_OnlyOneSnapshotHasNoPrevious(t *testing.T) {
+	dir := t.TempDir()
+	writeNDJSON(t, dir, "health_history.ndjson", []any{
+		entitygraph.HealthSnapshot{Ticker: "AAPL", Score: 0.90, RecordedAt: "2026-06-01"},
+	})
+	s := NewStore(dir)
+	if err := s.Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	current, previous, ok := s.HealthTrendFor("AAPL")
+	if !ok {
+		t.Fatal("HealthTrendFor(AAPL) not found")
+	}
+	if current.Score != 0.90 {
+		t.Errorf("current.Score = %.2f, want 0.90", current.Score)
+	}
+	if previous != nil {
+		t.Errorf("previous = %+v, want nil (only one snapshot ever recorded)", previous)
+	}
+}
+
+func TestHealthTrendFor_UnknownTicker(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if err := s.Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	_, _, ok := s.HealthTrendFor("NOPE")
+	if ok {
+		t.Error("expected ok=false for a ticker with no health data")
+	}
+}
+
 func TestRefresh_LoadsEdges(t *testing.T) {
 	dir := t.TempDir()
 	edges := []any{

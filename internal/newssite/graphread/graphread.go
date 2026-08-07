@@ -13,19 +13,20 @@ import (
 
 // Store holds an in-memory snapshot of entity-graph data, refreshed periodically.
 type Store struct {
-	mu          sync.RWMutex
-	signals     []entitygraph.Signal
-	nodes       map[string]*entitygraph.PersonNode
-	dirByTicker map[string][]*entitygraph.PersonNode  // ticker → directors
-	auditors    map[string]*entitygraph.AuditorRecord // ticker → auditor
-	edgesByNode map[string][]*entitygraph.Edge        // canonical_id → edges involving that person
-	dir         string
+	mu             sync.RWMutex
+	signals        []entitygraph.Signal
+	nodes          map[string]*entitygraph.PersonNode
+	dirByTicker    map[string][]*entitygraph.PersonNode    // ticker → directors
+	auditors       map[string]*entitygraph.AuditorRecord   // ticker → auditor
+	edgesByNode    map[string][]*entitygraph.Edge          // canonical_id → edges involving that person
+	healthByTicker map[string][]entitygraph.HealthSnapshot // ticker → last 2 snapshots, oldest first
+	dir            string
 
 	// rulesFile is the path to config/entity-graph-rules.json; when set, Refresh
 	// tracks its modification time so the corrections box can surface rule changes.
-	rulesFile       string
-	rulesUpdatedAt  time.Time
-	rulesMu         sync.RWMutex
+	rulesFile      string
+	rulesUpdatedAt time.Time
+	rulesMu        sync.RWMutex
 
 	// updatesMu guards updates; closed and replaced on each Refresh so waiters wake up.
 	updatesMu sync.Mutex
@@ -35,11 +36,12 @@ type Store struct {
 // NewStore creates a Store pointed at dir (e.g. var/entity-graph).
 func NewStore(dir string) *Store {
 	s := &Store{
-		dir:         dir,
-		nodes:       make(map[string]*entitygraph.PersonNode),
-		dirByTicker: make(map[string][]*entitygraph.PersonNode),
-		auditors:    make(map[string]*entitygraph.AuditorRecord),
-		edgesByNode: make(map[string][]*entitygraph.Edge),
+		dir:            dir,
+		nodes:          make(map[string]*entitygraph.PersonNode),
+		dirByTicker:    make(map[string][]*entitygraph.PersonNode),
+		auditors:       make(map[string]*entitygraph.AuditorRecord),
+		edgesByNode:    make(map[string][]*entitygraph.Edge),
+		healthByTicker: make(map[string][]entitygraph.HealthSnapshot),
 	}
 	s.updates = make(chan struct{})
 	return s
@@ -122,12 +124,28 @@ func (s *Store) Refresh() error {
 		edgesByNode[e.Target] = append(edgesByNode[e.Target], edge)
 	}
 
+	// Keep only the last 2 health snapshots per ticker (current + previous,
+	// oldest first) -- enough for a trend arrow, without holding a growing
+	// full history in memory as the file accumulates.
+	fullHealth, err := entitygraph.LoadHealthHistorySeries(s.dir)
+	if err != nil {
+		return err
+	}
+	healthByTicker := make(map[string][]entitygraph.HealthSnapshot, len(fullHealth))
+	for ticker, series := range fullHealth {
+		if len(series) > 2 {
+			series = series[len(series)-2:]
+		}
+		healthByTicker[norm(ticker)] = series
+	}
+
 	s.mu.Lock()
 	s.signals = sigs
 	s.nodes = g.Nodes
 	s.dirByTicker = dirByTicker
 	s.auditors = g.Auditors
 	s.edgesByNode = edgesByNode
+	s.healthByTicker = healthByTicker
 	s.mu.Unlock()
 
 	// Wake any SSE/long-poll waiters and arm a fresh channel for the next cycle.
@@ -195,6 +213,27 @@ func (s *Store) AuditorFor(ticker string) (*entitygraph.AuditorRecord, bool) {
 	defer s.mu.RUnlock()
 	a, ok := s.auditors[ticker]
 	return a, ok
+}
+
+// HealthTrendFor returns the current governance health snapshot for a ticker
+// and, when at least 2 snapshots exist, the previous one for comparison.
+// previous is nil when there's only ever been one snapshot recorded (no
+// trend to show yet). ok is false when there's no health data at all.
+func (s *Store) HealthTrendFor(ticker string) (current *entitygraph.HealthSnapshot, previous *entitygraph.HealthSnapshot, ok bool) {
+	ticker = norm(ticker)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	series := s.healthByTicker[ticker]
+	if len(series) == 0 {
+		return nil, nil, false
+	}
+	cur := series[len(series)-1]
+	current = &cur
+	if len(series) >= 2 {
+		prev := series[len(series)-2]
+		previous = &prev
+	}
+	return current, previous, true
 }
 
 // AllNodes returns all PersonNodes as a slice. Safe to iterate; callers must not mutate.

@@ -242,6 +242,44 @@ func TestLoadHealthHistory_LastWriteWins(t *testing.T) {
 	}
 }
 
+// TestLoadHealthHistorySeries_KeepsFullOrderPerTicker verifies S161-02's
+// data source: unlike LoadHealthHistory (latest-only), the series loader
+// keeps every snapshot per ticker in file order so a caller can derive a
+// trend, not just a point-in-time score.
+func TestLoadHealthHistorySeries_KeepsFullOrderPerTicker(t *testing.T) {
+	dir := t.TempDir()
+	AppendHealthSnapshot(dir, []HealthSnapshot{
+		{Ticker: "SCHW", Score: 0.50, RecordedAt: "2026-05-01"},
+		{Ticker: "AAPL", Score: 0.90, RecordedAt: "2026-05-01"},
+	})
+	AppendHealthSnapshot(dir, []HealthSnapshot{{Ticker: "SCHW", Score: 0.35, RecordedAt: "2026-06-01"}})
+
+	series, err := LoadHealthHistorySeries(dir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(series["SCHW"]) != 2 {
+		t.Fatalf("SCHW: want 2 snapshots, got %d", len(series["SCHW"]))
+	}
+	if series["SCHW"][0].Score != 0.50 || series["SCHW"][1].Score != 0.35 {
+		t.Errorf("SCHW series out of order: %+v", series["SCHW"])
+	}
+	if len(series["AAPL"]) != 1 {
+		t.Errorf("AAPL: want 1 snapshot, got %d", len(series["AAPL"]))
+	}
+}
+
+func TestLoadHealthHistorySeries_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	series, err := LoadHealthHistorySeries(dir)
+	if err != nil {
+		t.Fatalf("unexpected error for missing file: %v", err)
+	}
+	if len(series) != 0 {
+		t.Errorf("want empty map, got %d entries", len(series))
+	}
+}
+
 // ── CorrelateDecayDeparture tests ─────────────────────────────────────────────
 
 func TestCorrelateDecayDeparture_Confirmed(t *testing.T) {
