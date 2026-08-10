@@ -246,6 +246,27 @@ func parseProcOutput(s string) string {
 	return f[0]
 }
 
+// currentSessionTag: duplicated in every Go module that makes automated git commits
+// (emily.cli/cmd/session.go, EMILY/emily-agent/integration.go, IDUNA's apples.go, here) --
+// separate go.work modules, no existing shared package for this small a concern, but all read
+// the exact same var/current-session.json file (written by `emily session new`), so behavior
+// stays centralized on the data side even though the code is duplicated. Real gap found and
+// fixed 2026-08-10 (founder: "ensure the entire monorepo always gets that session id in all
+// commits").
+func currentSessionTag(emilyRoot string) string {
+	data, err := os.ReadFile(filepath.Join(emilyRoot, "var", "current-session.json"))
+	if err != nil {
+		return ""
+	}
+	var rec struct {
+		Tag string `json:"tag"`
+	}
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return ""
+	}
+	return rec.Tag
+}
+
 func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 	valid := map[string][]string{
 		"secwatch":            {"-watchlist", "./config/watchlist.json", "-store", "./var/secwatch", "-poll-interval", "5m"},
@@ -600,7 +621,13 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 						primeRoot := filepath.Dir(filepath.Dir(primeObsDir))
 						rel, _ := filepath.Rel(primeRoot, outPath)
 						exec.Command("git", "-C", primeRoot, "add", rel).Run()
-						exec.Command("git", "-C", primeRoot, "commit", "-m", "observation from fatbaby: "+summary,
+						commitMsg := "observation from fatbaby: " + summary
+						// Real gap found and fixed 2026-08-10 (founder: "ensure the entire
+						// monorepo always gets that session id in all commits").
+						if tag := currentSessionTag(primeRoot); tag != "" {
+							commitMsg = commitMsg + "\n\nSession: " + tag
+						}
+						exec.Command("git", "-C", primeRoot, "commit", "-m", commitMsg,
 							"--author=FatBaby-Emily <fatbaby-emily@agent.local>").Run()
 						result += " · committed to emily-prime"
 					}
@@ -764,7 +791,13 @@ func registerFatbabyTools(d *ToolDispatcher, fatbabyRoot string) {
 		primeRoot := filepath.Dir(filepath.Dir(primeDir))
 		rel, _ := filepath.Rel(primeRoot, outPath)
 		exec.Command("git", "-C", primeRoot, "add", rel).Run()
-		exec.Command("git", "-C", primeRoot, "commit", "-m", "observation from fatbaby: "+summary,
+		commitMsg := "observation from fatbaby: " + summary
+		// Real gap found and fixed 2026-08-10 (founder: "ensure the entire monorepo always
+		// gets that session id in all commits").
+		if tag := currentSessionTag(primeRoot); tag != "" {
+			commitMsg = commitMsg + "\n\nSession: " + tag
+		}
+		exec.Command("git", "-C", primeRoot, "commit", "-m", commitMsg,
 			"--author=FatBaby-Emily <fatbaby-emily@agent.local>").Run()
 
 		return fmt.Sprintf("committed to prime: %s", fname), nil
