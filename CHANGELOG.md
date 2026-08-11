@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-11
+- 修掉 observation-watcher 的 ARG_MAX batch cursor 卡死 bug；確認 credit-balance cooldown 機制運作正常 (sess-20260810-0505-a53abca2)
 
 - Ticker 頁面加上市值（SEC EDGAR shares outstanding 來源） (sess-20260810-0505-a53abca2)
 
