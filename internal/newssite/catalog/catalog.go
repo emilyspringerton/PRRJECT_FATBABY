@@ -11,6 +11,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/graphread"
+	"github.com/example/prrject-fatbaby/internal/newssite/marketdata"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -25,6 +26,7 @@ type TickerRow struct {
 	MaxSeverity     string // highest live gov signal: critical|high|medium|low|""
 	LatestActivity  time.Time
 	Forms           []string // distinct SEC forms seen
+	MarketCap       int64    // latest known market cap in dollars; 0 if unknown
 
 	critHighCount int // for internal ranking
 }
@@ -50,10 +52,10 @@ type Catalog struct {
 // New returns an empty Catalog.
 func New() *Catalog { return &Catalog{rows: make(map[string]*TickerRow)} }
 
-// Build (re)constructs the catalog from the three live data sources.
-// All three may be nil (graceful degradation).
+// Build (re)constructs the catalog from the live data sources. Any of
+// sigIdx, graph, docIdx, mdIdx may be nil (graceful degradation).
 // today is YYYY-MM-DD; governance signals with ValidThrough < today are excluded.
-func (c *Catalog) Build(sigIdx *signalindex.Index, graph *graphread.Store, docIdx *docindex.Index, today string) {
+func (c *Catalog) Build(sigIdx *signalindex.Index, graph *graphread.Store, docIdx *docindex.Index, mdIdx *marketdata.Store, today string) {
 	rows := make(map[string]*TickerRow)
 
 	ensure := func(sym string) *TickerRow {
@@ -151,6 +153,19 @@ func (c *Catalog) Build(sigIdx *signalindex.Index, graph *graphread.Store, docId
 						rows[sym].Auditor = aud.Auditor
 					}
 				}
+			}
+		}
+	}
+
+	// Market cap: newssite's own ingested read model (never a live fetch at
+	// catalog-build time), same source that backs the ticker page's price
+	// chart. A ticker only gets a row here in the first place if it has
+	// signals/gov-signals/docs, so this just enriches existing rows -- it
+	// never creates new ones.
+	if mdIdx != nil {
+		for sym, r := range rows {
+			if mc, ok := mdIdx.LatestMarketCap(sym); ok {
+				r.MarketCap = mc
 			}
 		}
 	}

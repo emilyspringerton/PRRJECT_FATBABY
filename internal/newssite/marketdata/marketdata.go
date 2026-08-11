@@ -31,6 +31,11 @@ type Bar struct {
 	Close     float64   `json:"close"`
 	AdjClose  float64   `json:"adj_close"`
 	Volume    int64     `json:"volume"`
+	// MarketCap is close * shares-outstanding as of the watcher's fetch time
+	// (see cmd/market-data-watcher's refreshSharesOutstanding). 0/absent on
+	// older events emitted before this field existed, or when shares
+	// outstanding wasn't known yet for that ticker.
+	MarketCap int64 `json:"market_cap,omitempty"`
 }
 
 // Store holds an in-memory snapshot of daily bars, per ticker, oldest-first.
@@ -72,6 +77,24 @@ func (s *Store) HasData(ticker string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.byTicker[ticker]) > 0
+}
+
+// LatestMarketCap returns the most recent bar's market cap for ticker.
+// ok=false when the ticker has no bars yet, or its latest bar predates
+// market-cap enrichment / had no shares-outstanding data at fetch time.
+func (s *Store) LatestMarketCap(ticker string) (int64, bool) {
+	ticker = strings.ToUpper(strings.TrimSpace(ticker))
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	bars := s.byTicker[ticker]
+	if len(bars) == 0 {
+		return 0, false
+	}
+	mc := bars[len(bars)-1].MarketCap
+	if mc <= 0 {
+		return 0, false
+	}
+	return mc, true
 }
 
 // ingest applies one batch of records to the store, keyed by ticker+date

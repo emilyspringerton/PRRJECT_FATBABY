@@ -189,11 +189,19 @@ func main() {
 
 	// ── Market data store (own-ingested OHLCV -> the chart sparkline's only
 	// data source; never a live third-party fetch at render time) ─────────────
+	// Also the source for catalog.TickerRow.MarketCap (see cat.Build calls
+	// below) -- mdIdx is hoisted to this outer scope so both the chart
+	// handler and the catalog builder can share the same live store. It's
+	// safe to hand a *marketdata.Store to catalog.Build before its own
+	// Build goroutine finishes: LatestMarketCap just reports ok=false for
+	// anything not ingested yet, same eventual-consistency tolerance this
+	// file already has for sigIdx/docIdx below.
+	var mdIdx *marketdata.Store
 	if *marketDataDir != "" {
 		if mdStoreRaw, err := eventstore.NewFileStore(*marketDataDir); err != nil {
 			logger.Printf("newssite market-data store open: %v (charts will use placeholder)", err)
 		} else {
-			mdIdx := marketdata.NewStore()
+			mdIdx = marketdata.NewStore()
 			go func() {
 				if err := marketdata.Build(ctx, mdStoreRaw, mdIdx, logger); err != nil {
 					logger.Printf("newssite marketdata build: %v", err)
@@ -272,7 +280,7 @@ func main() {
 	go func() {
 		buildWG.Wait() // wait for both index builds to finish
 		today := time.Now().UTC().Format("2006-01-02")
-		cat.Build(sigIdx, gs, docIdx, today)
+		cat.Build(sigIdx, gs, docIdx, mdIdx, today)
 		logger.Printf("newssite catalog built tickers=%d", len(cat.AllSymbols()))
 
 		// Checkpoint watermark = the store's true current end sequence, not
@@ -308,7 +316,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				cat.Build(sigIdx, gs, docIdx, time.Now().UTC().Format("2006-01-02"))
+				cat.Build(sigIdx, gs, docIdx, mdIdx, time.Now().UTC().Format("2006-01-02"))
 			}
 		}
 	}()

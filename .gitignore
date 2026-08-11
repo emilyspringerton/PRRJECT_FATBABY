@@ -55,3 +55,4 @@
 # Go workspace (local only)
 go.work
 go.work.sum
+build/

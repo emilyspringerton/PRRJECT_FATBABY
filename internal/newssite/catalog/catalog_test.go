@@ -1,8 +1,15 @@
 package catalog
 
 import (
+	"context"
+	"encoding/json"
+	"log"
 	"testing"
 	"time"
+
+	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/newssite/marketdata"
+	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
 // buildCatalogFromRows is a test helper that populates a Catalog directly
@@ -223,6 +230,74 @@ func TestBuild_FilingOnlyTickerAppearsInCatalog(t *testing.T) {
 	r := cat.Lookup("FILING_ONLY")
 	if r == nil || r.DocCount != 3 {
 		t.Errorf("filing-only ticker: got %+v", r)
+	}
+}
+
+func TestBuild_PopulatesMarketCapFromMarketDataStore(t *testing.T) {
+	// A ticker needs a row-creating source (signals/gov/docs) before market
+	// cap enrichment applies to it -- mdIdx only enriches existing rows, per
+	// catalog.Build's doc comment. Give AAPL one signal so ensure() creates
+	// its row, then verify Build fills in MarketCap from a real
+	// marketdata.Store built the same way cmd/newssite wires it.
+	sigIdx := signalindex.NewIndex()
+	sigIdx.LoadEntries([]*signalindex.SignalEntry{
+		{Ticker: "AAPL", SignalType: "test", Timestamp: time.Now(), AppendedAt: time.Now()},
+	})
+
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("open eventstore: %v", err)
+	}
+	defer store.Close()
+
+	bar := marketdata.Bar{
+		Ticker: "AAPL", Date: "2026-08-01", Timestamp: time.Now(),
+		Open: 300, High: 310, Low: 295, Close: 305, AdjClose: 305,
+		Volume: 1000, MarketCap: 4_800_000_000_000,
+	}
+	data, err := json.Marshal(bar)
+	if err != nil {
+		t.Fatalf("marshal bar: %v", err)
+	}
+	if _, err := store.Append(context.Background(),
+		eventstore.Event{ID: "market_data_tick:AAPL:2026-08-01", Type: "market_data_tick", Data: data},
+	); err != nil {
+		t.Fatalf("append market data event: %v", err)
+	}
+
+	mdIdx := marketdata.NewStore()
+	if err := marketdata.Build(context.Background(), store, mdIdx, log.Default()); err != nil {
+		t.Fatalf("marketdata.Build: %v", err)
+	}
+
+	cat := New()
+	cat.Build(sigIdx, nil, nil, mdIdx, "2026-08-01")
+
+	row := cat.Lookup("AAPL")
+	if row == nil {
+		t.Fatal("AAPL should have a catalog row from its signal")
+	}
+	if row.MarketCap != 4_800_000_000_000 {
+		t.Errorf("MarketCap = %d, want 4800000000000", row.MarketCap)
+	}
+}
+
+func TestBuild_NilMarketDataStoreLeavesMarketCapZero(t *testing.T) {
+	sigIdx := signalindex.NewIndex()
+	sigIdx.LoadEntries([]*signalindex.SignalEntry{
+		{Ticker: "MSFT", SignalType: "test", Timestamp: time.Now(), AppendedAt: time.Now()},
+	})
+
+	cat := New()
+	cat.Build(sigIdx, nil, nil, nil, "2026-08-01")
+
+	row := cat.Lookup("MSFT")
+	if row == nil {
+		t.Fatal("MSFT should have a catalog row from its signal")
+	}
+	if row.MarketCap != 0 {
+		t.Errorf("MarketCap = %d, want 0 when mdIdx is nil", row.MarketCap)
 	}
 }
 

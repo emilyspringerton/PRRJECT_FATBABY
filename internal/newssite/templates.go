@@ -639,6 +639,7 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
     </div>
     <div class="fact-box" style="margin-bottom:1.25rem;">
       <h4>Fact Box</h4><dl>
+        {{if .Facts.MarketCapStr}}<dt>Market cap</dt><dd>{{.Facts.MarketCapStr}}</dd>{{end}}
         <dt>Total signals</dt><dd>{{.Facts.TotalSignals}}</dd>
         {{if .Facts.CritHighCount}}<dt>Critical / high</dt><dd>{{.Facts.CritHighCount}}</dd>{{end}}
         <dt>Directors tracked</dt><dd>{{.Facts.DirectorCount}}</dd>

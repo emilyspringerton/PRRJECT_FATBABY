@@ -7,6 +7,24 @@
 // On the first run per ticker (no cursor) it fetches -range of history.
 // On subsequent runs it fetches only the last 5 days (incremental).
 //
+// Market cap enrichment: Yahoo's v8/finance/chart payload does NOT carry market
+// cap or shares outstanding anywhere in its JSON (confirmed by inspecting a live
+// response -- the `meta` object has price/range/exchange fields only). The Yahoo
+// endpoints that DO carry marketCap (v7/finance/quote, v10/finance/quoteSummary,
+// the POST-based v1/finance/screener) all require a session crumb and return 401
+// Unauthorized without one -- not worth the fragility of a cookie/crumb dance for
+// one field. Instead each ticker's shares-outstanding is pulled from SEC EDGAR's
+// company-facts API (data.sec.gov/api/xbrl/companyconcept, dei tag
+// EntityCommonStockSharesOutstanding) -- free, unauthenticated, and already the
+// same host/politeness family cmd/secwatch talks to. Shares outstanding barely
+// moves day to day (it's a per-filing cover-page number), so it's cached to disk
+// per ticker and only refetched once -shares-refresh-interval has elapsed --
+// steady state is about one SEC request per ticker per week, piggybacked onto
+// the SAME per-ticker loop iteration (and its existing -request-delay pacing)
+// this file already runs for the Yahoo OHLCV fetch, not a separate unpaced path.
+// market_data_tick events then carry market_cap = latest close * cached shares
+// outstanding.
+//
 // Flags:
 //
 //	-watchlist      config/watchlist.json
@@ -15,6 +33,7 @@
 //	-range          2y     (Yahoo range param on first/backfill run; values: 1y 2y 5y max)
 //	-poll-interval  24h    (interval between full poll cycles)
 //	-request-delay  600ms  (delay between individual ticker HTTP requests)
+//	-shares-refresh-interval  168h  (min time between SEC shares-outstanding refetches, per ticker)
 //	-one-shot              (exit after one cycle; for cron/systemd)
 //	-dry-run               (log findings without writing)
 //
@@ -43,9 +62,27 @@ import (
 )
 
 const (
-	yahooBaseURL   = "https://query1.finance.yahoo.com/v8/finance/chart"
 	incrementalRange = "5d"
 	userAgent      = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+
+	secUserAgent = "prrject-fatbaby-market-data-watcher/0.1 (contact: secops@example.com)"
+
+	// defaultSharesRefreshInterval is how stale a cached shares-outstanding
+	// value can get before we spend one more SEC request refreshing it.
+	// Shares outstanding is a cover-page number that only changes when a new
+	// 10-K/10-Q/8-K is filed, so weekly is generous, not aggressive.
+	defaultSharesRefreshInterval = 7 * 24 * time.Hour
+)
+
+// yahooBaseURL and secCompanyConceptBaseURL are vars, not consts, so tests
+// can point them at an httptest.Server (same pattern as internal/movers'
+// screenerBaseURL).
+var (
+	yahooBaseURL = "https://query1.finance.yahoo.com/v8/finance/chart"
+	// secCompanyConceptBaseURL is SEC EDGAR's XBRL company-facts-by-concept
+	// API -- free, unauthenticated, no crumb. Same vendor/politeness family
+	// cmd/secwatch already talks to (data.sec.gov), just a different path.
+	secCompanyConceptBaseURL = "https://data.sec.gov/api/xbrl/companyconcept"
 )
 
 func main() {
@@ -60,6 +97,7 @@ func main() {
 	backfillRange := flag.String("range", "2y", "Yahoo Finance range for first/backfill fetch (1y|2y|5y|max)")
 	pollInterval  := flag.Duration("poll-interval", 24*time.Hour, "interval between full poll cycles")
 	reqDelay      := flag.Duration("request-delay", 600*time.Millisecond, "delay between ticker HTTP requests")
+	sharesRefresh := flag.Duration("shares-refresh-interval", defaultSharesRefreshInterval, "min time between SEC shares-outstanding refetches, per ticker")
 	oneShot       := flag.Bool("one-shot", false, "exit after one cycle")
 	dryRun        := flag.Bool("dry-run", false, "log findings without writing")
 	flag.Parse()
@@ -99,7 +137,7 @@ func main() {
 			}
 
 			fetched, err := fetchTicker(ctx, client, logger, store,
-				entry.Ticker, *cursorDir, *backfillRange, *dryRun)
+				entry.Ticker, entry.CIK, *cursorDir, *backfillRange, *sharesRefresh, *dryRun)
 			if err != nil {
 				logger.Printf("ticker=%s error: %v", entry.Ticker, err)
 			} else if fetched > 0 {
@@ -126,14 +164,16 @@ func main() {
 	}
 }
 
-// fetchTicker fetches OHLCV data for a single ticker, emits new events to the
-// store, and advances the cursor. Returns the number of events emitted.
+// fetchTicker fetches OHLCV data for a single ticker, enriches it with market
+// cap (price * cached shares-outstanding), emits new events to the store, and
+// advances the cursor. Returns the number of events emitted.
 func fetchTicker(
 	ctx context.Context,
 	client *http.Client,
 	logger *log.Logger,
 	store eventstore.EventStore,
-	ticker, cursorDir, backfillRange string,
+	ticker, cik, cursorDir, backfillRange string,
+	sharesRefreshInterval time.Duration,
 	dryRun bool,
 ) (int, error) {
 	cursorPath := filepath.Join(cursorDir, cursorKey(ticker)+".cursor")
@@ -156,13 +196,31 @@ func fetchTicker(
 			newBars = append(newBars, b)
 		}
 	}
+
+	// Shares-outstanding refresh: gated by cache freshness, not by whether
+	// there are new price bars, so it stays on schedule even for a ticker
+	// with no new trading days. This is the one extra network call this
+	// file makes beyond the existing Yahoo OHLCV fetch -- it happens inside
+	// the same per-ticker loop iteration as that fetch, so it inherits the
+	// caller's existing -request-delay pacing between tickers, and in
+	// steady state fires at most once every sharesRefreshInterval per
+	// ticker (default weekly), never once per poll cycle.
+	sharesPath := filepath.Join(cursorDir, cursorKey(ticker)+".shares.json")
+	sharesOut := refreshSharesOutstanding(ctx, client, logger, ticker, cik, sharesPath, sharesRefreshInterval, dryRun)
+
+	if sharesOut > 0 {
+		for i := range newBars {
+			newBars[i].MarketCap = int64(newBars[i].Close * float64(sharesOut))
+		}
+	}
+
 	if len(newBars) == 0 {
 		return 0, nil
 	}
 
 	if dryRun {
 		for _, b := range newBars {
-			logger.Printf("[dry-run] ticker=%s date=%s close=%.4f vol=%d", ticker, b.Date, b.Close, b.Volume)
+			logger.Printf("[dry-run] ticker=%s date=%s close=%.4f vol=%d market_cap=%d", ticker, b.Date, b.Close, b.Volume, b.MarketCap)
 		}
 		return len(newBars), nil
 	}
@@ -203,6 +261,168 @@ type OHLCVBar struct {
 	Close     float64   `json:"close"`
 	AdjClose  float64   `json:"adj_close"`
 	Volume    int64     `json:"volume"`
+	// MarketCap is close * shares-outstanding-as-cached-at-fetch-time (see
+	// refreshSharesOutstanding). 0 when shares outstanding isn't known yet
+	// (e.g. very first cycle for a ticker, before the SEC fetch has ever
+	// succeeded, or the ticker has no CIK on the watchlist).
+	MarketCap int64 `json:"market_cap,omitempty"`
+}
+
+// sharesCache is the on-disk cache of one ticker's most recently fetched
+// shares-outstanding figure, so market cap survives a process restart
+// without needing to re-hit SEC, and so the freshness check in
+// refreshSharesOutstanding has something to compare against.
+type sharesCache struct {
+	SharesOutstanding int64     `json:"shares_outstanding"`
+	AsOfDate          string    `json:"as_of_date"` // the XBRL fact's "end" date, informational
+	FetchedAt         time.Time `json:"fetched_at"`
+}
+
+// refreshSharesOutstanding returns the best known shares-outstanding count
+// for ticker, refetching from SEC only if the cache is missing or older than
+// refreshInterval. Any SEC error is logged and swallowed -- market cap is
+// supplementary enrichment, never worth failing the ticker's whole OHLCV
+// fetch over. Returns 0 if no value is known yet (no cache, no CIK, or the
+// first-ever SEC fetch hasn't succeeded).
+func refreshSharesOutstanding(
+	ctx context.Context,
+	client *http.Client,
+	logger *log.Logger,
+	ticker, cik, cachePath string,
+	refreshInterval time.Duration,
+	dryRun bool,
+) int64 {
+	cached, _ := loadSharesCache(cachePath)
+	if cached != nil && time.Since(cached.FetchedAt) < refreshInterval {
+		return cached.SharesOutstanding
+	}
+	if strings.TrimSpace(cik) == "" {
+		if cached != nil {
+			return cached.SharesOutstanding
+		}
+		return 0
+	}
+
+	shares, asOf, err := fetchSharesOutstandingSEC(ctx, client, cik)
+	if err != nil {
+		logger.Printf("ticker=%s cik=%s shares-outstanding fetch failed (using cached/zero): %v", ticker, cik, err)
+		if cached != nil {
+			return cached.SharesOutstanding
+		}
+		return 0
+	}
+
+	fresh := sharesCache{SharesOutstanding: shares, AsOfDate: asOf, FetchedAt: time.Now().UTC()}
+	if !dryRun {
+		if err := saveSharesCache(cachePath, fresh); err != nil {
+			logger.Printf("ticker=%s warn: save shares cache: %v", ticker, err)
+		}
+	}
+	return shares
+}
+
+func loadSharesCache(path string) (*sharesCache, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var c sharesCache
+	if err := json.Unmarshal(b, &c); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func saveSharesCache(path string, c sharesCache) error {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0o644)
+}
+
+// secCompanyConceptResponse is the shape of SEC EDGAR's
+// data.sec.gov/api/xbrl/companyconcept/CIK{10-digit}/{taxonomy}/{tag}.json
+// response.
+type secCompanyConceptResponse struct {
+	Units struct {
+		Shares []struct {
+			End string `json:"end"`
+			Val int64  `json:"val"`
+		} `json:"shares"`
+	} `json:"units"`
+}
+
+// fetchSharesOutstandingSEC fetches the dei:EntityCommonStockSharesOutstanding
+// concept for cik from SEC EDGAR's company-facts API and returns the most
+// recent reported value (the last entry in the "shares" series, which SEC
+// returns in filing order). This is a cover-page XBRL fact refreshed once
+// per 10-K/10-Q/8-K, not a live quote -- exactly why it's safe to cache for
+// days at a time.
+func fetchSharesOutstandingSEC(ctx context.Context, client *http.Client, cik string) (int64, string, error) {
+	normalized := normalizeCIKForSEC(cik)
+	if normalized == "" {
+		return 0, "", fmt.Errorf("empty/invalid cik")
+	}
+	url := fmt.Sprintf("%s/CIK%s/dei/EntityCommonStockSharesOutstanding.json", secCompanyConceptBaseURL, normalized)
+
+	resp, err := httpretry.Do(ctx, httpretry.Options{MaxRetries: 2, BackoffBase: 500 * time.Millisecond, BackoffCap: 8 * time.Second},
+		func(ctx context.Context, attempt int) (secCompanyConceptResponse, error) {
+			var out secCompanyConceptResponse
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if err != nil {
+				return out, err
+			}
+			req.Header.Set("User-Agent", secUserAgent)
+			req.Header.Set("Accept", "application/json")
+
+			r, err := client.Do(req)
+			if err != nil {
+				return out, err
+			}
+			defer r.Body.Close()
+
+			if r.StatusCode != http.StatusOK {
+				return out, &httpretry.StatusError{StatusCode: r.StatusCode, URL: url}
+			}
+			if err := json.NewDecoder(r.Body).Decode(&out); err != nil {
+				return out, fmt.Errorf("decode json: %w", err)
+			}
+			return out, nil
+		})
+	if err != nil {
+		return 0, "", fmt.Errorf("fetch shares outstanding cik=%s after retries: %w", normalized, err)
+	}
+
+	n := len(resp.Units.Shares)
+	if n == 0 {
+		return 0, "", fmt.Errorf("no shares-outstanding facts for cik=%s", normalized)
+	}
+	latest := resp.Units.Shares[n-1]
+	if latest.Val <= 0 {
+		return 0, "", fmt.Errorf("non-positive shares-outstanding value for cik=%s", normalized)
+	}
+	return latest.Val, latest.End, nil
+}
+
+// normalizeCIKForSEC zero-pads a CIK to SEC's 10-digit path format. The
+// watchlist already stores CIKs zero-padded via secwatch.NormalizeCIK, but
+// this is defensive against a raw/short CIK reaching this function directly.
+func normalizeCIKForSEC(cik string) string {
+	digits := make([]rune, 0, len(cik))
+	for _, r := range cik {
+		if r >= '0' && r <= '9' {
+			digits = append(digits, r)
+		}
+	}
+	if len(digits) == 0 {
+		return ""
+	}
+	d := string(digits)
+	if len(d) >= 10 {
+		return d
+	}
+	return strings.Repeat("0", 10-len(d)) + d
 }
 
 // yahooChartResponse is the v8 chart API JSON envelope.

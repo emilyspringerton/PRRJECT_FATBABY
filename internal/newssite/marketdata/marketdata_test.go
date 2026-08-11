@@ -133,3 +133,73 @@ func TestHasData(t *testing.T) {
 		t.Error("empty store should report no data")
 	}
 }
+
+func TestLatestMarketCap(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	mkEvent := func(date string, ts time.Time, mc int64) eventstore.Event {
+		bar := Bar{Ticker: "AAPL", Date: date, Timestamp: ts, Close: 100, MarketCap: mc}
+		b, err := json.Marshal(bar)
+		if err != nil {
+			t.Fatalf("marshal bar: %v", err)
+		}
+		return eventstore.Event{ID: "market_data_tick:AAPL:" + date, Type: "market_data_tick", Data: b}
+	}
+
+	if _, err := store.Append(ctx,
+		mkEvent("2026-01-01", base, 1_000_000_000),
+		mkEvent("2026-01-02", base.AddDate(0, 0, 1), 1_050_000_000), // latest bar, latest market cap
+	); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	idx := NewStore()
+	if err := Build(ctx, store, idx, log.Default()); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	mc, ok := idx.LatestMarketCap("AAPL")
+	if !ok {
+		t.Fatal("expected LatestMarketCap ok=true for AAPL")
+	}
+	if mc != 1_050_000_000 {
+		t.Errorf("LatestMarketCap = %d, want 1050000000 (the latest bar's, not the first)", mc)
+	}
+
+	if _, ok := idx.LatestMarketCap("UNKNOWN"); ok {
+		t.Error("LatestMarketCap for unknown ticker should be ok=false")
+	}
+}
+
+func TestLatestMarketCap_ZeroWhenBarPredatesEnrichment(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	// A bar with no market_cap field at all (as emitted before this field
+	// existed) unmarshals to MarketCap == 0, which LatestMarketCap must
+	// treat as "unknown", not "zero market cap".
+	if _, err := store.Append(context.Background(), tickEvent(t, "OLD", "2026-01-01", time.Now(), 50)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	idx := NewStore()
+	if err := Build(context.Background(), store, idx, log.Default()); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	if _, ok := idx.LatestMarketCap("OLD"); ok {
+		t.Error("expected ok=false for a bar with no market cap data")
+	}
+}

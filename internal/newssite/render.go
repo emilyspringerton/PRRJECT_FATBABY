@@ -196,6 +196,7 @@ type TickerFactBox struct {
 	CritHighCount int
 	DirectorCount int
 	DocCount      int
+	MarketCapStr  string // e.g. "$3.45T"; "" if unknown
 }
 
 type TickerPageView struct {
@@ -483,6 +484,7 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		facts.TotalSignals = row.SignalCount + row.GovSignals
 		facts.DocCount = row.DocCount
 		facts.DirectorCount = row.DirectorCount
+		facts.MarketCapStr = formatMarketCap(row.MarketCap)
 	}
 
 	var healthView *HealthTrendView
@@ -1481,6 +1483,26 @@ func formatVotes(n int64) string {
 		return fmt.Sprintf("%.1fK", float64(n)/1_000)
 	default:
 		return fmt.Sprintf("%d", n)
+	}
+}
+
+// formatMarketCap renders a dollar market cap (0 = unknown) in T/B/M/K
+// shorthand, e.g. 3_450_000_000_000 -> "$3.45T". Returns "" for dollars <= 0
+// so the fact-box row hides itself entirely rather than showing "$0".
+func formatMarketCap(dollars int64) string {
+	if dollars <= 0 {
+		return ""
+	}
+	v := float64(dollars)
+	switch {
+	case v >= 1_000_000_000_000:
+		return fmt.Sprintf("$%.2fT", v/1_000_000_000_000)
+	case v >= 1_000_000_000:
+		return fmt.Sprintf("$%.2fB", v/1_000_000_000)
+	case v >= 1_000_000:
+		return fmt.Sprintf("$%.1fM", v/1_000_000)
+	default:
+		return fmt.Sprintf("$%.0fK", v/1_000)
 	}
 }
 
