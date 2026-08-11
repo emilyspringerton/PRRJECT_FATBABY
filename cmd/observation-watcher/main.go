@@ -26,6 +26,13 @@ import (
 	"time"
 )
 
+// maxBatchObs caps how many nontrivial observations pollBatched folds into a single claude
+// invocation. Package-level (not a local const inside pollBatched) so main_test.go's own
+// regression test can reference the real value instead of a hardcoded duplicate that could
+// silently drift out of sync. See pollBatched's own doc comment at its point of use for the
+// full "why" (a real ARG_MAX exec failure found live, 2026-08-11).
+const maxBatchObs = 20
+
 // creditExhaustedUntil implements a circuit breaker for one specific,
 // non-transient failure: the Anthropic account running out of credit
 // balance. Unlike a rate limit, retrying (or trying the *next* task) cannot
@@ -831,6 +838,26 @@ func pollBatched(dir, cursorPath, cmdName, extraArgs string, dryRun bool, rulesP
 			return false, fmt.Errorf("update batch cursor: %w", err)
 		}
 		return true, nil
+	}
+
+	// maxBatchObs (real bug found live, 2026-08-11): a single claude invocation's prompt is
+	// passed as ONE argv element (`args = append(args, prompt)` below) -- with no cap, a large
+	// enough backlog (149 new obs, 78 nontrivial, observed live) builds a prompt long enough
+	// that exec.Command's underlying fork/exec hits the OS's ARG_MAX limit outright:
+	// "fork/exec .../claude: argument list too long". That's an OS-level exec failure, not a
+	// claude-API error -- it produces NO output at all (cmd.Run() fails before the process even
+	// starts), so none of invokeWithRetry's own output-sniffing (isCreditExhaustedOutput/
+	// isRateLimitOutput) ever matches, and the batch fails immediately with no retry. Worse: the
+	// cursor only ever advances on a SUCCESSFUL invocation, so a too-large batch reprocesses the
+	// exact same (or larger, as more observations arrive) oversized batch every single poll,
+	// forever -- the real root cause of a batch cursor observed stuck for weeks. Fixed by
+	// capping how many nontrivial observations go into any one invocation; the cursor advances
+	// only as far as the last INCLUDED candidate (not the true newest file), so anything past
+	// the cap is correctly picked up fresh on the next poll instead of being silently skipped.
+	if len(nontrivial) > maxBatchObs {
+		log.Printf("batch: capping %d nontrivial obs to %d per invocation (ARG_MAX safety, see this file's own doc comment)", len(nontrivial), maxBatchObs)
+		nontrivial = nontrivial[:maxBatchObs]
+		newestName = nontrivial[len(nontrivial)-1].name
 	}
 
 	// Same circuit breaker as pollOnce/pollPrimeTasks: once credits are known

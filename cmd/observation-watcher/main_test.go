@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -495,5 +496,71 @@ func TestSplitArgs(t *testing.T) {
 				t.Errorf("splitArgs(%q)[%d] = %q, want %q", in, i, got[i], want[i])
 			}
 		}
+	}
+}
+
+// TestPollBatchedCapsLargeBatchAndAdvancesCursorPartially is the regression test for a real
+// bug found live 2026-08-11: a batch of 149 new observations (78 nontrivial) built one prompt
+// too large for exec.Command's underlying fork/exec, failing with the OS-level "argument list
+// too long" (E2BIG) -- an error invokeWithRetry's own output-sniffing never catches (the process
+// never starts, so there's no output to sniff), so the batch failed immediately, the cursor
+// never advanced (it only ever advances on success), and the exact same oversized batch would
+// have retried and failed identically forever. See pollBatched's own maxBatchObs doc comment
+// for the full writeup. This test proves both halves of the fix: (1) a batch larger than
+// maxBatchObs gets capped, not passed through whole, and (2) the cursor advances only to the
+// last INCLUDED observation, not the true newest file, so the remainder is picked up (not
+// silently skipped) on the next poll.
+func TestPollBatchedCapsLargeBatchAndAdvancesCursorPartially(t *testing.T) {
+	dir := t.TempDir()
+	obsDir := filepath.Join(dir, "observations")
+	cursor := filepath.Join(dir, ".batch-cursor")
+
+	const total = maxBatchObs + 5
+	var names []string
+	for i := 0; i < total; i++ {
+		name := fmt.Sprintf("2026-08-11T00-00-%02dZ.json", i)
+		writeObs(t, filepath.Join(obsDir, name), observation{
+			Timestamp: fmt.Sprintf("2026-08-11T00:00:%02dZ", i),
+			Summary:   fmt.Sprintf("observation %d", i),
+			Severity:  "info",
+		})
+		names = append(names, name)
+	}
+
+	// dryRun=true, cmdName="true", gateMode="none": every observation counts as nontrivial,
+	// no real claude invocation happens, but the cursor still advances exactly as a real
+	// successful invocation would (same convention TestPollOnceProcessesNewObservation already
+	// relies on for pollOnce).
+	processed, err := pollBatched(obsDir, cursor, "true", "", true, "", "none", time.Hour, nil)
+	if err != nil {
+		t.Fatalf("pollBatched: %v", err)
+	}
+	if !processed {
+		t.Fatal("expected processed=true")
+	}
+
+	got, err := os.ReadFile(cursor)
+	if err != nil {
+		t.Fatalf("cursor missing: %v", err)
+	}
+	wantCursor := names[maxBatchObs-1]
+	if string(got) != wantCursor {
+		t.Errorf("cursor after first pass = %q, want %q (capped batch must not advance past the last INCLUDED observation)", string(got), wantCursor)
+	}
+
+	// Second poll should pick up exactly the remaining (total - maxBatchObs) observations.
+	processed2, err := pollBatched(obsDir, cursor, "true", "", true, "", "none", time.Hour, nil)
+	if err != nil {
+		t.Fatalf("second pollBatched: %v", err)
+	}
+	if !processed2 {
+		t.Fatal("expected second pollBatched to process the remaining observations")
+	}
+	got2, err := os.ReadFile(cursor)
+	if err != nil {
+		t.Fatalf("cursor missing after second pass: %v", err)
+	}
+	if string(got2) != names[total-1] {
+		t.Errorf("cursor after second pass = %q, want %q (remainder fully drained, not re-capped forever)", string(got2), names[total-1])
 	}
 }
