@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-11
+
+- Ticker 頁面加上市值（SEC EDGAR shares outstanding 來源） (sess-20260810-0505-a53abca2)
+
+
 ## 2026-08-06
 - feat(newssite): S161-02 -- ticker page Fact Box now shows the governance health score + trend arrow (entitygraph already computed this per batch via `ScoreGovernanceHealthTrend`, but nothing surfaced it). New `entitygraph.LoadHealthHistorySeries` (full per-ticker series, vs the existing latest-only `LoadHealthHistory`), `graphread.Store.HealthTrendFor(ticker)` keeping just the last 2 snapshots per ticker in memory. 7 new tests across entitygraph/graphread/newssite. Live-verified against real data (BEN: 20% steady, AAPL: 86% steady).
 - feat(newssite): S160-04 -- "The Wire" nav label renamed to "Press Releases," new `/press-releases` route alias (same handler, `/wire` still works for existing links). Founder didn't recognize "The Wire" as the press-releases page; this is the discoverability fix. Also fixed a real, unrelated pre-existing go.sum gap (missing go.mod checksum for golang.org/x/sys v0.46.0) that was silently blocking `go build ./cmd/newssite` -- purely additive, no dependency version changed.
