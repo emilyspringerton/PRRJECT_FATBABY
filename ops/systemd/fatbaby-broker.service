@@ -1,0 +1,43 @@
+# FatBaby broker — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-broker.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/broker ./cmd/broker
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-broker.service
+#
+# Added 2026-08-13 (EMILY/BACKLOG.md INTAKE QUEUE, "processify the gpt2-alpine-c
+# serve.py + broker manual restarts") — closes the reboot runbook's last known
+# manual-restart gap. Tenant-aware proxy (broker/registry.go hot-reload) that
+# fronts gpt2-alpine-c's serve.py (:8088) for emily-agent's Apple-enrichment
+# calls. Routes config lives in gpt2-alpine-c (not this repo) — see
+# gpt2-alpine-c/config/broker-routes.json, tenant_id "emily-prime".
+#
+# NOTE (2026-08-13 reboot recovery): serve.py's real generate latency can run
+# several minutes on a cold, single-threaded CPU request. This unit's --addr
+# is unchanged from the runbook's documented flags, but the broker binary's
+# own ResponseHeaderTimeout / per-request context timeout (cmd/broker/main.go)
+# is hardcoded to 30s, well under that -- the broker will 502 on real
+# generation calls until that's fixed separately (tracked, not fixed here).
+#
+[Unit]
+Description=FatBaby broker (tenant-aware proxy fronting gpt2-alpine-c serve.py)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/broker \
+    -routes /home/fatbaby/gpt2-alpine-c/config/broker-routes.json \
+    -addr :8679 \
+    -store /home/fatbaby/EMILY/var/broker-events
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/EMILY/var/logs/gpt2-broker.log
+StandardError=append:/home/fatbaby/EMILY/var/logs/gpt2-broker.log
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=default.target
