@@ -1,0 +1,39 @@
+# FatBaby pr-indexer — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-pr-indexer.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/pr-indexer ./cmd/pr-indexer
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-pr-indexer.service
+#
+# Added 2026-08-13. Real gap found and fixed: nothing in this pipeline ever
+# wrote a source_document_persisted event for a press release -- newssite's
+# /wire page ("press releases page is not updating" / "i should see all
+# tickered press releases") only ever showed a handful of leftover mislabeled
+# SEC filings from an unrelated, already-fixed historical bug. See
+# cmd/pr-indexer/main.go's own header comment for the full diagnosis.
+#
+[Unit]
+Description=FatBaby pr-indexer (press releases -> source_document_persisted for newssite)
+After=network-online.target fatbaby-prwatch-body.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/pr-indexer \
+    -discovery-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch \
+    -body-store /home/fatbaby/PRRJECT_FATBABY/var/prwatch-body \
+    -out-store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
+    -cursor /home/fatbaby/PRRJECT_FATBABY/var/pr-indexer/.cursor \
+    -poll-interval 30s
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/pr-indexer.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/pr-indexer.log
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=default.target

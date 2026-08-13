@@ -148,6 +148,74 @@ func TestRecent_CapAtCount(t *testing.T) {
 	}
 }
 
+// docRecType is docRec with a variable SourceType, for tests that need to
+// mix source types (docRec itself hardcodes "sec_8k" and several other
+// tests already depend on that exact signature).
+func docRecType(seq uint64, ticker, identity, sourceType, filingDate string, persistedAt time.Time) eventstore.Record {
+	doc := intelligence.SourceDocument{
+		Identity:         identity,
+		Ticker:           ticker,
+		SourceType:       sourceType,
+		CleanedText:      "Some cleaned text for the document body.",
+		CleanedCharCount: 41,
+		FilingDate:       filingDate,
+		PersistedAt:      persistedAt,
+	}
+	b, _ := json.Marshal(doc)
+	ev := eventstore.Event{ID: identity, Type: "source_document_persisted", Data: b}
+	return eventstore.Record{Sequence: seq, AppendedAt: persistedAt, Event: ev}
+}
+
+func TestRecentByType_FiltersBeforeTruncating(t *testing.T) {
+	// Real bug, fixed 2026-08-13 (founder: "press releases page is not
+	// updating" / "i should see all tickered press releases"): the old
+	// serveWire called Recent(100) then filtered for SourceType ==
+	// "press_release" -- so on a day with 100+ more-recent SEC filings, the
+	// press releases got truncated away entirely before the filter ever ran,
+	// even though they were the most recent press releases that existed.
+	idx := NewIndex()
+	now := time.Now().UTC()
+
+	// 5 press releases, oldest of the bunch.
+	for i := 0; i < 5; i++ {
+		_ = idx.Ingest(docRecType(uint64(i+1), "AAPL", "pr"+string(rune('a'+i)), "press_release", "",
+			now.Add(-time.Duration(50-i)*time.Hour)))
+	}
+	// 100 SEC filings, all more recent than every press release above --
+	// exactly the shape that broke Recent(100)-then-filter.
+	for i := 0; i < 100; i++ {
+		_ = idx.Ingest(docRecType(uint64(i+100), "MSFT", "filing"+string(rune(i)), "sec_8k", "2026-08-01",
+			now.Add(-time.Duration(i)*time.Minute)))
+	}
+
+	got := idx.RecentByType("press_release", 100)
+	if len(got) != 5 {
+		t.Fatalf("RecentByType(press_release, 100) = %d items, want 5 -- press releases got crowded out by newer SEC filings", len(got))
+	}
+	for _, ds := range got {
+		if ds.SourceType != "press_release" {
+			t.Errorf("got non-press_release doc %q with SourceType %q", ds.Identity, ds.SourceType)
+		}
+	}
+	for i := 1; i < len(got); i++ {
+		if !got[i-1].PersistedAt.After(got[i].PersistedAt) {
+			t.Errorf("not sorted newest-first at index %d", i)
+		}
+	}
+}
+
+func TestRecentByType_RespectsLimit(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	for i := 0; i < 10; i++ {
+		_ = idx.Ingest(docRecType(uint64(i+1), "AAPL", "pr"+string(rune('a'+i)), "press_release", "",
+			now.Add(-time.Duration(i)*time.Minute)))
+	}
+	if got := idx.RecentByType("press_release", 3); len(got) != 3 {
+		t.Errorf("RecentByType(press_release, 3) = %d items, want 3", len(got))
+	}
+}
+
 func TestRecent_SortsByFilingDateNotIngestionOrder(t *testing.T) {
 	// A historical filing ingested last should appear AFTER a recent filing,
 	// regardless of ingestion order. This is the "breaking news" regression test.

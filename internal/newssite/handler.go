@@ -358,13 +358,21 @@ func (h *Handler) serveMoversSection(w http.ResponseWriter, r *http.Request) int
 func (h *Handler) serveWire(w http.ResponseWriter, r *http.Request) int {
 	var wire []DocEntry
 	if h.docIdx != nil {
-		for _, ds := range h.docIdx.Recent(100) {
-			if ds.SourceType == "press_release" {
-				wire = append(wire, summaryToEntry(ds))
-			}
+		// RecentByType filters by source_type BEFORE truncating to 100 -- real bug
+		// fixed 2026-08-13 (see RecentByType's own doc comment): the previous
+		// Recent(100)-then-filter approach silently dropped press releases on any
+		// day with 100+ more-recent SEC filings, since they'd fill the whole
+		// pre-filter window before press_release docs were ever considered.
+		for _, ds := range h.docIdx.RecentByType("press_release", 100) {
+			wire = append(wire, summaryToEntry(ds))
 		}
 	} else {
-		entries, err := ReadLatest(r.Context(), h.store, 100)
+		// Store-fallback path only runs transiently before docIdx finishes
+		// warming up. A generous bound (2000, vs. docIdx's exact type filter)
+		// is a pragmatic mitigation for the same class of bug, not a full fix --
+		// this path doesn't have RecentByType's ability to filter before
+		// truncating without a real event-store-level query.
+		entries, err := ReadLatest(r.Context(), h.store, 2000)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("internal error: %v", err), http.StatusInternalServerError)
 			return http.StatusInternalServerError
@@ -372,6 +380,9 @@ func (h *Handler) serveWire(w http.ResponseWriter, r *http.Request) int {
 		for _, e := range entries {
 			if e.SourceType == "press_release" {
 				wire = append(wire, e)
+				if len(wire) >= 100 {
+					break
+				}
 			}
 		}
 	}

@@ -169,6 +169,34 @@ func (idx *Index) Recent(n int) []*DocSummary {
 	return all
 }
 
+// RecentByType returns up to n docs matching sourceType exactly, newest-first
+// by effectiveDate. Unlike calling Recent(n) and filtering the result by
+// SourceType afterward, this filters BEFORE truncating — real bug found and
+// fixed 2026-08-13 (founder: "press releases page is not updating" / "i
+// should see all tickered press releases"): serveWire called Recent(100)
+// then kept only SourceType=="press_release" entries, so on any day where
+// 100+ non-press-release docs (SEC filings — secwatch/form4-watcher/
+// nt-watcher/schd13-watcher all feed the same index) were more recent than
+// the press releases, the wire page silently showed zero or stale press
+// releases even though prwatch/prwatch-body were actively ingesting new
+// ones the whole time. This walks the full index (in-memory, no event store
+// I/O, same cost class as AllSummaries) rather than bounding the pre-filter
+// window, so it's correct regardless of how filing-heavy a given day is.
+func (idx *Index) RecentByType(sourceType string, n int) []*DocSummary {
+	all := idx.AllSummaries()
+	out := make([]*DocSummary, 0, n)
+	for _, ds := range all {
+		if ds.SourceType != sourceType {
+			continue
+		}
+		out = append(out, ds)
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
+}
+
 // KnownTickers returns a sorted list of all indexed ticker symbols.
 func (idx *Index) KnownTickers() []string {
 	idx.mu.RLock()
