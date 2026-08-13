@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-13
+- Fixed newssite press-releases pipeline: docindex.RecentByType filters before truncating (was showing stale mislabeled filings); new cmd/pr-indexer closes the real gap where nothing ever wrote source_document_persisted for press releases at all (sess-20260813-2154-dda37e8b)
 
 - Added fatbaby-broker.service systemd unit (processified the manual go-run broker restart from the reboot runbook); corrected doc claim that cmd/broker lived in gpt2-alpine-c (sess-20260813-2154-dda37e8b)
 
