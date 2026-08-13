@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-13
+
+- Added fatbaby-broker.service systemd unit (processified the manual go-run broker restart from the reboot runbook); corrected doc claim that cmd/broker lived in gpt2-alpine-c (sess-20260813-2154-dda37e8b)
+
+
 ## 2026-08-11
 - 修掉 observation-watcher 的 ARG_MAX batch cursor 卡死 bug；確認 credit-balance cooldown 機制運作正常 (sess-20260810-0505-a53abca2)
 
