@@ -122,6 +122,17 @@ var signalAPIOpenAPISpec = map[string]any{
 				"responses": okResponse("Related tickers."),
 			},
 		},
+		"/v1/movers-history/{ticker}": map[string]any{
+			"get": map[string]any{
+				"summary":     "Gainers/losers snapshot history for a ticker",
+				"description": "Daily market_movers_snapshot appearances (day_gainers/day_losers screener), newest first. Returns 503 if the movers index isn't configured.",
+				"parameters": []map[string]any{
+					pathParam("ticker", "Ticker symbol, e.g. AAPL"),
+					queryParam("limit", "integer", "Max entries, default 30."),
+				},
+				"responses": okResponse("Movers snapshot entries, newest first."),
+			},
+		},
 		"/v1/earnings-calendar": map[string]any{
 			"get": map[string]any{
 				"summary":   "Upcoming/past earnings calendar entries",

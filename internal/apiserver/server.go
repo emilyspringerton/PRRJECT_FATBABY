@@ -15,6 +15,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/earningscal"
 	cooccur "github.com/example/prrject-fatbaby/internal/cooccurrence"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
+	"github.com/example/prrject-fatbaby/internal/moversindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
@@ -25,6 +26,7 @@ type ServerConfig struct {
 	Index           *signalindex.Index
 	EarningsCal     *earningscal.Store  // optional; enables /v1/earnings-calendar
 	DocIndex        *docindex.Index     // optional; enables /v1/press-releases/{ticker}
+	MoversIndex     *moversindex.Index  // optional; enables /v1/movers-history/{ticker}
 	Logger          *log.Logger
 	APIKeys         []string
 	ReadTimeout     time.Duration
@@ -83,6 +85,7 @@ func New(cfg ServerConfig) *http.Server {
 	mux.HandleFunc("/v1/eps/{ticker}", s.withMiddleware(s.handleEPS))
 	mux.HandleFunc("/v1/entities/{ticker}", s.withMiddleware(s.handleEntity))
 	mux.HandleFunc("/v1/entities/{ticker}/related", s.withMiddleware(s.handleRelated))
+	mux.HandleFunc("/v1/movers-history/{ticker}", s.withMiddleware(s.handleMoversHistory))
 	mux.HandleFunc("/v1/velocity-alerts", s.withMiddleware(s.handleVelocityAlerts))
 	mux.HandleFunc("/v1/data-quality", s.withMiddleware(s.handleDataQuality))
 	mux.HandleFunc("/v1/openapi.json", handleOpenAPI) // public, no auth -- see openapi.go

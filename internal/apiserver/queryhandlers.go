@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/example/prrject-fatbaby/internal/moversindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 )
 
@@ -221,6 +222,31 @@ func (s *server) handleEPS(_ http.ResponseWriter, r *http.Request) (int, any) {
 		results = []EPSResultRow{}
 	}
 	return http.StatusOK, results
+}
+
+// handleMoversHistory serves GET /v1/movers-history/{ticker}[?limit=N].
+// Surfaces the daily gainers/losers snapshots cmd/movers-watcher has been
+// recording into the event store since 2026-07-28 -- previously write-only,
+// see EMILY/BACKLOG.md SECTION 25.
+func (s *server) handleMoversHistory(_ http.ResponseWriter, r *http.Request) (int, any) {
+	if s.cfg.MoversIndex == nil {
+		return http.StatusServiceUnavailable, map[string]string{"error": "movers index not configured"}
+	}
+	ticker := r.PathValue("ticker")
+	if ticker == "" {
+		return http.StatusBadRequest, map[string]string{"error": "ticker required"}
+	}
+	limit := 30
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= s.cfg.MaxLimit {
+			limit = n
+		}
+	}
+	history := s.cfg.MoversIndex.History(ticker, limit)
+	if history == nil {
+		history = []moversindex.Entry{}
+	}
+	return http.StatusOK, history
 }
 
 // handleEntity serves GET /v1/entities/{ticker}

@@ -23,6 +23,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/cooccurrence"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/indexcheckpoint"
+	"github.com/example/prrject-fatbaby/internal/moversindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
 	"github.com/example/prrject-fatbaby/internal/signalindex"
 	"github.com/example/prrject-fatbaby/internal/store"
@@ -94,6 +95,12 @@ func main() {
 	if err := docindex.Build(ctx, store, docIdx, docsFrom, logger); err != nil {
 		logger.Fatalf("build docindex: %v", err)
 	}
+	// Movers snapshot volume is tiny (one event/day since 2026-07-28) -- a
+	// full rebuild from seq 1 on every restart is cheap, no checkpoint needed.
+	moversIdx := moversindex.NewIndex()
+	if err := moversindex.Build(ctx, store, moversIdx, 1, logger); err != nil {
+		logger.Fatalf("build moversindex: %v", err)
+	}
 	// Checkpoint watermark = the store's true current end sequence, NOT
 	// idx.LatestSeq()/docIdx.LatestSeq() (the highest sequence among only
 	// *matching* records). Using the per-type watermark meant a warm start
@@ -112,6 +119,8 @@ func main() {
 	<-ready
 	docReady := docindex.Tail(ctx, store, docIdx, *pollInterval, logger)
 	<-docReady
+	moversReady := moversindex.Tail(ctx, store, moversIdx, *pollInterval, logger)
+	<-moversReady
 
 	// Periodic checkpoint sync: full-snapshot upsert every pollInterval,
 	// cheap at this index size (thousands of rows, in-process SQLite,
@@ -138,6 +147,7 @@ func main() {
 		Addr:         *addr,
 		Index:        idx,
 		DocIndex:     docIdx,
+		MoversIndex:  moversIdx,
 		Logger:       logger,
 		APIKeys:      splitCSV(*apiKeys),
 		ReadTimeout:  *readTimeout,
