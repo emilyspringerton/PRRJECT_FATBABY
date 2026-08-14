@@ -12,7 +12,8 @@
       "enabled": true,
       "poll_priority": 1,
       "sector": "technology",
-      "notes": "core megacap coverage"
+      "notes": "core megacap coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "MSFT",
@@ -26,7 +27,8 @@
       "enabled": true,
       "poll_priority": 1,
       "sector": "technology",
-      "notes": "core megacap coverage"
+      "notes": "core megacap coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "NVDA",
@@ -40,7 +42,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "technology",
-      "notes": "core semiconductor coverage"
+      "notes": "core semiconductor coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "BLK",
@@ -68,7 +71,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "GOOG",
@@ -82,7 +86,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "technology",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "GOOGL",
@@ -96,7 +101,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "technology",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "BRK.A",
@@ -110,7 +116,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "BRK.B",
@@ -124,7 +131,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "MSTR",
@@ -138,7 +146,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "technology",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "PLTR",
@@ -152,7 +161,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "technology",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "SCHW",
@@ -166,7 +176,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "BEN",
@@ -180,7 +191,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "BAC",
@@ -194,7 +206,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "JPM",
@@ -208,7 +221,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "WFC",
@@ -222,7 +236,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "LLY",
@@ -236,7 +251,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "user-added watchlist coverage"
+      "notes": "user-added watchlist coverage",
+      "exchange": "NYSE"
     },
     {
       "ticker": "GS",
@@ -250,7 +266,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance"
+      "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance",
+      "exchange": "NYSE"
     },
     {
       "ticker": "MS",
@@ -264,7 +281,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance"
+      "notes": "Phase 3 entity-graph expansion: bulge-bracket bank board governance",
+      "exchange": "NYSE"
     },
     {
       "ticker": "C",
@@ -278,7 +296,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 entity-graph expansion: major bank board governance"
+      "notes": "Phase 3 entity-graph expansion: major bank board governance",
+      "exchange": "NYSE"
     },
     {
       "ticker": "IBKR",
@@ -292,7 +311,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 entity-graph expansion: brokerage peer for SCHW director-link analysis"
+      "notes": "Phase 3 entity-graph expansion: brokerage peer for SCHW director-link analysis",
+      "exchange": "NYSE"
     },
     {
       "ticker": "COIN",
@@ -306,7 +326,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1679273)"
+      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1679273)",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "SOFI",
@@ -320,7 +341,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1818502)"
+      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1818502)",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "HOOD",
@@ -334,7 +356,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "financial",
-      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1783398)"
+      "notes": "Phase 3 fintech \u2014 CIK verified via SEC company_tickers.json (was 1783398)",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "AMZN",
@@ -348,7 +371,8 @@
       "enabled": true,
       "poll_priority": 1,
       "sector": "technology",
-      "notes": "S&P 100 expansion: megacap tech / consumer"
+      "notes": "S&P 100 expansion: megacap tech / consumer",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "META",
@@ -362,7 +386,8 @@
       "enabled": true,
       "poll_priority": 1,
       "sector": "technology",
-      "notes": "S&P 100 expansion: megacap tech / social"
+      "notes": "S&P 100 expansion: megacap tech / social",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "TSLA",
@@ -376,7 +401,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "consumer_discretionary",
-      "notes": "S&P 100 expansion: EV / high governance volatility"
+      "notes": "S&P 100 expansion: EV / high governance volatility",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "NFLX",
@@ -390,7 +416,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: streaming media"
+      "notes": "S&P 100 expansion: streaming media",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "JNJ",
@@ -404,7 +431,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: large-cap pharma / healthcare"
+      "notes": "S&P 100 expansion: large-cap pharma / healthcare",
+      "exchange": "NYSE"
     },
     {
       "ticker": "PFE",
@@ -418,7 +446,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: large-cap pharma"
+      "notes": "S&P 100 expansion: large-cap pharma",
+      "exchange": "NYSE"
     },
     {
       "ticker": "ABBV",
@@ -432,7 +461,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: large-cap pharma / governance watch"
+      "notes": "S&P 100 expansion: large-cap pharma / governance watch",
+      "exchange": "NYSE"
     },
     {
       "ticker": "XOM",
@@ -460,7 +490,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "energy",
-      "notes": "S&P 100 expansion: major integrated oil"
+      "notes": "S&P 100 expansion: major integrated oil",
+      "exchange": "NYSE"
     },
     {
       "ticker": "WMT",
@@ -474,7 +505,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "consumer_staples",
-      "notes": "S&P 100 expansion: consumer staples / retail"
+      "notes": "S&P 100 expansion: consumer staples / retail",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "HD",
@@ -488,7 +520,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "consumer_discretionary",
-      "notes": "S&P 100 expansion: consumer discretionary / home improvement"
+      "notes": "S&P 100 expansion: consumer discretionary / home improvement",
+      "exchange": "NYSE"
     },
     {
       "ticker": "COST",
@@ -502,7 +535,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "consumer_staples",
-      "notes": "S&P 100 expansion: consumer staples / warehouse retail"
+      "notes": "S&P 100 expansion: consumer staples / warehouse retail",
+      "exchange": "Nasdaq"
     },
     {
       "ticker": "BA",
@@ -516,7 +550,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: aerospace / high governance event frequency"
+      "notes": "S&P 100 expansion: aerospace / high governance event frequency",
+      "exchange": "NYSE"
     },
     {
       "ticker": "UNH",
@@ -530,7 +565,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: managed care \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: managed care \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "MRK",
@@ -544,7 +580,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "healthcare",
-      "notes": "S&P 100 expansion: large-cap pharma \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: large-cap pharma \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "TGT",
@@ -558,7 +595,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "consumer_staples",
-      "notes": "S&P 100 expansion: retail \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: retail \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "LOW",
@@ -572,7 +610,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "consumer_discretionary",
-      "notes": "S&P 100 expansion: home improvement \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: home improvement \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "CAT",
@@ -586,7 +625,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: industrials \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: industrials \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "RTX",
@@ -600,7 +640,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: aerospace/defense \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: aerospace/defense \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "GE",
@@ -614,7 +655,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "industrial",
-      "notes": "S&P 100 expansion: aerospace/industrials \u2014 CIK verified via SEC company_tickers.json (was 40987)"
+      "notes": "S&P 100 expansion: aerospace/industrials \u2014 CIK verified via SEC company_tickers.json (was 40987)",
+      "exchange": "NYSE"
     },
     {
       "ticker": "T",
@@ -628,7 +670,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: telecom \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: telecom \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "VZ",
@@ -642,7 +685,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: telecom \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: telecom \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "CMCSA",
@@ -656,7 +700,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: media/telecom \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: media/telecom \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "DIS",
@@ -670,7 +715,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "communication_services",
-      "notes": "S&P 100 expansion: media/entertainment \u2014 CIK verified via SEC company_tickers.json (was 1001293)"
+      "notes": "S&P 100 expansion: media/entertainment \u2014 CIK verified via SEC company_tickers.json (was 1001293)",
+      "exchange": "NYSE"
     },
     {
       "ticker": "NEE",
@@ -684,7 +730,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "utilities",
-      "notes": "S&P 100 expansion: utilities \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: utilities \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "COP",
@@ -698,7 +745,8 @@
       "enabled": true,
       "poll_priority": 2,
       "sector": "energy",
-      "notes": "S&P 100 expansion: E&P energy \u2014 CIK verified; enabled 2026-06-23"
+      "notes": "S&P 100 expansion: E&P energy \u2014 CIK verified; enabled 2026-06-23",
+      "exchange": "NYSE"
     },
     {
       "ticker": "TRI",
@@ -711,7 +759,8 @@
       "enabled": true,
       "poll_priority": 3,
       "sector": "legal/information services",
-      "notes": "competitive intel: parent of West Publishing/Westlaw (court opinions + statutory code ingestion) \u2014 founder-flagged competitor watch, S170-20; Canadian foreign private issuer, files 6-K/40-F not 10-K/10-Q; enabled 2026-07-24"
+      "notes": "competitive intel: parent of West Publishing/Westlaw (court opinions + statutory code ingestion) \u2014 founder-flagged competitor watch, S170-20; Canadian foreign private issuer, files 6-K/40-F not 10-K/10-Q; enabled 2026-07-24",
+      "exchange": "OTC"
     }
   ]
 }

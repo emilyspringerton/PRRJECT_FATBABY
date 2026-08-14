@@ -6,6 +6,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.0
 	go.mongodb.org/mongo-driver v1.17.9
 	modernc.org/sqlite v1.52.0
+	skuldmark v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -30,3 +31,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+replace skuldmark => ../SKULDMARK

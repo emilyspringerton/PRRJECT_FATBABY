@@ -12,6 +12,7 @@ import (
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/identity"
 	"github.com/example/prrject-fatbaby/internal/issuerregistry"
+	"github.com/example/prrject-fatbaby/internal/skuldmarkid"
 )
 
 type RunnerConfig struct {
@@ -64,6 +65,17 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 	}
 	entries := watchlist.EnabledEntries()
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Ticker < entries[j].Ticker })
+
+	// IssuerRegistry has existed as a RunnerConfig field since before this, but nothing
+	// ever constructed one -- ResolveByCIK always returned nil, so discoveryEventData
+	// always fell through to the historical_mapping fallback below, which never carries
+	// an Exchange. Build it from the watchlist's own real Exchange data (SEC's own
+	// company_tickers_exchange.json, cross-checked 2026-08-14) when the caller hasn't
+	// already supplied one -- this is also the earliest point a SKULDMARK-25 ID can be
+	// minted, per founder direction to tickerize as early in the pipeline as possible.
+	if cfg.IssuerRegistry == nil {
+		cfg.IssuerRegistry = buildIssuerRegistry(entries, cfg.Logger)
+	}
 
 	store, err := eventstore.NewFileStore(cfg.StoreRoot)
 	if err != nil {
@@ -207,6 +219,32 @@ func (e *FilingDiscoveredEvent) EffectiveForm() string {
 		return e.Form
 	}
 	return e.FormType
+}
+
+// buildIssuerRegistry turns the watchlist's own real Exchange data into an
+// IssuerRegistry, minting a real SKULDMARK-25 ID per entry where the
+// exchange is known (skuldmarkid.FromSecurityRef returns an honest error,
+// not a guess, when it isn't -- logged and skipped, not fatal).
+func buildIssuerRegistry(entries []WatchEntry, logger Logger) *issuerregistry.IssuerRegistry {
+	byCIK := make(map[string][]identity.SecurityRef, len(entries))
+	for _, e := range entries {
+		ref := identity.SecurityRef{
+			Exchange:   e.Exchange,
+			Symbol:     e.Ticker,
+			CIK:        e.CIK,
+			Source:     "watchlist",
+			Confidence: 1.0,
+		}
+		if id, err := skuldmarkid.FromSecurityRef(ref, e.Exchange); err != nil {
+			if logger != nil {
+				logger.Printf("secwatch: skuldmark mint skipped ticker=%s cik=%s: %v", e.Ticker, e.CIK, err)
+			}
+		} else {
+			ref.SkuldmarkID = id
+		}
+		byCIK[e.CIK] = append(byCIK[e.CIK], ref)
+	}
+	return issuerregistry.New(byCIK)
 }
 
 func discoveryEventData(f Filing, now time.Time, reg *issuerregistry.IssuerRegistry) FilingDiscovered {

@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	identitypkg "github.com/example/prrject-fatbaby/internal/identity"
 )
 
 // S160-01 (EMILY/BACKLOG.md): discoverTickers was silently returning empty on live discovery --
@@ -117,5 +119,48 @@ func TestDiscoverTickers_NilLoggerDoesNotPanic(t *testing.T) {
 
 	if len(refs) != 1 {
 		t.Fatalf("expected discoverTickers to work fine with a nil logger, got %+v", refs)
+	}
+}
+
+func TestMintSkuldmarkIDs_MintsForWatchlistedTicker(t *testing.T) {
+	refs := []identitypkg.SecurityRef{
+		{Exchange: "NASDAQ", Symbol: "AAPL", Source: "regex", Confidence: 0.91},
+	}
+	watchlist := map[string]WatchlistRef{
+		"AAPL": {CIK: "320193", Exchange: "Nasdaq"},
+	}
+	mintSkuldmarkIDs(refs, watchlist, nil)
+
+	want := "EINXNASAAPLXXX0000320193Y"
+	if refs[0].SkuldmarkID != want {
+		t.Errorf("SkuldmarkID = %q, want %q", refs[0].SkuldmarkID, want)
+	}
+	if refs[0].CIK != "320193" {
+		t.Errorf("CIK = %q, want %q (should be filled from watchlist)", refs[0].CIK, "320193")
+	}
+}
+
+func TestMintSkuldmarkIDs_LeavesUnmintedWhenTickerNotOnWatchlist(t *testing.T) {
+	refs := []identitypkg.SecurityRef{
+		{Exchange: "NASDAQ", Symbol: "SOMERANDOMCO", Source: "regex", Confidence: 0.91},
+	}
+	watchlist := map[string]WatchlistRef{
+		"AAPL": {CIK: "320193", Exchange: "Nasdaq"},
+	}
+	mintSkuldmarkIDs(refs, watchlist, nil)
+
+	if refs[0].SkuldmarkID != "" {
+		t.Errorf("expected no SkuldmarkID for a ticker not on the watchlist, got %q", refs[0].SkuldmarkID)
+	}
+}
+
+func TestMintSkuldmarkIDs_NilWatchlistIsNoOp(t *testing.T) {
+	refs := []identitypkg.SecurityRef{
+		{Exchange: "NASDAQ", Symbol: "AAPL", Source: "regex", Confidence: 0.91},
+	}
+	mintSkuldmarkIDs(refs, nil, nil)
+
+	if refs[0].SkuldmarkID != "" {
+		t.Errorf("expected no-op with a nil watchlist, got SkuldmarkID %q", refs[0].SkuldmarkID)
 	}
 }

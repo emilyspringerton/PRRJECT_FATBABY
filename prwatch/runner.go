@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	identitypkg "github.com/example/prrject-fatbaby/internal/identity"
 	prid "github.com/example/prrject-fatbaby/internal/prwatch"
+	"github.com/example/prrject-fatbaby/internal/skuldmarkid"
 )
 
 type Logger interface {
@@ -25,6 +27,21 @@ type RunnerConfig struct {
 	Now       func() time.Time
 	Logger    Logger
 	Client    *Client
+	// WatchlistTickers maps an upper-cased ticker symbol to its known CIK +
+	// exchange, keyed the same way as secwatch's own watchlist -- used to
+	// mint a SKULDMARK-25 ID for regex-extracted tickers that happen to be
+	// on the watchlist. Most press-release tickers won't be (prwatch covers
+	// the whole PR Newswire firehose, not just the watchlist), and that's
+	// expected: no CIK on file means no ID minted, not a guess. Optional;
+	// nil means no minting happens here at all.
+	WatchlistTickers map[string]WatchlistRef
+}
+
+// WatchlistRef is the subset of a watchlist entry prwatch needs to mint a
+// SKULDMARK-25 ID for a regex-extracted ticker it happens to match.
+type WatchlistRef struct {
+	CIK      string
+	Exchange string
 }
 
 type Summary struct {
@@ -102,6 +119,7 @@ func eventData(ctx context.Context, cfg RunnerConfig, pr PRDiscovery, now time.T
 		e.PublishedAt = pr.Timestamp.UTC().Format(time.RFC3339Nano)
 	}
 	if refs, snippet := discoverTickers(ctx, cfg.Client, cfg.Logger, pr.URL); len(refs) > 0 {
+		mintSkuldmarkIDs(refs, cfg.WatchlistTickers, cfg.Logger)
 		e.Identity.AllTickers = refs
 		first := refs[0]
 		e.Identity.PrimaryTicker = &first
@@ -139,6 +157,31 @@ func LoadSeenIDs(ctx context.Context, store eventstore.EventStore) (map[string]s
 			}
 		}
 		from = recs[len(recs)-1].Sequence + 1
+	}
+}
+
+// mintSkuldmarkIDs fills in SkuldmarkID on any ref whose ticker is on the
+// watchlist -- mutates refs in place. Refs for tickers not on the watchlist
+// are left with an empty SkuldmarkID, not a guess: prwatch discovers the
+// whole PR Newswire firehose, most of which isn't a CIK we have on file.
+func mintSkuldmarkIDs(refs []identitypkg.SecurityRef, watchlist map[string]WatchlistRef, logger Logger) {
+	if len(watchlist) == 0 {
+		return
+	}
+	for i := range refs {
+		wr, ok := watchlist[strings.ToUpper(refs[i].Symbol)]
+		if !ok {
+			continue
+		}
+		refs[i].CIK = wr.CIK
+		id, err := skuldmarkid.FromSecurityRef(refs[i], wr.Exchange)
+		if err != nil {
+			if logger != nil {
+				logger.Printf("prwatch: skuldmark mint skipped ticker=%s cik=%s: %v", refs[i].Symbol, wr.CIK, err)
+			}
+			continue
+		}
+		refs[i].SkuldmarkID = id
 	}
 }
 

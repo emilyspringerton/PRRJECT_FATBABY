@@ -23,6 +23,12 @@ type WatchEntry struct {
 	// Sector is a coarse GICS-style grouping used for peer governance comparison.
 	// E.g. "technology", "financial", "healthcare", "energy", "industrial", etc.
 	Sector string `json:"sector,omitempty"`
+	// Exchange is the listing exchange name as SEC's own company_tickers_exchange.json
+	// names it ("Nasdaq", "NYSE", "OTC", ...) -- source for internal/skuldmarkid's MIC
+	// resolution. Empty when the CIK on file doesn't match SEC's own record of which CIK
+	// the ticker actually trades under (found live 2026-08-14 for BLK/XOM -- left unset
+	// rather than guessed).
+	Exchange string `json:"exchange,omitempty"`
 }
 
 func LoadWatchlist(path string) (Watchlist, error) {

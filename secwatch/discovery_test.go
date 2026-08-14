@@ -106,3 +106,60 @@ type testingLogger struct{ t *testing.T }
 func (l testingLogger) Printf(format string, args ...any) {
 	l.t.Logf(strings.TrimSpace(format), args...)
 }
+
+func TestBuildIssuerRegistry_MintsSkuldmarkIDWhenExchangeKnown(t *testing.T) {
+	entries := []WatchEntry{
+		{Ticker: "AAPL", CIK: "320193", Exchange: "Nasdaq", Enabled: true},
+	}
+	reg := buildIssuerRegistry(entries, testingLogger{t})
+	refs := reg.ResolveByCIK("320193")
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
+	}
+	want := "EINXNASAAPLXXX0000320193Y"
+	if refs[0].SkuldmarkID != want {
+		t.Errorf("SkuldmarkID = %q, want %q", refs[0].SkuldmarkID, want)
+	}
+	if refs[0].Exchange != "Nasdaq" {
+		t.Errorf("Exchange = %q, want %q", refs[0].Exchange, "Nasdaq")
+	}
+}
+
+func TestBuildIssuerRegistry_SkipsMintWhenExchangeUnknown(t *testing.T) {
+	entries := []WatchEntry{
+		// Mirrors the real BLK/XOM case found 2026-08-14: CIK on file doesn't match
+		// SEC's own record of the actual trading entity, so Exchange is left empty
+		// rather than guessed -- must not mint a wrong-but-plausible-looking ID.
+		{Ticker: "XOM", CIK: "34088", Exchange: "", Enabled: true},
+	}
+	reg := buildIssuerRegistry(entries, testingLogger{t})
+	refs := reg.ResolveByCIK("34088")
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
+	}
+	if refs[0].SkuldmarkID != "" {
+		t.Errorf("expected no SkuldmarkID minted, got %q", refs[0].SkuldmarkID)
+	}
+}
+
+func TestDiscoveryEventData_CarriesSkuldmarkIDFromRegistry(t *testing.T) {
+	reg := buildIssuerRegistry([]WatchEntry{
+		{Ticker: "AAPL", CIK: "320193", Exchange: "Nasdaq", Enabled: true},
+	}, testingLogger{t})
+	f := Filing{
+		Ticker:          "AAPL",
+		CIK:             "320193",
+		AccessionNumber: "0000320193-26-000001",
+		Form:            "8-K",
+		FilingDate:      "2026-05-01",
+		SubmissionsURL:  SubmissionsURL("320193"),
+	}
+	data := discoveryEventData(f, time.Now().UTC(), reg)
+	if data.Identity.PrimaryTicker == nil {
+		t.Fatal("expected a PrimaryTicker")
+	}
+	want := "EINXNASAAPLXXX0000320193Y"
+	if data.Identity.PrimaryTicker.SkuldmarkID != want {
+		t.Errorf("PrimaryTicker.SkuldmarkID = %q, want %q", data.Identity.PrimaryTicker.SkuldmarkID, want)
+	}
+}
