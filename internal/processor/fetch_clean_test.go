@@ -57,6 +57,34 @@ func TestExtractPRNewswireArticleBody_FailsOpenWhenMarkersMissing(t *testing.T) 
 	}
 }
 
+// TestCleanText_StripsInlineXBRLHeaderContent is a regression test for a
+// real, live bug found 2026-08-14 (founder: SEC filings display was "a
+// garbled mess"). Confirmed against a real, live-fetched Costco 10-Q
+// (cost-20260510.htm): the <ix:header> block was 58,806 characters out of
+// an 897,626-character document (~6.5%), sitting at the very start, before
+// any real visible content. reXBRLTags only ever stripped the XBRL tag
+// WRAPPERS (<ix:...>, <xbrli:...>, etc.), never the raw context/unit/entity
+// identifier TEXT they wrap -- so a customer.newssite reader hit that raw
+// XBRL soup first, ahead of the real filing text. This fixture mirrors the
+// real structure (tag names, nesting, attribute shape all real; content
+// trimmed for a lean test), not fabricated from scratch.
+func TestCleanText_StripsInlineXBRLHeaderContent(t *testing.T) {
+	html := `<html><body><div style="display:none">
+<ix:header><ix:hidden><ix:nonNumeric contextRef="c-1" name="dei:AmendmentFlag" format="ixt:fixed-false" id="f-24">FALSE</ix:nonNumeric><ix:nonNumeric contextRef="c-1" name="dei:EntityRegistrantName" id="f-27">COSTCO WHOLESALE CORP /NEW</ix:nonNumeric><ix:nonNumeric contextRef="c-1" name="dei:EntityCentralIndexKey" id="f-28">0000909832</ix:nonNumeric></ix:hidden><xbrli:context id="c-1"><xbrli:entity><xbrli:identifier scheme="http://www.sec.gov/CIK">0000909832</xbrli:identifier></xbrli:entity></xbrli:context><xbrli:unit id="usd"><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unit></ix:header>
+</div>
+<p>Costco Wholesale Corporation today reported net sales of $62.53 billion for the third quarter.</p>
+</body></html>`
+
+	got := CleanText(html)
+
+	if strings.Contains(got, "AmendmentFlag") || strings.Contains(got, "EntityCentralIndexKey") || strings.Contains(got, "iso4217") {
+		t.Errorf("cleaned text still contains ix:header XBRL identifier soup:\n%s", got)
+	}
+	if !strings.Contains(got, "reported net sales of $62.53 billion") {
+		t.Errorf("cleaned text is missing the real filing content:\n%s", got)
+	}
+}
+
 // TestExtractPRNewswireArticleBody_FailsOpenWhenEndMarkerMissing verifies
 // the start-only fallback: if the end boundary is missing but the start
 // marker is present, return everything from the start marker onward rather

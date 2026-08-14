@@ -13,7 +13,19 @@ import (
 )
 
 var (
-	reScriptStyle    = regexp.MustCompile(`(?is)<(script|style)[^>]*>.*?</(script|style)>`)
+	reScriptStyle = regexp.MustCompile(`(?is)<(script|style)[^>]*>.*?</(script|style)>`)
+	// reIXBRLHeader strips the ENTIRE <ix:header>...</ix:header> block, content included --
+	// real bug found and fixed 2026-08-14 (founder: SEC filings display was "a garbled mess").
+	// Modern SEC filings almost universally use Inline XBRL, which embeds a non-rendering
+	// <ix:header> element (context/unit/entity definitions -- CSS-hidden in a real browser,
+	// never meant to be read as document text) directly in the visible document body, near
+	// the top. reXBRLTags below only ever stripped the XBRL TAG WRAPPERS
+	// (<ix:...>/<xbrli:...>/etc.), never their text CONTENT -- so this whole block's raw
+	// identifier/unit/date soup (confirmed live: 58,806 chars out of a 897,626-char real
+	// Costco 10-Q, ~6.5% of the document, sitting at the very start) survived straight into
+	// CleanedText, ahead of any real visible filing content. Must run BEFORE reXBRLTags/
+	// reAllTags strip the tag markup, or there'd be no </ix:header> left to match against.
+	reIXBRLHeader    = regexp.MustCompile(`(?is)<ix:header[^>]*>.*?</ix:header>`)
 	reXBRLTags       = regexp.MustCompile(`(?is)</?(ix:[^>\s]+|xbrli:[^>\s]+|link:[^>\s]+|dei:[^>\s]+|us-gaap:[^>\s]+)[^>]*>`)
 	reAllTags        = regexp.MustCompile(`(?s)<[^>]+>`)
 	reHTMLWhitespace = regexp.MustCompile(`\s+`)
@@ -158,7 +170,8 @@ func extractPRNewswireArticleBody(html string) string {
 
 func CleanText(raw string) string {
 	withoutScript := reScriptStyle.ReplaceAllString(raw, " ")
-	withoutXBRL := reXBRLTags.ReplaceAllString(withoutScript, " ")
+	withoutIXBRLHeader := reIXBRLHeader.ReplaceAllString(withoutScript, " ")
+	withoutXBRL := reXBRLTags.ReplaceAllString(withoutIXBRLHeader, " ")
 	withoutTags := reAllTags.ReplaceAllString(withoutXBRL, " ")
 	withoutEntities := htmlEntityDecode(withoutTags)
 	return strings.TrimSpace(reHTMLWhitespace.ReplaceAllString(withoutEntities, " "))
