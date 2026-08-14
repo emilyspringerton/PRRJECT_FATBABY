@@ -195,6 +195,23 @@ func detectGaps(signals []Signal, nodeCount int, byType map[string]int, processe
 
 // PublishObservation writes obs to <dir>/latest.json and an archive sibling.
 func PublishObservation(obs Observation, dir string) error {
+	return publishObservationAt(obs, dir, time.Now().UTC().Format("2006-01-02T15-04-05"))
+}
+
+// publishObservationAt is PublishObservation with the archive base
+// timestamp passed in explicitly, so the collision-avoidance loop below is
+// directly testable without depending on real wall-clock timing.
+//
+// Real bug found and fixed 2026-08-14: this used to write straight to
+// <ts>.json with no collision check, unlike emily observe's own writer
+// (internal/obs/writer.go, which added this exact guard 2026-08-09 after
+// losing observations the same way). Two observations landing in the same
+// second -- entity-graph's own periodic run and a `emily observe` CLI call,
+// or two entity-graph runs close together -- silently clobbered each other;
+// confirmed live, a real founder directive lost this way mid-session.
+// Second-precision timestamps collide often enough under real load that
+// this isn't a hypothetical.
+func publishObservationAt(obs Observation, dir string, ts string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
@@ -206,8 +223,15 @@ func PublishObservation(obs Observation, dir string) error {
 	if err := os.WriteFile(latest, data, 0o644); err != nil {
 		return fmt.Errorf("write latest.json: %w", err)
 	}
-	ts := time.Now().UTC().Format("2006-01-02T15-04-05")
-	archive := filepath.Join(dir, ts+".json")
+	archiveName := ts + ".json"
+	archive := filepath.Join(dir, archiveName)
+	for i := 2; ; i++ {
+		if _, err := os.Stat(archive); os.IsNotExist(err) {
+			break
+		}
+		archiveName = fmt.Sprintf("%s-%d.json", ts, i)
+		archive = filepath.Join(dir, archiveName)
+	}
 	if err := os.WriteFile(archive, data, 0o644); err != nil {
 		return fmt.Errorf("write archive %s: %w", archive, err)
 	}
