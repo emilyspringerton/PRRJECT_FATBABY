@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-14
+- S166-01/S160-05修復:docindex last-write-wins + SourceTypeForForm export + cmd/backfill-source-doc-labels migration。1104筆/11檔ticker修正,live驗證正確。commit c9e94be。 (sess-20260813-2154-dda37e8b)
 - SKULDMARK-25正式接進secwatch+prwatch intake pipeline(internal/skuldmarkid adapter),watchlist.json補上真實Exchange欄位。commit fcefbe2。 (sess-20260813-2154-dda37e8b)
 - New GET /v1/movers-history/{ticker} endpoint surfaces movers-watcher's daily gainers/losers snapshots (recorded since 2026-07-28, previously write-only). internal/moversindex, commit 74e6b0f. (sess-20260813-2154-dda37e8b)
 - Process sync: rebuilt + restarted processor and prwatch-body services -- both were running binaries from before this session's XBRL ix:header fix (Apple #13361), so the real bug fix wasn't actually live until now (sess-20260813-2154-dda37e8b)
