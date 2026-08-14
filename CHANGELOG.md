@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-14
+- New GET /v1/movers-history/{ticker} endpoint surfaces movers-watcher's daily gainers/losers snapshots (recorded since 2026-07-28, previously write-only). internal/moversindex, commit 74e6b0f. (sess-20260813-2154-dda37e8b)
 - Process sync: rebuilt + restarted processor and prwatch-body services -- both were running binaries from before this session's XBRL ix:header fix (Apple #13361), so the real bug fix wasn't actually live until now (sess-20260813-2154-dda37e8b)
 - Fixed entity-graph's observation-writer collision bug: PublishObservation had no collision guard, silently overwrote observations landing on the same second (unlike emily observe's own writer, which already had this fix). Real data loss confirmed live this session -- a founder directive got clobbered this way (sess-20260813-2154-dda37e8b)
 
