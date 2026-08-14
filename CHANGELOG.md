@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-14
+
+- Fixed real bug: SEC filing text extraction leaked the hidden Inline-XBRL <ix:header> block's raw content (58KB of context/unit identifiers on a real Costco 10-Q) into CleanedText, ahead of the actual filing text -- this is what newssite readers saw as 'garbled' (sess-20260813-2154-dda37e8b)
+
+
 ## 2026-08-13
 - Fixed newssite press-releases pipeline: docindex.RecentByType filters before truncating (was showing stale mislabeled filings); new cmd/pr-indexer closes the real gap where nothing ever wrote source_document_persisted for press releases at all (sess-20260813-2154-dda37e8b)
 
