@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-14
+- Process sync: rebuilt + restarted processor and prwatch-body services -- both were running binaries from before this session's XBRL ix:header fix (Apple #13361), so the real bug fix wasn't actually live until now (sess-20260813-2154-dda37e8b)
 - Fixed entity-graph's observation-writer collision bug: PublishObservation had no collision guard, silently overwrote observations landing on the same second (unlike emily observe's own writer, which already had this fix). Real data loss confirmed live this session -- a founder directive got clobbered this way (sess-20260813-2154-dda37e8b)
 
 - Fixed real bug: SEC filing text extraction leaked the hidden Inline-XBRL <ix:header> block's raw content (58KB of context/unit identifiers on a real Costco 10-Q) into CleanedText, ahead of the actual filing text -- this is what newssite readers saw as 'garbled' (sess-20260813-2154-dda37e8b)
