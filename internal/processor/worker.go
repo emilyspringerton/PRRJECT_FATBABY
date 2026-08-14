@@ -212,7 +212,7 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 		return err
 	}
 	cfg.Logger.Printf("processor fetch complete identity=%s cleaned_chars=%d", identity, len(clean))
-	kind := sourceTypeForForm(form)
+	kind := SourceTypeForForm(form)
 	if !seen.hasSource(identity) {
 		if persistErr := persistSourceDocument(ctx, cfg.Store, filing, identity, kind, clean); persistErr != nil {
 			cfg.Logger.Printf("processor source_document persist failed identity=%s err=%v", identity, persistErr)
@@ -260,7 +260,7 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 	return nil
 }
 
-// sourceTypeForForm maps a SEC form identifier to the intelligence.SourceDocument
+// SourceTypeForForm maps a SEC form identifier to the intelligence.SourceDocument
 // SourceType values pkg/intelligence/confidence.go already knows how to score
 // ("sec_8k", "sec_10q", "sec_10k", "sec_def14a", "sec_form4", "sec_nt10k",
 // "sec_nt10q"). This package only ever processes filing_discovered events —
@@ -271,7 +271,7 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 // mislabeled as a press release. Found 2026-07-19 via newssite's "/wire" page
 // (filtered to source_type=="press_release") showing plain 10-Q filings
 // (NFLX, GE, COST) mixed in with real press releases.
-func sourceTypeForForm(form string) string {
+func SourceTypeForForm(form string) string {
 	switch strings.ToUpper(strings.TrimSpace(form)) {
 	case "8-K", "8-K/A":
 		return "sec_8k"

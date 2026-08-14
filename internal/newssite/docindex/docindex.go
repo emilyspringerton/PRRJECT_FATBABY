@@ -66,8 +66,19 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 	}
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	if _, exists := idx.byIdentity[doc.Identity]; exists {
-		return nil
+	// Last-write-wins on identity, not first-write-wins: a later record for the
+	// same identity is treated as a correction and replaces the earlier one.
+	// Found live 2026-08-14: first-write-wins meant 1,104 source_document_persisted
+	// records across 11 tickers, mislabeled by a since-fixed processor bug
+	// (S160-01), stayed permanently mislabeled here even after a corrected
+	// re-emit -- this index silently ignored the correction. An older or
+	// same-sequence record for an identity we've already seen is still ignored
+	// (replay safety), but a genuinely newer one now takes effect.
+	if existing, exists := idx.byIdentity[doc.Identity]; exists {
+		if rec.Sequence <= existing.Sequence {
+			return nil
+		}
+		removeFromTickerSlice(idx.byTicker, existing)
 	}
 	ds := &DocSummary{
 		Identity:    doc.Identity,
@@ -87,6 +98,21 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 		idx.latestSeq = rec.Sequence
 	}
 	return nil
+}
+
+// removeFromTickerSlice removes old from m[old.Ticker]'s slice, if present.
+// old may have been filed under a different ticker than the replacing record
+// (identity is the true key, ticker can in principle differ on a correction),
+// so this looks it up by old.Ticker specifically rather than assuming the
+// caller's current ticker variable.
+func removeFromTickerSlice(m map[string][]*DocSummary, old *DocSummary) {
+	docs := m[old.Ticker]
+	for i, d := range docs {
+		if d == old {
+			m[old.Ticker] = append(docs[:i], docs[i+1:]...)
+			return
+		}
+	}
 }
 
 // ForTicker returns all docs for a ticker, newest first by FilingDate.

@@ -95,6 +95,74 @@ func TestIngest_SkipsEmptyIdentity(t *testing.T) {
 	}
 }
 
+func docRecWithSourceType(seq uint64, ticker, identity, sourceType, form string, persistedAt time.Time) eventstore.Record {
+	doc := intelligence.SourceDocument{
+		Identity:         identity,
+		Ticker:           ticker,
+		SourceType:       sourceType,
+		Form:             form,
+		CleanedText:      "Some cleaned text for the document body.",
+		CleanedCharCount: 41,
+		PersistedAt:      persistedAt,
+	}
+	b, _ := json.Marshal(doc)
+	return eventstore.Record{Sequence: seq, AppendedAt: persistedAt, Event: eventstore.Event{
+		ID: identity, Type: "source_document_persisted", Data: b,
+	}}
+}
+
+func TestIngest_LaterSequenceCorrectsAnEarlierMislabeledRecord(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	// The exact real-world shape of the S166-01/S160-05 bug: a broken
+	// first version (empty form, mislabeled press_release), then a later
+	// correction with the real form/source_type re-derived.
+	_ = idx.Ingest(docRecWithSourceType(1, "AAPL", "dup-id", "press_release", "", now))
+	_ = idx.Ingest(docRecWithSourceType(2, "AAPL", "dup-id", "sec_8k", "8-K", now.Add(time.Second)))
+
+	docs := idx.ForTicker("AAPL")
+	if len(docs) != 1 {
+		t.Fatalf("expected exactly 1 doc after correction, got %d", len(docs))
+	}
+	if docs[0].SourceType != "sec_8k" || docs[0].Form != "8-K" {
+		t.Errorf("expected the corrected (later-sequence) record to win, got SourceType=%q Form=%q", docs[0].SourceType, docs[0].Form)
+	}
+	if got, ok := idx.ByIdentity("dup-id"); !ok || got.SourceType != "sec_8k" {
+		t.Errorf("ByIdentity should also reflect the correction, got %+v ok=%v", got, ok)
+	}
+}
+
+func TestIngest_EarlierOrEqualSequenceDoesNotOverwriteNewer(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	_ = idx.Ingest(docRecWithSourceType(5, "AAPL", "dup-id", "sec_8k", "8-K", now))
+	// A replay of an older or same-sequence record must not clobber the
+	// newer one already indexed -- replay safety, not just correction support.
+	_ = idx.Ingest(docRecWithSourceType(3, "AAPL", "dup-id", "press_release", "", now))
+	_ = idx.Ingest(docRecWithSourceType(5, "AAPL", "dup-id", "press_release", "", now))
+
+	docs := idx.ForTicker("AAPL")
+	if len(docs) != 1 {
+		t.Fatalf("expected exactly 1 doc, got %d", len(docs))
+	}
+	if docs[0].SourceType != "sec_8k" {
+		t.Errorf("expected the higher-sequence record to remain authoritative, got SourceType=%q", docs[0].SourceType)
+	}
+}
+
+func TestIngest_CorrectionDoesNotLeaveADuplicateInTheTickerSlice(t *testing.T) {
+	idx := NewIndex()
+	now := time.Now().UTC()
+	_ = idx.Ingest(docRecWithSourceType(1, "AAPL", "dup-id", "press_release", "", now))
+	_ = idx.Ingest(docRecWithSourceType(1, "AAPL", "other-id", "sec_10q", "10-Q", now))
+	_ = idx.Ingest(docRecWithSourceType(2, "AAPL", "dup-id", "sec_8k", "8-K", now.Add(time.Second)))
+
+	docs := idx.ForTicker("AAPL")
+	if len(docs) != 2 {
+		t.Fatalf("expected exactly 2 distinct docs (dup-id corrected + other-id untouched), got %d: %+v", len(docs), docs)
+	}
+}
+
 func TestForTicker_NewestFirst(t *testing.T) {
 	idx := NewIndex()
 	base := time.Now().UTC()

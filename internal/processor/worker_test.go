@@ -28,7 +28,7 @@ func TestSourceTypeForForm(t *testing.T) {
 		{"", "sec_filing"},
 	}
 	for _, tc := range cases {
-		if got := sourceTypeForForm(tc.form); got != tc.want {
+		if got := SourceTypeForForm(tc.form); got != tc.want {
 			t.Errorf("sourceTypeForForm(%q) = %q, want %q", tc.form, got, tc.want)
 		}
 	}
