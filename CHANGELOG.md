@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-15 (4)
+- S165-03：新增fedwatch(Fed/FOMC data, Phase 3)——(a) RSS poller抓Fed monetary-policy feed,跟prwatch.RunDiscovery同款discover->load-seen->dedupe->append,真的encoding/xml解析(這來源本身就是well-formed RSS,不用regex);(b) Fed自己公布的FOMC會議行事曆2021-2027,現場抓federalreserve.gov驗證過,對照live press feed自己的聲明日期完全吻合——照Fed自己的行事曆來,不是編的。新增cmd/fed-watch,跟bond-watcher一樣one-shot systemd-timer模式。20個測試用現場抓的真RSS fixture,不是合成的。線上真feed端到端驗證:15筆真press release正確discover/persist/dedupe,next-meeting算對(2026-09-15~16)。Apple #13743,commit 06705e2。 (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-15 (3)
 - S145-02：新增fableeval(HQ-SPEC-AI-103 §4d)——照internal/eps/norngate的EPSOracle模式(S141-02)但評的是headline生成品質不是extraction準確度。評eps.Generate()(現有唯一真的generator)對照4組frozen fixture(buildHeadline每個分支各一組)。跟未來FABLE E0 checkpoint要走的介面一模一樣——S145-03落地時只要換掉eps.Generate()呼叫,harness不用改。Fixture-based的理由跟EPSOracle一樣誠實揭露:線上fabledata corpus(S145-01)現在0筆confirmed,沒有真ground truth可以freeze。5個測試(含negative control)。Apple #13724,commit 92c7934。 (sess-20260813-2154-dda37e8b)
 
