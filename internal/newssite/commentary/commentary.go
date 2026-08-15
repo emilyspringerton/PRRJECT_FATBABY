@@ -63,8 +63,15 @@ func (s *Store) Refresh() error {
 	}
 	defer f.Close()
 
-	var all []*Article
-	byTicker := make(map[string][]*Article)
+	// Dedup by ID, last record wins -- articles.ndjson is append-only, so a
+	// same-day re-run or retry of the writer (movers-watcher and similar,
+	// S167-03's own finding) can append a second row with the same ID.
+	// Without this, Recent()/ForTicker() surfaced duplicate cards until
+	// someone noticed and hand-deduped the file (EMILY/BACKLOG.md S167-05).
+	byID := make(map[string]*Article)
+	var order []string // first-seen order, so a brand-new ID's position among
+	// same-timestamp ties is stable; final list is still re-sorted by
+	// PublishedAt below regardless.
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 4<<20), 4<<20)
@@ -77,14 +84,24 @@ func (s *Store) Refresh() error {
 			continue
 		}
 		cp := a
-		all = append(all, &cp)
-		t := strings.ToUpper(strings.TrimSpace(a.Ticker))
-		if t != "" {
-			byTicker[t] = append(byTicker[t], &cp)
+		if _, exists := byID[a.ID]; !exists {
+			order = append(order, a.ID)
 		}
+		byID[a.ID] = &cp
 	}
 	if err := sc.Err(); err != nil {
 		return err
+	}
+
+	all := make([]*Article, 0, len(order))
+	byTicker := make(map[string][]*Article)
+	for _, id := range order {
+		a := byID[id]
+		all = append(all, a)
+		t := strings.ToUpper(strings.TrimSpace(a.Ticker))
+		if t != "" {
+			byTicker[t] = append(byTicker[t], a)
+		}
 	}
 
 	// Sort newest-first.

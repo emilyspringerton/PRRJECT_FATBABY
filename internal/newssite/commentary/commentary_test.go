@@ -141,6 +141,46 @@ func TestStore_ByID(t *testing.T) {
 	}
 }
 
+// TestStore_Refresh_DedupsByID_LastWriteWins is the regression test for
+// S167-05 (EMILY/BACKLOG.md SECTION 167): articles.ndjson is append-only, so
+// a same-day re-run or retry of a writer (movers-watcher and similar,
+// S167-03's own finding) could append a second row with an ID already
+// present. Before this fix Refresh() kept every row unconditionally, so
+// Recent()/ForTicker() surfaced duplicate cards until someone manually
+// cleaned up the NDJSON file.
+func TestStore_Refresh_DedupsByID_LastWriteWins(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	writeArticle(t, dir, Article{
+		ID: "movers-2026-08-15", Ticker: "AAPL", Headline: "Stale headline",
+		Body: "first pass", PublishedAt: now,
+	})
+	writeArticle(t, dir, Article{
+		ID: "movers-2026-08-15", Ticker: "AAPL", Headline: "Corrected headline",
+		Body: "retry after failure", PublishedAt: now.Add(time.Minute),
+	})
+
+	s := NewStore(dir)
+	if err := s.Refresh(); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if got := len(s.Recent(10)); got != 1 {
+		t.Fatalf("Recent(10) = %d, want 1 (duplicate ID should collapse)", got)
+	}
+	art, ok := s.ByID("movers-2026-08-15")
+	if !ok {
+		t.Fatal("expected to find article by ID")
+	}
+	if art.Headline != "Corrected headline" {
+		t.Errorf("Headline = %q, want last-write-wins to keep the later row", art.Headline)
+	}
+
+	byTicker := s.ForTicker("AAPL")
+	if len(byTicker) != 1 {
+		t.Errorf("ForTicker(AAPL) = %d, want 1 (dedup must apply to the per-ticker index too)", len(byTicker))
+	}
+}
+
 func TestStore_ByKind(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now().UTC()

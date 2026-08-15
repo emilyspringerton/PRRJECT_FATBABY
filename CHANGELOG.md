@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-15
+- S167-05修復:commentary.Store.Refresh()改用以article ID去重(last-write-wins),仿照docindex的correction邏輯,解決movers-watcher等writer同日重跑/重試造成的重複卡片問題。線上articles.ndjson當下無重複,不需額外migration。go test ./...全綠,已部署fatbaby-newssite並live驗證。Apple #13714。 (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-14
 - S166-01/S160-05修復:docindex last-write-wins + SourceTypeForForm export + cmd/backfill-source-doc-labels migration。1104筆/11檔ticker修正,live驗證正確。commit c9e94be。 (sess-20260813-2154-dda37e8b)
 - SKULDMARK-25正式接進secwatch+prwatch intake pipeline(internal/skuldmarkid adapter),watchlist.json補上真實Exchange欄位。commit fcefbe2。 (sess-20260813-2154-dda37e8b)
