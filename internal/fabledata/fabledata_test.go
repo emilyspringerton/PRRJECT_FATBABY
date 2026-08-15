@@ -29,7 +29,7 @@ func writeNDJSON(t *testing.T, path string, lines []interface{}) {
 	}
 }
 
-func TestBuildExamples_OnlyResolvedVerdictsIncluded(t *testing.T) {
+func TestBuildExamples_OnlyConfirmedVerdictIncluded(t *testing.T) {
 	dir := t.TempDir()
 	writeNDJSON(t, filepath.Join(dir, "articles.ndjson"), []interface{}{
 		article{SourceIdentity: "sid-1", Ticker: "AAPL", Headline: "Apple posts EPS", Dek: "dek1"},
@@ -39,28 +39,41 @@ func TestBuildExamples_OnlyResolvedVerdictsIncluded(t *testing.T) {
 	})
 	writeNDJSON(t, filepath.Join(dir, "oracle.ndjson"), []interface{}{
 		eps.OracleCase{CaseID: "c1", SourceIdentity: "sid-1", Verdict: eps.VerdictConfirmed, ExtractedEPS: f64(1.5), FiledEPS: f64(1.5), RecordedAt: "2026-08-15T00:00:00Z"},
+		// contradicts is a real reality-rooted grade, but it means the
+		// extraction pipeline got the headline WRONG -- must not be
+		// training-eligible (would teach a generator its own error).
 		eps.OracleCase{CaseID: "c2", SourceIdentity: "sid-2", Verdict: eps.VerdictContradicts, ExtractedEPS: f64(2.0), FiledEPS: f64(1.9), RecordedAt: "2026-08-15T00:00:00Z"},
 		eps.OracleCase{CaseID: "c3", SourceIdentity: "sid-3", Verdict: eps.VerdictPending, RecordedAt: "2026-08-15T00:00:00Z"},
 		eps.OracleCase{CaseID: "c4", SourceIdentity: "sid-4", Verdict: eps.VerdictUnresolvable, RecordedAt: "2026-08-15T00:00:00Z"},
 	})
 
-	examples, err := BuildExamples(dir, nil)
+	examples, stats, err := BuildExamples(dir, nil)
 	if err != nil {
 		t.Fatalf("BuildExamples: %v", err)
 	}
-	if len(examples) != 2 {
-		t.Fatalf("expected 2 graded examples (pending/unresolvable excluded), got %d", len(examples))
+	if len(examples) != 1 {
+		t.Fatalf("expected 1 confirmed example, got %d", len(examples))
 	}
-	for _, e := range examples {
-		if e.Verdict != string(eps.VerdictConfirmed) && e.Verdict != string(eps.VerdictContradicts) {
-			t.Errorf("unexpected verdict in output: %s", e.Verdict)
-		}
-		if e.LicenseClass != LicenseClassOwnExhaust {
-			t.Errorf("LicenseClass = %q, want %q", e.LicenseClass, LicenseClassOwnExhaust)
-		}
-		if e.OracleName != OracleNameEPSReconciler {
-			t.Errorf("OracleName = %q, want %q", e.OracleName, OracleNameEPSReconciler)
-		}
+	if examples[0].Verdict != string(eps.VerdictConfirmed) {
+		t.Errorf("unexpected verdict in output: %s", examples[0].Verdict)
+	}
+	if examples[0].LicenseClass != LicenseClassOwnExhaust {
+		t.Errorf("LicenseClass = %q, want %q", examples[0].LicenseClass, LicenseClassOwnExhaust)
+	}
+	if examples[0].OracleName != OracleNameEPSReconciler {
+		t.Errorf("OracleName = %q, want %q", examples[0].OracleName, OracleNameEPSReconciler)
+	}
+
+	if stats.Confirmed != 1 {
+		t.Errorf("stats.Confirmed = %d, want 1", stats.Confirmed)
+	}
+	if stats.ExcludedContradicts != 1 {
+		t.Errorf("stats.ExcludedContradicts = %d, want 1", stats.ExcludedContradicts)
+	}
+	// pending + unresolvable both fall into the "no grade yet / unknown"
+	// bucket, counted together as ExcludedPending.
+	if stats.ExcludedPending != 2 {
+		t.Errorf("stats.ExcludedPending = %d, want 2", stats.ExcludedPending)
 	}
 }
 
@@ -76,7 +89,7 @@ func TestBuildExamples_MissingArticleSkipped(t *testing.T) {
 		eps.OracleCase{CaseID: "c2", SourceIdentity: "sid-2", Verdict: eps.VerdictConfirmed, RecordedAt: "2026-08-15T00:00:00Z"},
 	})
 
-	examples, err := BuildExamples(dir, nil)
+	examples, stats, err := BuildExamples(dir, nil)
 	if err != nil {
 		t.Fatalf("BuildExamples: %v", err)
 	}
@@ -85,6 +98,9 @@ func TestBuildExamples_MissingArticleSkipped(t *testing.T) {
 	}
 	if examples[0].SourceIdentity != "sid-1" {
 		t.Errorf("SourceIdentity = %q, want sid-1", examples[0].SourceIdentity)
+	}
+	if stats.SkippedNoArticle != 1 {
+		t.Errorf("stats.SkippedNoArticle = %d, want 1", stats.SkippedNoArticle)
 	}
 }
 
@@ -98,12 +114,15 @@ func TestBuildExamples_TombstonesExcluded(t *testing.T) {
 	})
 
 	id := contentHash("sid-1")
-	examples, err := BuildExamples(dir, map[string]bool{id: true})
+	examples, stats, err := BuildExamples(dir, map[string]bool{id: true})
 	if err != nil {
 		t.Fatalf("BuildExamples: %v", err)
 	}
 	if len(examples) != 0 {
 		t.Fatalf("expected 0 examples (tombstoned), got %d", len(examples))
+	}
+	if stats.Tombstoned != 1 {
+		t.Errorf("stats.Tombstoned = %d, want 1", stats.Tombstoned)
 	}
 }
 
@@ -118,7 +137,7 @@ func TestBuildExamples_DeterministicSortOrder(t *testing.T) {
 		eps.OracleCase{CaseID: "c2", SourceIdentity: "sid-a", Verdict: eps.VerdictConfirmed, RecordedAt: "2026-08-15T00:00:00Z"},
 	})
 
-	examples, err := BuildExamples(dir, nil)
+	examples, _, err := BuildExamples(dir, nil)
 	if err != nil {
 		t.Fatalf("BuildExamples: %v", err)
 	}
@@ -132,11 +151,14 @@ func TestBuildExamples_DeterministicSortOrder(t *testing.T) {
 
 func TestBuildExamples_EmptyCorpusNoError(t *testing.T) {
 	dir := t.TempDir()
-	examples, err := BuildExamples(dir, nil)
+	examples, stats, err := BuildExamples(dir, nil)
 	if err != nil {
 		t.Fatalf("BuildExamples on empty dir should not error: %v", err)
 	}
 	if len(examples) != 0 {
 		t.Errorf("expected 0 examples, got %d", len(examples))
+	}
+	if stats.Confirmed != 0 {
+		t.Errorf("expected 0 confirmed, got %d", stats.Confirmed)
 	}
 }

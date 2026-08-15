@@ -26,7 +26,7 @@ func main() {
 		log.Fatalf("fabledata: load tombstones: %v", err)
 	}
 
-	examples, err := fabledata.BuildExamples(*epsDir, tombstones)
+	examples, stats, err := fabledata.BuildExamples(*epsDir, tombstones)
 	if err != nil {
 		log.Fatalf("fabledata: build examples: %v", err)
 	}
@@ -37,5 +37,7 @@ func main() {
 		log.Fatalf("fabledata: write snapshot: %v", err)
 	}
 
-	fmt.Printf("fabledata: %d graded examples -> %s (manifest %s)\n", snap.RecordCount, path, snap.ManifestHash)
+	fmt.Printf("fabledata: %d confirmed examples -> %s (manifest %s)\n", snap.RecordCount, path, snap.ManifestHash)
+	fmt.Printf("  excluded: %d pending, %d contradicts, %d no-article-match, %d tombstoned\n",
+		stats.ExcludedPending, stats.ExcludedContradicts, stats.SkippedNoArticle, stats.Tombstoned)
 }

@@ -8,9 +8,13 @@
 // text) against var/eps/oracle.ndjson (the reality-rooted grade, from the
 // filed 8-K) by SourceIdentity. Per the spec's Löbian rule #1 ("no FABLE
 // model's outputs may enter a training snapshot unless graded by a
-// reality-rooted oracle first"), only resolved verdicts (confirmed/
-// contradicts) are eligible -- pending/unavailable/unresolvable cases have
-// no reality-rooted grade yet and are excluded, not included-and-flagged.
+// reality-rooted oracle first") only "confirmed" verdicts are FABLE-
+// eligible -- "contradicts" means the extraction got the headline wrong
+// (training on it would teach a generator to reproduce that error, not
+// grade it against reality) and "pending" has no grade yet at all. Same
+// contract gpt2-alpine-c's own Python prototype already established
+// (scripts/prime_directive_dataset.py's eps_headlines_to_records, S146-02)
+// -- this is the Go rewrite of that contract, not a divergent one.
 // Dedup is exact-hash for v0 (the SourceIdentity join key already prevents
 // duplicate records by construction); minhash fuzzy dedup is out of scope
 // here, a later filter per the spec's "filters as versioned config" design,
@@ -115,34 +119,63 @@ func contentHash(parts ...string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// Stats reports what BuildExamples excluded and why -- per Löbian rule 1
+// (HQ-SPEC-AI-103 §5.1) exclusions must be counted, never silently dropped
+// without a number attached. Mirrors the counters gpt2-alpine-c's own
+// Python prototype (scripts/prime_directive_dataset.py's
+// eps_headlines_to_records, S146-02) already established as this
+// component's contract.
+type Stats struct {
+	Confirmed           int `json:"confirmed"` // included in the output
+	ExcludedPending     int `json:"excluded_pending"`
+	ExcludedContradicts int `json:"excluded_contradicts"`
+	SkippedNoArticle    int `json:"skipped_no_article"` // resolved case, no matching headline text
+	Tombstoned          int `json:"tombstoned"`
+}
+
 // BuildExamples joins articles.ndjson against oracle.ndjson by
-// SourceIdentity in epsDir (typically "var/eps"), keeping only reality-
-// graded (confirmed/contradicts) cases, minus any ID present in tombstones.
-// Returns examples sorted by ID for deterministic output.
-func BuildExamples(epsDir string, tombstones map[string]bool) ([]Example, error) {
+// SourceIdentity in epsDir (typically "var/eps"). Verdict gating (Löbian
+// rule 1, HQ-SPEC-AI-103 §5.1): only "confirmed" cases are FABLE-eligible --
+// a "contradicts" case means the extraction pipeline got the headline
+// *wrong*, which would train a generator to reproduce its own errors, not
+// grade it against reality; "pending" has no grade yet at all. Both are
+// excluded, not silently dropped -- see Stats. Returns examples sorted by
+// ID for deterministic output.
+func BuildExamples(epsDir string, tombstones map[string]bool) ([]Example, Stats, error) {
 	articles, err := loadArticles(epsDir)
 	if err != nil {
-		return nil, err
+		return nil, Stats{}, err
 	}
 	cases, err := eps.LoadOracleCases(epsDir)
 	if err != nil {
-		return nil, err
+		return nil, Stats{}, err
 	}
 
 	var examples []Example
+	var stats Stats
 	for _, c := range cases {
-		if c.Verdict != eps.VerdictConfirmed && c.Verdict != eps.VerdictContradicts {
+		switch c.Verdict {
+		case eps.VerdictConfirmed:
+			// falls through to the join below
+		case eps.VerdictContradicts:
+			stats.ExcludedContradicts++
+			continue
+		default: // pending, unavailable, unresolvable, or any future value -- fail closed
+			stats.ExcludedPending++
 			continue
 		}
+
 		a, ok := articles[c.SourceIdentity]
 		if !ok {
 			// A resolved oracle case with no matching article is a real gap
 			// (the case exists but its generated headline text doesn't) --
 			// skip rather than fabricate a partial example.
+			stats.SkippedNoArticle++
 			continue
 		}
 		id := contentHash(c.SourceIdentity)
 		if tombstones[id] {
+			stats.Tombstoned++
 			continue
 		}
 		examples = append(examples, Example{
@@ -159,8 +192,9 @@ func BuildExamples(epsDir string, tombstones map[string]bool) ([]Example, error)
 			LabelDate:      c.RecordedAt,
 			LicenseClass:   LicenseClassOwnExhaust,
 		})
+		stats.Confirmed++
 	}
 
 	sort.Slice(examples, func(i, j int) bool { return examples[i].ID < examples[j].ID })
-	return examples, nil
+	return examples, stats, nil
 }
