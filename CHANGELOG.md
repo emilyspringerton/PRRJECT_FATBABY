@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-15 (3)
+- S145-02：新增fableeval(HQ-SPEC-AI-103 §4d)——照internal/eps/norngate的EPSOracle模式(S141-02)但評的是headline生成品質不是extraction準確度。評eps.Generate()(現有唯一真的generator)對照4組frozen fixture(buildHeadline每個分支各一組)。跟未來FABLE E0 checkpoint要走的介面一模一樣——S145-03落地時只要換掉eps.Generate()呼叫,harness不用改。Fixture-based的理由跟EPSOracle一樣誠實揭露:線上fabledata corpus(S145-01)現在0筆confirmed,沒有真ground truth可以freeze。5個測試(含negative control)。Apple #13724,commit 92c7934。 (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-15 (2)
 - S145-01：新增fabledata(HQ-SPEC-AI-103 §4a)——joins articles.ndjson跟oracle.ndjson by SourceIdentity,content-addressed manifest(sha256 over sorted example IDs,寫過就不可變),contamination-tombstone機制先接好(現在是空的,等fableeval/S145-02落地)。11個新測試全綠。線上跑:0筆graded examples,正確——現有39筆oracle cases都還pending,誠實的quiescence不是bug。Apple #13720,commit fff1d0e。 (sess-20260813-2154-dda37e8b)
 - S145-01修正:verdict gating改成只收confirmed,原本誤收confirmed+contradicts。發現gpt2-alpine-c自己的Python prototype(S146-02)早就定了這個contract——只有confirmed才training-eligible,contradicts代表抽取管線本身就抽錯了,拿來訓練會教generator複製自己的錯誤。BuildExamples簽名改成回傳(examples, Stats, error),排除的都算數(Löbian rule 1要求),不是默默丟掉。11個測試更新後全綠。Apple #13721,commit 5743e97。 (sess-20260813-2154-dda37e8b)
