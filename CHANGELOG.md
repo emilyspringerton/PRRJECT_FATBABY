@@ -1,7 +1,8 @@
 # Changelog
 
 ## 2026-08-15 (2)
-- S145-01：新增fabledata(HQ-SPEC-AI-103 §4a)——joins articles.ndjson跟oracle.ndjson by SourceIdentity,只收reality-graded verdicts(confirmed/contradicts),content-addressed manifest(sha256 over sorted example IDs,寫過就不可變),contamination-tombstone機制先接好(現在是空的,等fableeval/S145-02落地)。11個新測試全綠。線上跑:0筆graded examples,正確——現有39筆oracle cases都還pending,誠實的quiescence不是bug。Apple #13720,commit fff1d0e。 (sess-20260813-2154-dda37e8b)
+- S145-01：新增fabledata(HQ-SPEC-AI-103 §4a)——joins articles.ndjson跟oracle.ndjson by SourceIdentity,content-addressed manifest(sha256 over sorted example IDs,寫過就不可變),contamination-tombstone機制先接好(現在是空的,等fableeval/S145-02落地)。11個新測試全綠。線上跑:0筆graded examples,正確——現有39筆oracle cases都還pending,誠實的quiescence不是bug。Apple #13720,commit fff1d0e。 (sess-20260813-2154-dda37e8b)
+- S145-01修正:verdict gating改成只收confirmed,原本誤收confirmed+contradicts。發現gpt2-alpine-c自己的Python prototype(S146-02)早就定了這個contract——只有confirmed才training-eligible,contradicts代表抽取管線本身就抽錯了,拿來訓練會教generator複製自己的錯誤。BuildExamples簽名改成回傳(examples, Stats, error),排除的都算數(Löbian rule 1要求),不是默默丟掉。11個測試更新後全綠。Apple #13721,commit 5743e97。 (sess-20260813-2154-dda37e8b)
 
 ## 2026-08-15
 - S167-05修復:commentary.Store.Refresh()改用以article ID去重(last-write-wins),仿照docindex的correction邏輯,解決movers-watcher等writer同日重跑/重試造成的重複卡片問題。線上articles.ndjson當下無重複,不需額外migration。go test ./...全綠,已部署fatbaby-newssite並live驗證。Apple #13714。 (sess-20260813-2154-dda37e8b)
