@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-08-15 (2)
+- S145-01：新增fabledata(HQ-SPEC-AI-103 §4a)——joins articles.ndjson跟oracle.ndjson by SourceIdentity,只收reality-graded verdicts(confirmed/contradicts),content-addressed manifest(sha256 over sorted example IDs,寫過就不可變),contamination-tombstone機制先接好(現在是空的,等fableeval/S145-02落地)。11個新測試全綠。線上跑:0筆graded examples,正確——現有39筆oracle cases都還pending,誠實的quiescence不是bug。Apple #13720,commit fff1d0e。 (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-15
 - S167-05修復:commentary.Store.Refresh()改用以article ID去重(last-write-wins),仿照docindex的correction邏輯,解決movers-watcher等writer同日重跑/重試造成的重複卡片問題。線上articles.ndjson當下無重複,不需額外migration。go test ./...全綠,已部署fatbaby-newssite並live驗證。Apple #13714。 (sess-20260813-2154-dda37e8b)
 
