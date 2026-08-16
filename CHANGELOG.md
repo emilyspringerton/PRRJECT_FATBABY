@@ -11,7 +11,7 @@
   `FrontPageView`（沒有這個欄位）上執行會整頁render error,現場測試才抓到、修正並補了正確position的
   render測試(`TestTickerPage_Guidance`真實render，`TestTickerPage_Guidance_NilStore`確認nil-safe)。線上
   真實資料驗證:DOV (Dover, 真guidance article "raises FY 2026 EPS guidance to $8.94–$9.14") 正確顯示；
-  front page/無guidance資料的ticker都無render error。`go build`/`vet`/`test ./...`全綠。commit待補。
+  front page/無guidance資料的ticker都無render error。`go build`/`vet`/`test ./...`全綠。commit `b861e1f`。
   (sess-20260813-2154-dda37e8b)
 
 ## 2026-08-15 (4)
