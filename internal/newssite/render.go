@@ -213,6 +213,7 @@ type TickerPageView struct {
 	Earnings     []EarningsItemView // EPS articles for this ticker
 	NextEarnings *UpcomingEarningsView
 	PastEarnings []UpcomingEarningsView // most recent first
+	Guidance     []GuidanceItemView     // S154-02: guidanceStore.ForTicker existed unused since the section page landed; this is the first per-ticker wiring
 	Facts        TickerFactBox
 	Bio          string           // draft company bio, S166-03/S170-22; empty if none loaded
 	HealthTrend  *HealthTrendView // nil when no health_history data exists for this ticker
@@ -398,7 +399,8 @@ func RenderSectionPage(w io.Writer, slug string, ranked []edition.Ranked, symbol
 func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 	ranked []edition.Ranked, directors []*entitygraph.PersonNode,
 	secDocs []DocEntry, wireDocs []DocEntry, earnings []EarningsItemView,
-	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView, symbols []string, bio string,
+	nextEarnings *UpcomingEarningsView, pastEarnings []UpcomingEarningsView,
+	guidanceItems []GuidanceItemView, symbols []string, bio string,
 	healthCurrent *entitygraph.HealthSnapshot, healthPrevious *entitygraph.HealthSnapshot) {
 
 	var lead *ArticleView
@@ -527,6 +529,7 @@ func RenderTickerPage(w io.Writer, symbol string, row *catalog.TickerRow,
 		Earnings:     earnings,
 		NextEarnings: nextEarnings,
 		PastEarnings: pastEarnings,
+		Guidance:     guidanceItems,
 		Facts:        facts,
 		Bio:          bio,
 		HealthTrend:  healthView,

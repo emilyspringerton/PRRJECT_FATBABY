@@ -665,6 +665,14 @@ const tickerTemplate = `{{define "ticker"}}<!doctype html>
       </div>{{end}}
     </div>
     {{end}}
+    {{if .Guidance}}
+    <div class="sidebar-box"><h4>Guidance</h4>
+      {{range .Guidance}}<div class="director-row">
+        <span class="dr-name"><a href="{{.Link}}" style="color:#111;">{{.Headline}}</a></span>
+        <br><span class="cal-status">{{.ActionLabel}} · {{.MetricLabel}}{{if .PeriodStr}} · {{.PeriodStr}}{{end}}</span>
+      </div>{{end}}
+    </div>
+    {{end}}
     {{if .Directors}}
     <div class="sidebar-box"><h4>The Board</h4>
       {{range .Directors}}<div class="director-row">

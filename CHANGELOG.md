@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-16
+- S154-02：ticker頁面新增Guidance側欄面板。先查證insider賣壓群聚/dividend/buyback三類訊號其實早就透過`graphread.
+  LiveSignals`通用signal-card機制真的活著在ticker頁面上顯示了(現場curl PLTR/TGT驗證,insider_sell_cluster、
+  dividend_raise都真的render出來)——這部分S154-02原本的前提已經過時,不用重建。但guidance是真的缺口:
+  `guidanceread.Store.ForTicker`早就存在、有測試,但從`/section/guidance`落地後從沒被`serveTicker`呼叫過。
+  接上`GuidanceItemsFrom`(跟`/section/guidance`共用同一套轉換,不重造欄位),`TickerPageView`新增`Guidance`
+  欄位,側欄新增面板。**過程中抓到一個自己寫的bug**:第一版把面板插進了錯的template(front page的
+  `frontTemplate`而非`tickerTemplate`——兩者共用`Earnings`欄位名造成混淆),`{{if .Guidance}}`在
+  `FrontPageView`（沒有這個欄位）上執行會整頁render error,現場測試才抓到、修正並補了正確position的
+  render測試(`TestTickerPage_Guidance`真實render，`TestTickerPage_Guidance_NilStore`確認nil-safe)。線上
+  真實資料驗證:DOV (Dover, 真guidance article "raises FY 2026 EPS guidance to $8.94–$9.14") 正確顯示；
+  front page/無guidance資料的ticker都無render error。`go build`/`vet`/`test ./...`全綠。commit待補。
+  (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-15 (4)
 - S165-03：新增fedwatch(Fed/FOMC data, Phase 3)——(a) RSS poller抓Fed monetary-policy feed,跟prwatch.RunDiscovery同款discover->load-seen->dedupe->append,真的encoding/xml解析(這來源本身就是well-formed RSS,不用regex);(b) Fed自己公布的FOMC會議行事曆2021-2027,現場抓federalreserve.gov驗證過,對照live press feed自己的聲明日期完全吻合——照Fed自己的行事曆來,不是編的。新增cmd/fed-watch,跟bond-watcher一樣one-shot systemd-timer模式。20個測試用現場抓的真RSS fixture,不是合成的。線上真feed端到端驗證:15筆真press release正確discover/persist/dedupe,next-meeting算對(2026-09-15~16)。Apple #13743,commit 06705e2。 (sess-20260813-2154-dda37e8b)
 

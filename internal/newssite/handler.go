@@ -543,7 +543,14 @@ func (h *Handler) serveTicker(w http.ResponseWriter, r *http.Request) int {
 	if h.graph != nil {
 		healthCurrent, healthPrevious, _ = h.graph.HealthTrendFor(symbol)
 	}
-	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, h.symbols(), bio, healthCurrent, healthPrevious)
+	// S154-02: guidanceStore.ForTicker existed, tested, unused since the
+	// section page landed — wired here for the first time, reusing the same
+	// GuidanceItemsFrom conversion /section/guidance already renders with.
+	var guidanceItems []GuidanceItemView
+	if h.guidanceStore != nil {
+		guidanceItems = GuidanceItemsFrom(h.guidanceStore.ForTicker(symbol))
+	}
+	RenderTickerPage(&buf, symbol, row, ranked, directors, secDocs, wireDocs, tickerEPS, nextEarnings, pastEarnings, guidanceItems, h.symbols(), bio, healthCurrent, healthPrevious)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
 	return http.StatusOK

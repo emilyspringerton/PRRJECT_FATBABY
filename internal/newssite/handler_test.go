@@ -7,13 +7,17 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/earningscal"
+	"github.com/example/prrject-fatbaby/internal/guidance"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
+	"github.com/example/prrject-fatbaby/internal/newssite/guidanceread"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 )
 
@@ -494,6 +498,79 @@ func TestTickerPage_EarningsDates(t *testing.T) {
 	}
 	if !strings.Contains(body, "Q4") || !strings.Contains(body, "Q3") {
 		t.Error("/ticker/AAPL missing expected fiscal period labels")
+	}
+}
+
+// TestTickerPage_Guidance verifies S154-02's ticker-page wiring:
+// guidanceStore.ForTicker existed, tested, and unused since the /section/
+// guidance page landed. Confirms a ticker page now shows guidance for its
+// own symbol and stays silent on guidance belonging to a different ticker.
+func TestTickerPage_Guidance(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := eventstore.NewFileStore(dir)
+	defer store.Close()
+
+	guidanceDir := t.TempDir()
+	now := time.Now().UTC().Format(time.RFC3339)
+	articlesPath := filepath.Join(guidanceDir, "articles.ndjson")
+	f, err := os.OpenFile(articlesPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open articles.ndjson: %v", err)
+	}
+	for _, a := range []guidance.Article{
+		{ID: "g1", Ticker: "AAPL", Headline: "AAPL raises FY guidance", Action: guidance.ActionRaised, Metric: guidance.MetricEPS, PublishAt: now},
+		{ID: "g2", Ticker: "MSFT", Headline: "MSFT lowers Q3 guidance", Action: guidance.ActionLowered, Metric: guidance.MetricRevenue, PublishAt: now},
+	} {
+		line, err := json.Marshal(a)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if _, err := f.Write(append(line, '\n')); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	f.Close()
+
+	guidanceStore := guidanceread.NewStore(guidanceDir)
+	if err := guidanceStore.Refresh(); err != nil {
+		t.Fatalf("refresh guidance store: %v", err)
+	}
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	h.SetGuidanceStore(guidanceStore)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/ticker/AAPL", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "AAPL raises FY guidance") {
+		t.Error("/ticker/AAPL missing its own guidance headline")
+	}
+	if strings.Contains(body, "MSFT lowers Q3 guidance") {
+		t.Error("/ticker/AAPL leaked MSFT's guidance headline")
+	}
+}
+
+// TestTickerPage_Guidance_NilStore verifies the ticker page still renders
+// cleanly (no panic, no missing sections) when no guidance store is wired.
+func TestTickerPage_Guidance_NilStore(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := eventstore.NewFileStore(dir)
+	defer store.Close()
+
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+	// guidanceStore intentionally not set
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/ticker/AAPL", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 when guidanceStore is nil", rec.Code)
 	}
 }
 
