@@ -22,7 +22,7 @@
   path(`discoveryEventData`真實mint函式+真實JSON marshal/unmarshal+真實`handleOne`)驗證過這條路徑,
   但live event本身還沒現場確認。`cmd/projector`這支程式本身**目前完全沒有部署**(`MYSQL_URL`未設定,
   S30-02「MySQL+MongoDB in production」仍是open——這不是這次新發現的缺口,是既有的已知狀態),所以
-  projector端的SQL寫入邏輯只在程式碼層級verified,無法對真實MySQL資料庫live驗證。commit待補。
+  projector端的SQL寫入邏輯只在程式碼層級verified,無法對真實MySQL資料庫live驗證。commit `9c623be`。
   (sess-20260813-2154-dda37e8b)
 
 ## 2026-08-16
