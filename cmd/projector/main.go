@@ -2,11 +2,12 @@
 // into MySQL read-model tables for the Ask Emily query layer.
 //
 // Projections:
-//   governance_signals — one row per signal_generated event
-//   entity_timeline    — one row per signal that represents a named-entity change
-//                        (auditor_change, leadership_departure, cfo_departure, etc.)
-//   market_data_daily  — one row per market_data_tick event (Yahoo Finance OHLCV)
-//                        populated when -market-store is set
+//
+//	governance_signals — one row per signal_generated event
+//	entity_timeline    — one row per signal that represents a named-entity change
+//	                     (auditor_change, leadership_departure, cfo_departure, etc.)
+//	market_data_daily  — one row per market_data_tick event (Yahoo Finance OHLCV)
+//	                     populated when -market-store is set
 //
 // The projector is idempotent: it uses eventstore_seq as a dedup key, so
 // replaying from cursor 0 produces the same MySQL state.
@@ -35,11 +36,11 @@ import (
 )
 
 func main() {
-	storeRoot    := flag.String("store", filepath.Join("var", "secwatch"), "secwatch eventstore root")
-	marketRoot   := flag.String("market-store", "", "market-data eventstore root (optional; enables market_data_daily projection)")
+	storeRoot := flag.String("store", filepath.Join("var", "secwatch"), "secwatch eventstore root")
+	marketRoot := flag.String("market-store", "", "market-data eventstore root (optional; enables market_data_daily projection)")
 	pollInterval := flag.Duration("poll-interval", 2*time.Second, "eventstore poll interval")
-	batchSize    := flag.Int("batch-size", 256, "max events per poll")
-	oneShot      := flag.Bool("one-shot", false, "process one batch and exit")
+	batchSize := flag.Int("batch-size", 256, "max events per poll")
+	oneShot := flag.Bool("one-shot", false, "process one batch and exit")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "projector ", log.LstdFlags|log.LUTC)
@@ -297,16 +298,16 @@ var entityTimelineTypes = map[string]struct {
 	entityType string
 	eventType  string
 }{
-	"auditor_change":        {entityType: "auditor", eventType: "changed"},
-	"leadership_departure":  {entityType: "director", eventType: "resigned"},
-	"cfo_departure":         {entityType: "director", eventType: "resigned"},
-	"director_friction":     {entityType: "director", eventType: "flagged"},
-	"director_decay":        {entityType: "director", eventType: "flagged"},
-	"director_long_tenure":  {entityType: "director", eventType: "flagged"},
-	"nomination_rejection":  {entityType: "director", eventType: "rejected"},
-	"activist_risk":         {entityType: "activist", eventType: "flagged"},
-	"insider_buy":           {entityType: "director", eventType: "insider_buy"},
-	"insider_sell_cluster":  {entityType: "director", eventType: "insider_sell"},
+	"auditor_change":       {entityType: "auditor", eventType: "changed"},
+	"leadership_departure": {entityType: "director", eventType: "resigned"},
+	"cfo_departure":        {entityType: "director", eventType: "resigned"},
+	"director_friction":    {entityType: "director", eventType: "flagged"},
+	"director_decay":       {entityType: "director", eventType: "flagged"},
+	"director_long_tenure": {entityType: "director", eventType: "flagged"},
+	"nomination_rejection": {entityType: "director", eventType: "rejected"},
+	"activist_risk":        {entityType: "activist", eventType: "flagged"},
+	"insider_buy":          {entityType: "director", eventType: "insider_buy"},
+	"insider_sell_cluster": {entityType: "director", eventType: "insider_sell"},
 }
 
 func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, sig intelligence.Signal) error {
@@ -351,20 +352,32 @@ func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, si
 
 	score := signalScore(sig.Importance)
 
+	// S175-02: skuldmark_id rides RawMetadata the same way source_published_at
+	// does above -- populated by internal/processor/worker.go from the
+	// filing_discovered event's identity, empty (not guessed) when the
+	// filing predates S175-01 or its exchange couldn't be resolved at mint
+	// time. sql.NullString so an empty string projects as SQL NULL, not "".
+	var skuldmarkID sql.NullString
+	if sig.RawMetadata != nil && sig.RawMetadata["skuldmark_id"] != "" {
+		skuldmarkID = sql.NullString{String: sig.RawMetadata["skuldmark_id"], Valid: true}
+	}
+
 	_, err := p.db.ExecContext(ctx, `
 		INSERT INTO governance_signals
-		    (ticker, event_type, filing_id, entity_name, signal_score, headline, raw_json, filing_date, source_published_at, eventstore_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		    (ticker, event_type, filing_id, entity_name, skuldmark_id, signal_score, headline, raw_json, filing_date, source_published_at, eventstore_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
 		    signal_score       = VALUES(signal_score),
 		    headline           = VALUES(headline),
 		    raw_json           = VALUES(raw_json),
-		    source_published_at = VALUES(source_published_at)
+		    source_published_at = VALUES(source_published_at),
+		    skuldmark_id       = VALUES(skuldmark_id)
 	`,
 		sig.Ticker,
 		sig.SignalType,
 		accession,
 		entityName,
+		skuldmarkID,
 		score,
 		truncate(sig.Summary, 511),
 		rawJSON,
@@ -380,10 +393,11 @@ func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, si
 	if meta, ok := entityTimelineTypes[sig.SignalType]; ok {
 		_, err = p.db.ExecContext(ctx, `
 			INSERT INTO entity_timeline
-			    (ticker, entity_name, entity_type, event_type, event_date, role, description, source_filing, eventstore_seq)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			    (ticker, entity_name, entity_type, event_type, event_date, role, description, source_filing, skuldmark_id, eventstore_seq)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON DUPLICATE KEY UPDATE
-			    description = VALUES(description)
+			    description  = VALUES(description),
+			    skuldmark_id = VALUES(skuldmark_id)
 		`,
 			sig.Ticker,
 			entityName,
@@ -393,6 +407,7 @@ func (p *projector) projectSignal(ctx context.Context, rec eventstore.Record, si
 			"",
 			truncate(sig.Summary, 4000),
 			accession,
+			skuldmarkID,
 			rec.Sequence,
 		)
 		if err != nil {

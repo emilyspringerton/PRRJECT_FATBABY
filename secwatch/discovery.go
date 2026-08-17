@@ -209,6 +209,23 @@ type FilingDiscoveredEvent struct {
 	PrimaryDocument    string `json:"primary_document"`
 	SubmissionsURL     string `json:"submissions_source_url"`
 	DiscoveredAt       string `json:"discovered_at"`
+	// Identity was missing here until S175-02 -- discoveryEventData (this
+	// same package) has written it onto every real filing_discovered event
+	// since S175-01 minted SkuldmarkID at intake, but this read-side struct
+	// had no field to receive it, so json.Unmarshal silently dropped it and
+	// no SkuldmarkID ever reached the processor/projector. Added, not
+	// invented: mirrors FilingDiscovered's own Identity field exactly.
+	Identity identity.DiscoveryIdentity `json:"identity,omitempty"`
+}
+
+// SkuldmarkID returns the minted SKULDMARK-25 ID for this filing's primary
+// ticker, or "" when none was minted (unknown exchange, older event
+// predating S175-01, etc.) -- never guessed.
+func (e *FilingDiscoveredEvent) SkuldmarkID() string {
+	if e.Identity.PrimaryTicker == nil {
+		return ""
+	}
+	return e.Identity.PrimaryTicker.SkuldmarkID
 }
 
 // EffectiveForm returns the form identifier regardless of which JSON field carried it.

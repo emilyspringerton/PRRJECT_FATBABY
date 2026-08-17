@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/identity"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 	"github.com/example/prrject-fatbaby/secwatch"
 )
@@ -119,5 +120,92 @@ func TestHandleOne_PersistsSourceBeforeSignalGenerated(t *testing.T) {
 	}
 	if recs[1].Event.Type != "signal_generated" {
 		t.Fatalf("expected second event signal_generated got %s", recs[1].Event.Type)
+	}
+}
+
+// TestHandleOne_PropagatesSkuldmarkIDToSignal is the regression test for
+// S175-02: the SKULDMARK-25 ID minted at intake (secwatch, S175-01) must
+// survive onto the signal_generated event's RawMetadata so cmd/projector
+// can write it into governance_signals/entity_timeline. Before this wiring,
+// FilingDiscoveredEvent had no field to receive Identity at all (see
+// secwatch's own TestFilingDiscoveredEvent_RoundTripsSkuldmarkID), so this
+// also exercises the full path end to end, not just the struct round trip.
+func TestHandleOne_PropagatesSkuldmarkIDToSignal(t *testing.T) {
+	store, err := eventstore.NewFileStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("<html><body><h1>Hello filing</h1></body></html>"))
+	}))
+	defer srv.Close()
+
+	cfg := WorkerConfig{Store: store, Provider: staticProvider{}, Logger: log.New(io.Discard, "", 0), UserAgent: "test-agent", MaxDocBytes: 1024 * 1024}
+	wantID := "EINXNASAAPLXXX0000320193Y"
+	filing := secwatch.FilingDiscoveredEvent{
+		Ticker: "ABC", CIK: "123456", AccessionNumber: "000123456-26-000001",
+		Form: "8-K", PrimaryDocument: srv.URL,
+		Identity: identity.DiscoveryIdentity{PrimaryTicker: &identity.SecurityRef{SkuldmarkID: wantID}},
+	}
+
+	if err := handleOne(context.Background(), cfg, filing, newSeenSet()); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := store.ReadFrom(context.Background(), 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sig intelligence.Signal
+	for _, r := range recs {
+		if r.Event.Type == "signal_generated" {
+			if err := json.Unmarshal(r.Event.Data, &sig); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if sig.RawMetadata["skuldmark_id"] != wantID {
+		t.Errorf("signal.RawMetadata[skuldmark_id] = %q, want %q", sig.RawMetadata["skuldmark_id"], wantID)
+	}
+}
+
+// TestHandleOne_NoSkuldmarkIDWhenUnminted confirms the propagation never
+// fabricates an ID when the filing carries no Identity/PrimaryTicker at all
+// (older event, or exchange unresolvable at mint time).
+func TestHandleOne_NoSkuldmarkIDWhenUnminted(t *testing.T) {
+	store, err := eventstore.NewFileStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("<html><body><h1>Hello filing</h1></body></html>"))
+	}))
+	defer srv.Close()
+
+	cfg := WorkerConfig{Store: store, Provider: staticProvider{}, Logger: log.New(io.Discard, "", 0), UserAgent: "test-agent", MaxDocBytes: 1024 * 1024}
+	filing := secwatch.FilingDiscoveredEvent{Ticker: "ABC", CIK: "123456", AccessionNumber: "000123456-26-000002", Form: "8-K", PrimaryDocument: srv.URL}
+
+	if err := handleOne(context.Background(), cfg, filing, newSeenSet()); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := store.ReadFrom(context.Background(), 1, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sig intelligence.Signal
+	for _, r := range recs {
+		if r.Event.Type == "signal_generated" {
+			if err := json.Unmarshal(r.Event.Data, &sig); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, ok := sig.RawMetadata["skuldmark_id"]; ok {
+		t.Errorf("expected no skuldmark_id key when unminted, got %q", sig.RawMetadata["skuldmark_id"])
 	}
 }

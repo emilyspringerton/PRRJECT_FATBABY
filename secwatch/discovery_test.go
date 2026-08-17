@@ -163,3 +163,50 @@ func TestDiscoveryEventData_CarriesSkuldmarkIDFromRegistry(t *testing.T) {
 		t.Errorf("PrimaryTicker.SkuldmarkID = %q, want %q", data.Identity.PrimaryTicker.SkuldmarkID, want)
 	}
 }
+
+// TestFilingDiscoveredEvent_RoundTripsSkuldmarkID is a regression test for a
+// real bug found while wiring S175-02: FilingDiscovered (write side, this
+// package) has always carried Identity.PrimaryTicker.SkuldmarkID once
+// S175-01 landed, but FilingDiscoveredEvent (read side -- what
+// internal/processor's worker.go actually unmarshals real event JSON into)
+// had no Identity field to receive it, so json.Unmarshal silently dropped
+// it. This proves the round trip now survives.
+func TestFilingDiscoveredEvent_RoundTripsSkuldmarkID(t *testing.T) {
+	reg := buildIssuerRegistry([]WatchEntry{
+		{Ticker: "AAPL", CIK: "320193", Exchange: "Nasdaq", Enabled: true},
+	}, testingLogger{t})
+	f := Filing{
+		Ticker:          "AAPL",
+		CIK:             "320193",
+		AccessionNumber: "0000320193-26-000001",
+		Form:            "8-K",
+		FilingDate:      "2026-05-01",
+		SubmissionsURL:  SubmissionsURL("320193"),
+	}
+	written := discoveryEventData(f, time.Now().UTC(), reg)
+
+	raw, err := json.Marshal(written)
+	if err != nil {
+		t.Fatalf("marshal FilingDiscovered: %v", err)
+	}
+
+	var read FilingDiscoveredEvent
+	if err := json.Unmarshal(raw, &read); err != nil {
+		t.Fatalf("unmarshal into FilingDiscoveredEvent: %v", err)
+	}
+
+	want := "EINXNASAAPLXXX0000320193Y"
+	if got := read.SkuldmarkID(); got != want {
+		t.Errorf("read.SkuldmarkID() = %q, want %q", got, want)
+	}
+}
+
+// TestFilingDiscoveredEvent_SkuldmarkIDEmptyWhenUnminted confirms the
+// helper never guesses: an event with no PrimaryTicker (or an unminted
+// one) returns "", not a zero-value panic or a fabricated ID.
+func TestFilingDiscoveredEvent_SkuldmarkIDEmptyWhenUnminted(t *testing.T) {
+	var e FilingDiscoveredEvent
+	if got := e.SkuldmarkID(); got != "" {
+		t.Errorf("SkuldmarkID() on empty event = %q, want empty", got)
+	}
+}

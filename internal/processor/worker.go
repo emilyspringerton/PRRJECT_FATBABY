@@ -249,6 +249,14 @@ func handleOne(ctx context.Context, cfg WorkerConfig, filing secwatch.FilingDisc
 			signal.RawMetadata["filing_date"] = filing.FilingDate
 		}
 	}
+	// S175-02: carry the SKULDMARK-25 ID minted at intake (S175-01) through
+	// to the signal_generated event, the same way source_published_at is
+	// carried above -- RawMetadata is the existing pass-through surface,
+	// not a new mechanism. Empty when the filing predates S175-01 or its
+	// exchange was unresolvable at mint time; never guessed here either.
+	if id := filing.SkuldmarkID(); id != "" {
+		signal.RawMetadata["skuldmark_id"] = id
+	}
 	payload, _ := json.Marshal(signal)
 	_, err = cfg.Store.Append(ctx, eventstore.Event{ID: "signal_generated:" + identity, Type: "signal_generated", PartitionKey: identity, Source: "processor", Data: payload})
 	if err != nil {

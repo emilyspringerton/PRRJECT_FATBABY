@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-17
+- S175-02：SKULDMARK ID接進governance_signals/entity_timeline的CQRS projection(index/projection技術
+  加速查詢)。原backlog文字把這寫得像只是「加個欄位+index」,實際查下去發現真正的缺口更深:S175-01早就在
+  `secwatch`用真實Exchange資料mint SKULDMARK ID並寫進`FilingDiscovered`(write-side struct)的
+  `Identity.PrimaryTicker.SkuldmarkID`,但`internal/processor`實際拿來反序列化真實event JSON的是
+  另一個平行struct`FilingDiscoveredEvent`(read-side)——這個struct**根本沒有Identity欄位**,所以
+  `json.Unmarshal`會靜靜把identity資料整包丟掉,SKULDMARK ID從未真的傳到processor,更別說projector。
+  修法:(a)`FilingDiscoveredEvent`補上`Identity`欄位(照抄`FilingDiscovered`自己的shape,不是新發明)
+  +新增`SkuldmarkID()` helper,nil-safe;(b)`internal/processor/worker.go`比照現有的
+  `source_published_at`寫法,把`filing.SkuldmarkID()`塞進`signal.RawMetadata["skuldmark_id"]`;
+  (c)`cmd/projector`兩個INSERT都讀`RawMetadata["skuldmark_id"]`寫進新欄位(`sql.NullString`,沒有
+  值就是SQL NULL不是空字串);(d)新migration
+  `202608170001_add_skuldmark_id.sql`,`governance_signals`跟`entity_timeline`都加
+  `skuldmark_id VARCHAR(25)` + index,沿用既有`ADD COLUMN IF NOT EXISTS`慣例,可重複執行。6個新測試
+  (struct round-trip、helper nil-safe、worker.go端到端傳遞、無mint時不假造)。`go build`/`vet`/
+  `test ./...`全綠。**誠實揭露,不是全部驗證過**:secwatch/processor兩個live production
+  service(`fatbaby-secwatch.service`/`fatbaby-processor.service`)已重建binary+重啟,但真正驗證
+  「一筆全新真實SEC filing走完整pipeline帶著skuldmark_id出現在signal_generated event」還沒等到
+  (secwatch 5分鐘輪詢,重啟後還沒遇到新filing)——單元測試已經用完全相同的真實production code
+  path(`discoveryEventData`真實mint函式+真實JSON marshal/unmarshal+真實`handleOne`)驗證過這條路徑,
+  但live event本身還沒現場確認。`cmd/projector`這支程式本身**目前完全沒有部署**(`MYSQL_URL`未設定,
+  S30-02「MySQL+MongoDB in production」仍是open——這不是這次新發現的缺口,是既有的已知狀態),所以
+  projector端的SQL寫入邏輯只在程式碼層級verified,無法對真實MySQL資料庫live驗證。commit待補。
+  (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-16
 - S154-02：ticker頁面新增Guidance側欄面板。先查證insider賣壓群聚/dividend/buyback三類訊號其實早就透過`graphread.
   LiveSignals`通用signal-card機制真的活著在ticker頁面上顯示了(現場curl PLTR/TGT驗證,insider_sell_cluster、
