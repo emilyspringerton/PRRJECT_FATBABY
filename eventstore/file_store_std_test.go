@@ -101,3 +101,61 @@ func TestFileStore_InvalidAndTruncatedRecovery(t *testing.T) {
 		t.Fatalf("expected 2 good records got %d", len(got))
 	}
 }
+
+// TestFileStore_ReadFrom_SeesNewAppendsFromSeparateWriterProcess reproduces
+// the real cross-process staleness bug found 2026-08-20 (founder real-time:
+// "check all of the FATBABY data for freshness" / "the homepage of news site
+// is totally useless"): cmd/prwatch-body opens its own FileStore handle
+// read-only against the SAME directory cmd/prwatch's own separate process
+// writes into. That reader handle's s.current is always nil (it never
+// Appends), which used to make ReadFrom's "is this the active journal, never
+// cache its max sequence" check fall through to "" for every file --
+// including today's, still growing under the writer's process -- so the
+// reader's fileMaxSeq skip-cache silently froze after the first read and
+// stopped seeing anything the writer appended afterward, all day, until the
+// next UTC date rollover created a fresh uncached file. This test opens two
+// separate FileStore handles against one directory (mirroring the real
+// discoveryStore/bodyStore split) to catch any regression of that fix.
+func TestFileStore_ReadFrom_SeesNewAppendsFromSeparateWriterProcess(t *testing.T) {
+	dir := t.TempDir()
+
+	writer, err := NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+
+	reader, err := NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	if _, err := writer.Append(context.Background(), Event{ID: "evt-1", Type: "t", OccurredAt: time.Now().UTC(), Data: json.RawMessage(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := reader.ReadFrom(context.Background(), 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Event.ID != "evt-1" {
+		t.Fatalf("first read: expected 1 record (evt-1), got %#v", got)
+	}
+
+	// The real bug: a second write to the still-growing today's file, from
+	// the writer's separate process/handle, must still be visible to the
+	// reader's next ReadFrom call -- not silently swallowed by a stale
+	// closed-file cache entry from the first read above.
+	if _, err := writer.Append(context.Background(), Event{ID: "evt-2", Type: "t", OccurredAt: time.Now().UTC(), Data: json.RawMessage(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err = reader.ReadFrom(context.Background(), 2, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Event.ID != "evt-2" {
+		t.Fatalf("second read: expected 1 new record (evt-2), got %#v -- this is the real cross-process staleness bug if it fails", got)
+	}
+}

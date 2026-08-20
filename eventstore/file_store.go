@@ -158,9 +158,32 @@ func (s *FileStore) ReadFrom(ctx context.Context, fromSequence uint64, limit int
 
 	// currentPath is the active journal; its max sequence changes with each Append
 	// so we never cache it — always read it fully.
+	//
+	// s.current is only non-nil for a FileStore instance that has itself called
+	// Append (openTodayJournal) -- for a reader-only handle opened by a
+	// different process against a store another process writes to (e.g.
+	// cmd/prwatch-body's discoveryStore, opened read-only against the same
+	// var/prwatch dir cmd/prwatch's own writer process appends to), s.current
+	// is always nil, so this used to fall through to "" and every journal file
+	// -- including today's, still growing under the writer's process -- got
+	// treated as closed and eligible for the fileMaxSeq skip-cache below.
+	// Once today's file was read once with nothing new past fromSequence, its
+	// cached max stayed frozen for the rest of the day: the reader silently
+	// stopped seeing anything the writer appended afterward, only picking up
+	// a fresh batch at the next UTC date rollover when a new, not-yet-cached
+	// file appeared. Confirmed live: cmd/prwatch-body fetched only 4 bodies in
+	// the ~28h before this fix despite cmd/prwatch discovering roughly one new
+	// press release every few minutes the whole time (2026-08-20, founder
+	// real-time: "check all of the FATBABY data for freshness" /
+	// "the homepage of news site is totally useless"). journalPaths() returns
+	// files sorted by name (date-named, so this is also chronological order,
+	// confirmed via sort.Strings there) -- the last path is always the
+	// newest/active journal regardless of which process's handle this is, so
+	// that's the real, process-independent way to identify "never cache this
+	// one," not s.current.
 	currentPath := ""
-	if s.current != nil {
-		currentPath = filepath.Clean(s.current.Name())
+	if len(paths) > 0 {
+		currentPath = filepath.Clean(paths[len(paths)-1])
 	}
 
 	out := make([]Record, 0, min(limit, 128))

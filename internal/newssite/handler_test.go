@@ -36,7 +36,7 @@ func TestHandler(t *testing.T) {
 		return NewHandler(store, log.New(io.Discard, "", 0))
 	}
 
-	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 
 	tests := []struct {
 		name         string
@@ -299,7 +299,7 @@ func TestReadLatest_NewestFirst(t *testing.T) {
 	}
 	defer store.Close()
 
-	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	for i, ticker := range []string{"AAPL", "MSFT", "GOOG"} {
 		writeSourceDoc(t, store, intelligence.SourceDocument{
 			Identity:    ticker + ":1",
@@ -671,7 +671,7 @@ func TestServeDoc_FastPathViaDocIndex(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	writeSourceDoc(t, store, intelligence.SourceDocument{
 		Identity: "fastpath:1", Ticker: "MSFT", SourceType: "sec_8k",
 		CleanedText: "FULL BODY VIA FAST PATH", CleanedCharCount: 24, PersistedAt: now,

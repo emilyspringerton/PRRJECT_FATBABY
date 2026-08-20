@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-20
+- fix(eventstore): `ReadFrom`'s closed-file skip-cache incorrectly froze the actively-growing
+  journal file when read by a separate reader-only `FileStore` handle (e.g. `cmd/prwatch-body`
+  reading `cmd/prwatch`'s own discovery store) -- the "is this the active journal, never cache
+  it" check relied on `s.current`, which is only non-nil for a handle that has itself Appended.
+  A reader-only handle's `s.current` was always nil, so today's file got treated as closed and
+  cached after its first read, silently swallowing everything the writer process appended for
+  the rest of the day, until the next UTC date rollover created a fresh, not-yet-cached file --
+  matches the exact daily-midnight-burst-then-nothing pattern found live in
+  `var/logs/prwatch-body.log` (4 body fetches in ~28h despite `prwatch` discovering roughly one
+  new press release every few minutes the whole time). Root cause of the founder's real-time
+  freshness complaint ("check all of the FATBABY data for freshness... the homepage of news site
+  is totally useless... not just the same effing BAC AMZN BA BEN governance articles"). Fixed by
+  identifying the active journal as the newest-dated file in the sorted path list (process-
+  independent), not via `s.current`. New regression test
+  (`TestFileStore_ReadFrom_SeesNewAppendsFromSeparateWriterProcess`) opens separate writer/reader
+  handles against one directory to catch any regression. `go test ./...` passes clean, including
+  a separately-discovered stale test fixture in `internal/newssite` (hardcoded `2026-05-22` dates
+  had aged past the real 90-day `isHistoricalDateStr` cutoff as real time caught up to it --
+  unrelated pre-existing bug, fixed to use `time.Now()` so it can't happen again). (sess-20260813-2154-dda37e8b)
+
 ## 2026-08-17
 - S175-02：SKULDMARK ID接進governance_signals/entity_timeline的CQRS projection(index/projection技術
   加速查詢)。原backlog文字把這寫得像只是「加個欄位+index」,實際查下去發現真正的缺口更深:S175-01早就在
