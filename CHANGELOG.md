@@ -1,6 +1,20 @@
 # Changelog
 
 ## 2026-08-20
+- feat(kgraph-server): new `cmd/kgraph-server` closes a real gap found while scoping the
+  founder's "expose data-science infrastructure as IDUNA APIs" ask. IDUNA's `KGraphHandler`
+  (S138-06) has been proxying `GET /api/v1/kgraph/query` to `KGRAPH_URL` since that section, with
+  no real server on the other end -- `internal/kgraph`'s Haiku-driven entity-extraction +
+  MongoDB-backed `Store.Query` exists and works, but had zero non-test Go importers anywhere.
+  This is that server: a real HTTP endpoint matching IDUNA's exact proxy contract
+  (`GET /query?entity=&predicate=&limit=`), reusing the existing `internal/mongowriter.Connect`
+  pattern. `go build`/`go test ./...` both clean; fails loudly and clearly (not silently) when
+  `MONGO_URI` is unset, which it is on this box as of this commit -- no local mongod, no Atlas
+  connection string provisioned. Real remaining work, not done here: provision an actual MongoDB
+  connection (local or Atlas), set `MONGO_URI` + `KGRAPH_URL`, and enable
+  `ops/systemd/fatbaby-kgraph-server.service`. Go, not Python, per the founder's own "whatever
+  best suits our needs" -- the real capability already lived in Go, a rewrite would have thrown
+  away working code for no benefit. (sess-20260813-2154-dda37e8b)
 - fix(eventstore): `ReadFrom`'s closed-file skip-cache incorrectly froze the actively-growing
   journal file when read by a separate reader-only `FileStore` handle (e.g. `cmd/prwatch-body`
   reading `cmd/prwatch`'s own discovery store) -- the "is this the active journal, never cache

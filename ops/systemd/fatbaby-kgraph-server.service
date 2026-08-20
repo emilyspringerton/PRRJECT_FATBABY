@@ -1,0 +1,46 @@
+# FatBaby kgraph-server — user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-kgraph-server.service ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/kgraph-server ./cmd/kgraph-server
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-kgraph-server.service
+#
+# Added 2026-08-20 (BACKLOG SECTION 186, S186-08) -- closes the real gap
+# behind S138-06: IDUNA's KGraphHandler (internal/http/handlers/kgraph.go)
+# has been proxying GET /api/v1/kgraph/query to KGRAPH_URL since that
+# section, with no real server on the other end. This unit is that server.
+#
+# NOT YET DEPLOYABLE as of 2026-08-20: needs a real MONGO_URI this box does
+# not have provisioned (no local mongod, no MongoDB Atlas connection string
+# on file). Set it the same way other secrets get set in this monorepo:
+#   emily key set MONGO_URI "<connection string>" --target iduna
+# then also export it into this service's own environment (EnvironmentFile=
+# below, once a real secrets file for PRRJECT_FATBABY exists -- currently
+# this repo doesn't have one the way EMILY/IDUNA do, that's real follow-up
+# work too, not done here) or set it directly in this unit file's
+# Environment= line before enabling.
+#
+# Once running, point IDUNA at it:
+#   emily key set KGRAPH_URL "http://localhost:9092" --target iduna
+#   systemctl --user restart iduna.service
+
+[Unit]
+Description=FatBaby kgraph-server (:9092) -- EINHORN INDEX knowledge graph query endpoint
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+# Environment=MONGO_URI=... -- set this before enabling, see header comment
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/kgraph-server
+OOMScoreAdjust=-300
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/kgraph-server.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/kgraph-server.log
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target
