@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-23
+
+- fix(observation-watcher): recognize the 32MB request-size error as context-overflow too, breaking an infinite respawn loop caused by a 463.7MB AGI --continue session (found live 2026-08-23) (sess-20260823-1554-932e157f)
+
+
 ## 2026-08-20
 - feat(kgraph-server): new `cmd/kgraph-server` closes a real gap found while scoping the
   founder's "expose data-science infrastructure as IDUNA APIs" ask. IDUNA's `KGraphHandler`
