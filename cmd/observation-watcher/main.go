@@ -133,7 +133,21 @@ func isContextTooLongOutput(s string) bool {
 		strings.Contains(lower, "context length") ||
 		strings.Contains(lower, "context_length_exceeded") ||
 		strings.Contains(lower, "maximum context") ||
-		strings.Contains(lower, "too many tokens")
+		strings.Contains(lower, "too many tokens") ||
+		// Real gap found live (2026-08-23): a --continue session that grows past
+		// the API's flat 32MB REQUEST SIZE cap fails with this wording instead of
+		// any of the token/context-window phrasings above -- a genuinely different
+		// error class (request payload bytes, not token count), but the correct
+		// recovery is identical (drop --continue, retry fresh). Without this match
+		// the outer retry loop exhausted maxRetries, gave up "permanently" on that
+		// invocation, and the next poll cycle just tried the same poisoned
+		// --continue session again -- an infinite respawn loop (a new claude child
+		// spawning and dying every ~15-30s, never making progress) that ran
+		// undetected for an unknown period until caught live via `ps`/this file's
+		// own log. Confirmed real: "Request too large for the API's 32MB request
+		// limit: this conversation is about 463.7MB..."
+		strings.Contains(lower, "request too large") ||
+		strings.Contains(lower, "32mb request limit")
 }
 
 // dropFlag removes all occurrences of flag from args (exact string match).
