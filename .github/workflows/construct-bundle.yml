@@ -27,19 +27,35 @@ jobs:
       # subdirectory) makes CI match the real local layout the `replace`
       # directives already assume, rather than changing those paths and
       # diverging from how this box actually works.
+      # actions/checkout's own `path` input can't escape $GITHUB_WORKSPACE
+      # (a real, confirmed restriction, not assumed -- `path: ../NORN`
+      # directly was tried first and failed the checkout step itself, run
+      # 32911332688). Checking out into a workspace-relative subdirectory
+      # and then `mv`-ing it up a level gets the same real OS-level
+      # sibling layout the go.mod `replace` directives need, via a plain
+      # shell command instead of relying on the action's own path handling.
       - name: Checkout sibling module NORN (go.mod replace norn => ../NORN)
         if: hashFiles('go.mod') != ''
         uses: actions/checkout@v4
         with:
           repository: emilyspringerton/NORN
-          path: ../NORN
+          path: _sibling_NORN
 
       - name: Checkout sibling module SKULDMARK (go.mod replace skuldmark => ../SKULDMARK)
         if: hashFiles('go.mod') != ''
         uses: actions/checkout@v4
         with:
           repository: emilyspringerton/SKULDMARK
-          path: ../SKULDMARK
+          path: _sibling_SKULDMARK
+
+      - name: Move sibling module checkouts to true OS-level siblings
+        if: hashFiles('go.mod') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv _sibling_NORN ../NORN
+          mv _sibling_SKULDMARK ../SKULDMARK
+          ls -d ../NORN ../SKULDMARK
 
       - name: Normalize obvious alternate layout paths
         shell: bash
