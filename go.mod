@@ -6,6 +6,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.0
 	go.mongodb.org/mongo-driver v1.17.9
 	modernc.org/sqlite v1.52.0
+	norn v0.0.0-00010101000000-000000000000
 	skuldmark v0.0.0-00010101000000-000000000000
 )
 
@@ -33,3 +34,5 @@ require (
 )
 
 replace skuldmark => ../SKULDMARK
+
+replace norn => ../NORN

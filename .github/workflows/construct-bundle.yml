@@ -15,6 +15,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Real gap found 2026-08-25 (S200-04's own `emily golden status` tool
+      # surfacing this repo's real, currently-broken CI on its very first
+      # run): go.mod has TWO local-path `replace` directives (skuldmark and
+      # now norn) pointing at sibling monorepo directories (`../SKULDMARK`,
+      # `../NORN`) that only exist on the real box's own monorepo checkout
+      # -- a clean single-repo `actions/checkout` (all this workflow ever
+      # did) has neither, so `go build`/`go test` fail at module resolution
+      # before a single line of this repo's own code even runs. Checking
+      # both out as true OS-level siblings (`path: ../NORN`, not a nested
+      # subdirectory) makes CI match the real local layout the `replace`
+      # directives already assume, rather than changing those paths and
+      # diverging from how this box actually works.
+      - name: Checkout sibling module NORN (go.mod replace norn => ../NORN)
+        if: hashFiles('go.mod') != ''
+        uses: actions/checkout@v4
+        with:
+          repository: emilyspringerton/NORN
+          path: ../NORN
+
+      - name: Checkout sibling module SKULDMARK (go.mod replace skuldmark => ../SKULDMARK)
+        if: hashFiles('go.mod') != ''
+        uses: actions/checkout@v4
+        with:
+          repository: emilyspringerton/SKULDMARK
+          path: ../SKULDMARK
+
       - name: Normalize obvious alternate layout paths
         shell: bash
         run: |
