@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-25
+
+- CI had been broken for 2 days: go.mod's local-path 'replace' directives (skuldmark, and norn -- which had no require/replace at all) point at sibling monorepo dirs that don't exist in construct-bundle.yml's single-repo checkout. Fixed: added the missing norn require/replace, two new checkout-into-subdir-then-mv steps fetch NORN + SKULDMARK as real OS-level siblings (a direct 'path: ../NORN' on the checkout step was tried live and failed live -- actions/checkout can't escape $GITHUB_WORKSPACE). Live-verified in real CI, fully green (run 32911493075). Surfaced by the new 'emily golden status' tool's very first run. Apple #16037. (sess-20260825-1938-f6bd411e)
+
+
 ## 2026-08-23
 
 - fix(observation-watcher): recognize the 32MB request-size error as context-overflow too, breaking an infinite respawn loop caused by a 463.7MB AGI --continue session (found live 2026-08-23) (sess-20260823-1554-932e157f)
