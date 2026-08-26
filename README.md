@@ -258,6 +258,7 @@ out what actually touches a given piece of data.
 | `cmd/feedserver` | TCP framed feed (:8083) |
 | `cmd/broker` | Tenant-aware proxy with hot-reload registry |
 | `cmd/emily-agent` | LLM ops agent + signal analyst (:8080/:8086 depending on deployment) |
+| `cmd/kgraph-server` | Real origin server for IDUNA's `KGraphHandler` proxy (`KGRAPH_URL`, :9092) — Haiku-driven entity extraction + MongoDB-backed `Store.Query`, closes the S138-06 gap where the proxy had nothing on the other end |
 
 **RSI / operations**
 | Process | Purpose |
