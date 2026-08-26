@@ -1,6 +1,19 @@
 package broker
 
 // Route defines one tenant-to-upstream contract.
+//
+// Two independent ways a request can match a Route:
+//   - Tenant bearer token (TenantKey) -- the original M2M shape, e.g. emily-agent calling
+//     gpt2-alpine-c's serve.py. Authorization: Bearer <TenantKey>.
+//   - PathPrefix -- for browser-facing services (e.g. JEWEL) that can't reasonably be expected
+//     to send a custom bearer token. Matched by longest-prefix on r.URL.Path, gated by real HTTP
+//     Basic Auth (BasicAuthUser/BasicAuthPasswordHash) instead. Added 2026-08-26, founder: "set
+//     up a single nginx proxy" + "use fatbaby proxy broker to manage proxies instead of always
+//     asking for a new feature" -- one sudo-gated nginx location proxying everything to this
+//     broker, with the broker itself (no sudo needed to redeploy, see ops/systemd/
+//     fatbaby-broker.service) owning per-service routing/auth from here on.
+//
+// A Route may set either or both matchers, but in practice a given route is one or the other.
 type Route struct {
 	TenantID      string            `json:"tenant_id"`
 	TenantKey     string            `json:"tenant_key"`
@@ -11,6 +24,18 @@ type Route struct {
 	AllowedPaths  []string          `json:"allowed_paths"`
 	MaxBodyBytes  int64             `json:"max_body_bytes"`
 	Enabled       bool              `json:"enabled"`
+
+	// PathPrefix, when non-empty, makes this route reachable by URL path instead of (or in
+	// addition to) tenant bearer token -- see the type doc comment above.
+	PathPrefix string `json:"path_prefix"`
+	// BasicAuthUser/BasicAuthPasswordHash gate a PathPrefix route with real HTTP Basic Auth.
+	// PasswordHash is a bcrypt hash (golang.org/x/crypto/bcrypt) -- never a plaintext password,
+	// same as any real htpasswd-style credential store.
+	BasicAuthUser         string `json:"basic_auth_user"`
+	BasicAuthPasswordHash string `json:"basic_auth_password_hash"`
+	// SupportsUpgrade opts a route into real WebSocket proxying (ProxyHandler.handleUpgrade) --
+	// off by default since the original bearer-token M2M routes never need it.
+	SupportsUpgrade bool `json:"supports_upgrade"`
 }
 
 // RouteTenant is a minimal tenant identity used by feedserver session auth.

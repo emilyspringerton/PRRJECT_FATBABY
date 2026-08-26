@@ -2,16 +2,32 @@ package broker
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type routeContextKey struct{}
 
-// AuthMiddleware authenticates inbound tenant requests and attaches route metadata.
+// AuthMiddleware authenticates inbound requests -- by URL path (real HTTP Basic Auth, browser-
+// facing routes like JEWEL) or by tenant bearer token (the original M2M shape) -- and attaches
+// route metadata. Path-based routes are checked first: a route reachable by path never falls
+// through to bearer-token auth, and vice versa (see Route's own doc comment in model.go).
 func AuthMiddleware(reg *Registry, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if route, ok := reg.ResolveByPath(r.URL.Path); ok {
+			if !checkBasicAuth(route, r) {
+				w.Header().Set("WWW-Authenticate", `Basic realm="`+route.TenantID+`"`)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+			ctx := context.WithValue(r.Context(), routeContextKey{}, route)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 		token := bearerToken(r.Header.Get("Authorization"))
 		route, ok := reg.Resolve(token)
 		if !ok {
@@ -40,6 +56,22 @@ func AuthMiddleware(reg *Registry, next http.Handler) http.Handler {
 func RouteFromContext(ctx context.Context) (*Route, bool) {
 	r, ok := ctx.Value(routeContextKey{}).(*Route)
 	return r, ok
+}
+
+// checkBasicAuth reports whether r carries valid HTTP Basic Auth credentials for route. A route
+// with no BasicAuthUser configured is treated as intentionally open (path-based routing alone is
+// the gate) -- every path-based route this repo ships as of this writing sets one.
+func checkBasicAuth(route *Route, r *http.Request) bool {
+	if route.BasicAuthUser == "" {
+		return true
+	}
+	user, pass, ok := r.BasicAuth()
+	if !ok {
+		return false
+	}
+	userMatch := subtle.ConstantTimeCompare([]byte(user), []byte(route.BasicAuthUser)) == 1
+	passMatch := bcrypt.CompareHashAndPassword([]byte(route.BasicAuthPasswordHash), []byte(pass)) == nil
+	return userMatch && passMatch
 }
 
 func bearerToken(v string) string {

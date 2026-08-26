@@ -183,9 +183,73 @@ func setForwardHeaders(upReq, in *http.Request) {
 	}
 }
 
+// handleUpgrade proxies a WebSocket (or any Connection: Upgrade) request by hijacking the client
+// connection and relaying raw bytes to/from a dedicated upstream TCP connection -- the real
+// Jupyter kernel protocol (JEWEL) runs over a websocket, not plain request/response, so the
+// previous 501 stub here made JEWEL unusable through this broker. Only routes that opt in via
+// SupportsUpgrade reach this path (see model.go) -- the original M2M bearer-token routes have no
+// reason to need it and stay on the buffered ServeHTTP path above.
 func (h *ProxyHandler) handleUpgrade(w http.ResponseWriter, r *http.Request, route *Route, start time.Time) {
-	writeJSONError(w, http.StatusNotImplemented, "upgrade not supported")
-	h.emit(route, r, http.StatusNotImplemented, 0, 0, start, "")
+	if !route.SupportsUpgrade {
+		writeJSONError(w, http.StatusNotImplemented, "upgrade not supported for this route")
+		h.emit(route, r, http.StatusNotImplemented, 0, 0, start, "")
+		return
+	}
+	u, err := url.Parse(route.UpstreamBase)
+	if err != nil {
+		h.ErrorsTotal.Add(1)
+		writeJSONError(w, http.StatusBadGateway, "upstream unavailable")
+		return
+	}
+	upConn, err := net.DialTimeout("tcp", u.Host, 5*time.Second)
+	if err != nil {
+		h.ErrorsTotal.Add(1)
+		writeJSONError(w, http.StatusBadGateway, "upstream unavailable")
+		h.emit(route, r, http.StatusBadGateway, 0, 0, start, err.Error())
+		return
+	}
+	defer upConn.Close()
+
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		h.ErrorsTotal.Add(1)
+		writeJSONError(w, http.StatusInternalServerError, "hijack not supported")
+		return
+	}
+	clientConn, clientBuf, err := hj.Hijack()
+	if err != nil {
+		h.ErrorsTotal.Add(1)
+		return
+	}
+	defer clientConn.Close()
+
+	outReq := r.Clone(r.Context())
+	outReq.URL.Path = strings.TrimRight(u.Path, "/") + r.URL.Path
+	outReq.URL.RawQuery = r.URL.RawQuery
+	outReq.Host = u.Host
+	applyHeaderPolicy(outReq.Header, route)
+	if err := outReq.Write(upConn); err != nil {
+		h.ErrorsTotal.Add(1)
+		h.emit(route, r, http.StatusBadGateway, 0, 0, start, err.Error())
+		return
+	}
+
+	errc := make(chan error, 2)
+	var sent, recv int64
+	go func() {
+		n, err := io.Copy(upConn, clientBuf)
+		atomic.AddInt64(&sent, n)
+		errc <- err
+	}()
+	go func() {
+		n, err := io.Copy(clientConn, upConn)
+		atomic.AddInt64(&recv, n)
+		errc <- err
+	}()
+	<-errc
+	h.BytesIn.Add(sent)
+	h.BytesOut.Add(recv)
+	h.emit(route, r, http.StatusSwitchingProtocols, sent, recv, start, "")
 }
 
 // HealthHandler returns health status.
