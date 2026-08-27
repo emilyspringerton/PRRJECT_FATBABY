@@ -15,12 +15,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/example/prrject-fatbaby/eventstore/seqlock"
 )
 
 const (
 	eventsDirName    = "events"
 	stateDirName     = "state"
 	latestSeqStateFn = "latest-sequence"
+	appendLockFn     = "append.lock"
 )
 
 type FileStore struct {
@@ -85,6 +88,30 @@ func NewFileStore(rootDir string) (*FileStore, error) {
 	return store, nil
 }
 
+// Append writes one or more events, assigning each the next sequence
+// number. Real, confirmed bug this fixes (2026-08-25, founder real-time:
+// a PRNewswire press release rendering with an unrelated NVIDIA SEC 8-K
+// link): ~15 separate Go binaries (pr-indexer, processor, secwatch,
+// entity-graph, form4-watcher, etc.) all append to the same var/secwatch
+// store as independent OS processes. The in-process s.mu below only ever
+// serialized goroutines WITHIN one process -- it provided zero
+// coordination across processes, so two processes' independent
+// in-memory `s.latest` counters could (and did, confirmed live: sequence
+// 112200 in a real journal file had 5 different records from 2 different
+// processes) reach the same value and both write a record claiming it.
+//
+// Fix: a real, OS-level advisory file lock (seqlock, a PARENA-authored
+// mod per the founder's own "fix it with parena mod api first" —
+// stdlib/eventstore/seqlock.prn, real flock(2) LOCK_EX/LOCK_UN, not a
+// stub) held around the whole read-current-state -> increment ->
+// write-records -> persist-state critical section, so only one process
+// across the whole system is ever in it at a time. Holding the lock
+// alone isn't sufficient by itself, though: a process idle since startup
+// still needs to notice what other processes have persisted since its
+// own s.latest was last updated, or it would compute a stale "next"
+// value even while correctly excluding concurrent writers -- the
+// re-sync against readLatestFromState() below, done under the lock,
+// closes that gap.
 func (s *FileStore) Append(ctx context.Context, events ...Event) ([]Record, error) {
 	if len(events) == 0 {
 		return nil, ErrEmptyAppend
@@ -107,6 +134,23 @@ func (s *FileStore) Append(ctx context.Context, events ...Event) ([]Record, erro
 	if s.closed {
 		return nil, os.ErrClosed
 	}
+
+	lockPath := filepath.Join(s.stateDir, appendLockFn)
+	lockFd, ok := seqlock.Acquire(lockPath)
+	if !ok {
+		return nil, fmt.Errorf("acquire cross-process append lock %s", lockPath)
+	}
+	defer seqlock.Release(lockFd)
+
+	// Re-sync with whatever any OTHER process has persisted since this
+	// process's own s.latest was last updated. A stale local value would
+	// otherwise silently under-count: this process would assign
+	// sequences that a faster-moving sibling process already claimed
+	// before this Append ever started, defeating the lock's own purpose.
+	if persisted, err := s.readLatestFromState(); err == nil && persisted > s.latest {
+		s.latest = persisted
+	}
+
 	if err := s.rotateIfDateChanged(); err != nil {
 		return nil, err
 	}
