@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-27
+
+- Recovered and shipped a real, orphaned fix: cross-process advisory file lock (eventstore/seqlock, PARENA-mod-backed) around FileStore.Append's sequence-assignment critical section, closing a confirmed sequence-collision bug across ~15 independent Go processes. commit 75a02ed. (sess-20260825-1938-f6bd411e)
+
+
 ## 2026-08-26
 
 - broker: added Route.PathPrefix + real bcrypt HTTP Basic Auth + real WebSocket relay proxying (was a 501 stub) -- built for JEWEL's exposure, generic for any future browser-facing service (sess-20260825-1938-f6bd411e)
