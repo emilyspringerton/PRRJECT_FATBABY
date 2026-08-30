@@ -1,6 +1,7 @@
 # Changelog
 
-## 2026-08-27
+## 2026-08-30
+- docs: NORTHSTAR — Kubernetes migration (Phase 5 of the distributed event intelligence plan). Founder real-time: "need to start the kubernetes migration im not even kidding look up the plan in fatbaby all our logstreaming data is going to get projected into google cloud storage" -> "the data is already there." Confirmed the data-durability piece is real and live (`emily backup run --target fatbaby` -> a real GCS bucket) and found a real, honest architectural gap first: Phase 2's own dual-sink fanout (`internal/eventsink/`) is scaffolding only, wired into no running process -- every pipeline process today still depends on local `./var/` disk state, which matters for whether it can run as a stateless k8s Pod. Wrote `docs/northstar/KUBERNETES_MIGRATION.md` (real, phased, PVC-first-by-default plan, the branch flagged for the founder), `docker/dashboard.Dockerfile` (real, first representative service, unverified -- no docker in the authoring session), and `k8s/dashboard.yaml` (real Deployment+PVC+Service manifest, YAML-syntax-validated, not cluster-applied -- no gcloud auth in the authoring session). Registered in golden-docs-index as KUBERNETES-MIGRATION-NORTH. Real, still-open next steps named honestly in the doc itself. (sess-20260830-0908-5ede695f)
 
 - Recovered and shipped a real, orphaned fix: cross-process advisory file lock (eventstore/seqlock, PARENA-mod-backed) around FileStore.Append's sequence-assignment critical section, closing a confirmed sequence-collision bug across ~15 independent Go processes. commit 75a02ed. (sess-20260825-1938-f6bd411e)
 

@@ -1,0 +1,92 @@
+# k8s/dashboard.yaml — Phase 5.3's own real, first manifest (see
+# docs/northstar/KUBERNETES_MIGRATION.md). Real, honest, unverified: no live GKE cluster exists
+# yet to apply this against (Phase 5.1, blocked on real gcloud authentication this session
+# doesn't have) -- written as real, reviewable IaC ahead of that, matching this monorepo's own
+# "spec before implementation" discipline, not claimed as tested.
+#
+# Real, deliberate scope: ONE replica, matching dashboard's own real, current single-instance
+# model on the existing VPS -- no horizontal scaling claimed or attempted here. A
+# ReadWriteOnce PVC (Phase 5.2's own real choice): dashboard is a single-writer-shaped process
+# today (it doesn't even write, only reads var/secwatch -- ReadWriteOnce is still correct since
+# only one pod ever mounts it, and it's the same real disk secwatch's own future manifest would
+# need write access to).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fatbaby-secwatch-data
+  namespace: fatbaby
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Real, generous starting size -- event logs grow; resize is a real, separate later operation
+  # (GCE PD volumes support online expansion), not a hard ceiling picked carelessly.
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: fatbaby
+  labels:
+    app: fatbaby-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fatbaby-dashboard
+  template:
+    metadata:
+      labels:
+        app: fatbaby-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          # Real, placeholder registry path -- the actual real image URL depends on which GCP
+          # Artifact Registry repo Phase 5.1 provisions; not guessed at here.
+          image: REGION-docker.pkg.dev/PROJECT_ID/fatbaby/dashboard:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: secwatch-data
+              # Matches docker/dashboard.Dockerfile's own real mount point -- cmd/dashboard's
+              # real --data-dir default (var/secwatch) resolves under here unmodified.
+              mountPath: /app/var
+          # Real, honest resource request -- dashboard is a lightweight SSE server reading local
+          # files, not a guess padded for headroom nobody's measured yet. Revisit once this
+          # actually runs on a real cluster and real usage is observed.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+      volumes:
+        - name: secwatch-data
+          persistentVolumeClaim:
+            claimName: fatbaby-secwatch-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: fatbaby
+spec:
+  selector:
+    app: fatbaby-dashboard
+  ports:
+    - port: 8080
+      targetPort: 8080
+  # Real, deliberate default: ClusterIP, internal-only. Phase 5.4's own cutover step is what
+  # decides real external exposure (an Ingress, or nginx on the existing VPS proxying into the
+  # cluster) -- not decided here, this manifest's own job is proving the Deployment/PVC shape.
+  type: ClusterIP
