@@ -1,0 +1,5 @@
+apiVersion: v2
+name: dashboard
+description: FatBaby SSE dashboard -- real-time signal pipeline event viewer
+type: application
+version: 0.1.0

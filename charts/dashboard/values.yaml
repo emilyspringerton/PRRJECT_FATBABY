@@ -1,0 +1,4 @@
+replicaCount: 1
+image:
+  repository: REGION-docker.pkg.dev/PROJECT_ID/fatbaby/dashboard
+  tag: latest

@@ -76,12 +76,20 @@ process here is horizontally scaled today). Real, deliberate choice per the find
 un-blocks Phase 5 immediately without first finishing Phase 2's own GCS fanout wiring.
 
 **Phase 5.3 — real Deployment + Service manifests, one process at a time.** `k8s/dashboard.yaml`
-(this same commit) is the real, first, representative manifest — a `Deployment` (1 replica,
-matching today's real single-instance-per-process model, no k8s-native horizontal scaling
-claimed) + the PVC from 5.2 + a `Service` exposing the SSE port internally. Real, honest,
-unverified: no live cluster to apply this against yet (blocked on 5.1). The remaining ~15
-processes in the main `CLAUDE.md`'s own process table follow the same real pattern once this one
-is proven — not templated out in bulk here, matching this repo's own "prove one, then repeat"
+was the real, first, representative raw manifest — a `Deployment` (1 replica, matching today's
+real single-instance-per-process model, no k8s-native horizontal scaling claimed) + the PVC from
+5.2 + a `Service` exposing the SSE port internally. **Superseded, same day, by a real Helm
+chart**: `charts/dashboard/` (`Chart.yaml`/`values.yaml`/`templates/*.yaml`) — generated from
+PARENA's own new `stdlib/k8s`/`stdlib/helm` primitives (founder real-time: "write kubernetes
+primitives into the stdlib and write helm support into parena"), real, YAML-syntax-validated, the
+same real resource values as the raw manifest with image/replica count now real Helm-templated
+`{{ .Values.X }}` fields instead of hardcoded. `k8s/dashboard.yaml` itself is kept, not deleted —
+real, honest documentation of the pre-Helm shape, same "don't discard, supersede" discipline this
+doc's own parent doc already applies to the local-NDJSON event log. Real, honest, unverified
+either way: no live cluster to apply this against yet (blocked on 5.1), and no `helm` CLI in the
+authoring session to run `helm lint`/`helm template` against it. The remaining ~15 processes in
+the main `CLAUDE.md`'s own process table follow the same real chart pattern once this one is
+proven — not templated out in bulk here, matching this repo's own "prove one, then repeat"
 discipline rather than generating 15 unverified manifests at once.
 
 **Phase 5.4 — cutover, one process at a time, old and new running in parallel first.** Real,
