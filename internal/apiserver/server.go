@@ -12,8 +12,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo"
 
-	"github.com/example/prrject-fatbaby/internal/earningscal"
 	cooccur "github.com/example/prrject-fatbaby/internal/cooccurrence"
+	"github.com/example/prrject-fatbaby/internal/earningscal"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/moversindex"
 	"github.com/example/prrject-fatbaby/internal/newssite/docindex"
@@ -22,16 +22,16 @@ import (
 
 // ServerConfig configures the signal API server.
 type ServerConfig struct {
-	Addr            string
-	Index           *signalindex.Index
-	EarningsCal     *earningscal.Store  // optional; enables /v1/earnings-calendar
-	DocIndex        *docindex.Index     // optional; enables /v1/press-releases/{ticker}
-	MoversIndex     *moversindex.Index  // optional; enables /v1/movers-history/{ticker}
-	Logger          *log.Logger
-	APIKeys         []string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	MaxLimit        int
+	Addr         string
+	Index        *signalindex.Index
+	EarningsCal  *earningscal.Store // optional; enables /v1/earnings-calendar
+	DocIndex     *docindex.Index    // optional; enables /v1/press-releases/{ticker}
+	MoversIndex  *moversindex.Index // optional; enables /v1/movers-history/{ticker}
+	Logger       *log.Logger
+	APIKeys      []string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	MaxLimit     int
 	// IDUNAVerifier is an optional IDUNA JWT verifier. When non-nil, the server
 	// accepts Bearer JWTs issued by IDUNA in addition to (not instead of) static
 	// API keys. Callers with an IDUNA JWT and no API key are admitted if the
@@ -198,14 +198,16 @@ func (s *server) handleSummary(http.ResponseWriter, *http.Request) (int, any) {
 	tickers := len(summary)
 	return http.StatusOK, map[string]any{"tickers": tickers, "total_signals": s.cfg.Index.Depth(), "index_depth": s.cfg.Index.Depth(), "latest_seq": s.cfg.Index.LatestSeq(), "summary": summary}
 }
+
 // handleEarningsCalendar serves GET /v1/earnings-calendar.
 // Query params:
-//   ticker   — comma-separated ticker filter (e.g. "AAPL,MSFT")
-//   from     — YYYY-MM-DD lower bound on ReportDate (inclusive)
-//   to       — YYYY-MM-DD upper bound on ReportDate (inclusive)
-//   status   — comma-separated status filter (confirmed|announced|backfilled)
-//   upcoming — "1" to return only future dates (>= today); overrides from
-//   limit    — max results (default 50, capped at MaxLimit)
+//
+//	ticker   — comma-separated ticker filter (e.g. "AAPL,MSFT")
+//	from     — YYYY-MM-DD lower bound on ReportDate (inclusive)
+//	to       — YYYY-MM-DD upper bound on ReportDate (inclusive)
+//	status   — comma-separated status filter (confirmed|announced|backfilled)
+//	upcoming — "1" to return only future dates (>= today); overrides from
+//	limit    — max results (default 50, capped at MaxLimit)
 //
 // Returns 503 when the EarningsCal store is not configured.
 func (s *server) handleEarningsCalendar(_ http.ResponseWriter, r *http.Request) (int, any) {
@@ -263,7 +265,11 @@ func (s *server) handleEarningsCalendar(_ http.ResponseWriter, r *http.Request) 
 // handlePressReleases serves GET /v1/press-releases/{ticker}.
 // Query params:
 //
-//	limit — max results (default 20, capped at MaxLimit)
+//	limit    — max results (default 20, capped at MaxLimit)
+//	provider — optional filter on SourceProvider (e.g. "prnewswire",
+//	           "businesswire"); omitted/empty returns every provider.
+//	           Added 2026-09-02 (founder real-time: "individual businesswire
+//	           and prnewswire as options for prtype").
 //
 // Returns 503 when the DocIndex is not configured.
 func (s *server) handlePressReleases(_ http.ResponseWriter, r *http.Request) (int, any) {
@@ -283,6 +289,7 @@ func (s *server) handlePressReleases(_ http.ResponseWriter, r *http.Request) (in
 	if limit > s.cfg.MaxLimit {
 		limit = s.cfg.MaxLimit
 	}
+	provider := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("provider")))
 	all := s.cfg.DocIndex.ForTicker(ticker)
 	type prItem struct {
 		Identity    string    `json:"identity"`
@@ -290,10 +297,14 @@ func (s *server) handlePressReleases(_ http.ResponseWriter, r *http.Request) (in
 		Snippet     string    `json:"snippet"`
 		FilingDate  string    `json:"filing_date,omitempty"`
 		PersistedAt time.Time `json:"persisted_at"`
+		Provider    string    `json:"provider,omitempty"`
 	}
 	out := make([]prItem, 0, min(limit, len(all)))
 	for _, ds := range all {
 		if ds.SourceType != "press_release" {
+			continue
+		}
+		if provider != "" && strings.ToLower(ds.SourceProvider) != provider {
 			continue
 		}
 		out = append(out, prItem{
@@ -302,6 +313,7 @@ func (s *server) handlePressReleases(_ http.ResponseWriter, r *http.Request) (in
 			Snippet:     ds.BodyPreview,
 			FilingDate:  ds.FilingDate,
 			PersistedAt: ds.PersistedAt,
+			Provider:    ds.SourceProvider,
 		})
 		if len(out) >= limit {
 			break
@@ -332,12 +344,12 @@ func (s *server) handleDataQuality(_ http.ResponseWriter, _ *http.Request) (int,
 		overallConf = sumConf / float64(total)
 	}
 	return http.StatusOK, map[string]any{
-		"tickers":           len(report),
-		"total_signals":     total,
+		"tickers":            len(report),
+		"total_signals":      total,
 		"overall_confidence": overallConf,
 		"grade_distribution": gradeTotals,
-		"flag_totals":       flagTotals,
-		"by_ticker":         report,
+		"flag_totals":        flagTotals,
+		"by_ticker":          report,
 	}
 }
 

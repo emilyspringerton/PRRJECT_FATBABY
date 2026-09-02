@@ -153,6 +153,7 @@ func runBatch(ctx context.Context, bodyStore, outStore eventstore.EventStore, ti
 			Identity:         "press_release:" + ev.PRDiscoveryID,
 			Ticker:           ticker,
 			SourceType:       "press_release",
+			SourceProvider:   ev.Source,
 			Form:             "",
 			DocumentURL:      ev.URL,
 			CleanedText:      ev.Body,

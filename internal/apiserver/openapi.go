@@ -145,6 +145,8 @@ var signalAPIOpenAPISpec = map[string]any{
 				"description": "Requires the doc index to be configured.",
 				"parameters": []map[string]any{
 					pathParam("ticker", "Ticker symbol, e.g. AAPL"),
+					queryParam("limit", "integer", "Max results (default 20)."),
+					queryParam("provider", "string", "Filter by wire service (\"prnewswire\", \"businesswire\"); omitted returns all providers."),
 				},
 				"responses": okResponse("Press release documents."),
 			},

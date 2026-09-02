@@ -15,8 +15,24 @@ type SourceDocument struct {
 	Ticker string `json:"ticker"`
 
 	// SourceType is "sec_8k", "press_release", or similar — matches the
-	// kind label used when building the LLM prompt.
+	// kind label used when building the LLM prompt. This is the real,
+	// existing top-level content-type field for this whole pipeline (see
+	// SourceTypeForForm for the SEC-side values); the wider taxonomy today
+	// also includes "market_movers" and "emily_commentary" downstream in
+	// newssite, though those never flow through SourceDocument itself.
 	SourceType string `json:"source_type"`
+
+	// SourceProvider is the specific wire service or feed within
+	// SourceType -- the real subtype dimension SourceType alone doesn't
+	// carry. Only meaningful where SourceType=="press_release" today
+	// ("prnewswire", "businesswire", ...); empty for SEC filings, which
+	// have no equivalent "which provider" concept (EDGAR is the one and
+	// only source). Added 2026-09-02 (founder real-time: "add businesswire
+	// prs to our data sources same as prnewswire... tagged as... type
+	// pressreleases... individual businesswire and prnewswire as options
+	// for prtype") -- mirrors prwatch's own PressReleaseDiscovered.Source,
+	// which is where this value actually originates.
+	SourceProvider string `json:"source_provider,omitempty"`
 
 	// Form is the SEC form type (e.g. "8-K") or empty for press releases.
 	Form string `json:"form"`

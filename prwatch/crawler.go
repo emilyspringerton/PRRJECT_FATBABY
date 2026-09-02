@@ -22,6 +22,11 @@ type BodyFetchedEvent struct {
 	Company       string `json:"company,omitempty"`
 	URL           string `json:"url"`
 	PublishedAt   string `json:"published_at,omitempty"`
+	// Source is the wire service this release came from (e.g. "prnewswire",
+	// "businesswire") -- mirrored from PressReleaseDiscovered.Source so
+	// pr-indexer can label the resulting SourceDocument's own SourceProvider
+	// without a second lookup back into the discovery store.
+	Source string `json:"source,omitempty"`
 
 	// The cleaned plain-text body of the full press release page.
 	Body string `json:"body"`
@@ -241,6 +246,7 @@ func crawlOne(ctx context.Context, cfg CrawlerConfig, prID string, ev PressRelea
 		Company:       ev.Company,
 		URL:           ev.URL,
 		PublishedAt:   ev.PublishedAt,
+		Source:        ev.Source,
 		Body:          clean,
 		FetchedAt:     nowStr,
 	})

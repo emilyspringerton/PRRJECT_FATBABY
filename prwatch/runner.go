@@ -27,6 +27,16 @@ type RunnerConfig struct {
 	Now       func() time.Time
 	Logger    Logger
 	Client    *Client
+	// SourceName labels which wire service this run's events came from --
+	// "prnewswire", "businesswire", etc. Threaded into both the
+	// eventstore.Event.Source field and PressReleaseDiscovered.Source
+	// (previously both hardcoded to the literal "prnewswire" regardless of
+	// what Client actually pointed at -- a real, found bug: nothing in this
+	// package ever supported more than one wire service's own labeling,
+	// even though Client's own BaseURL was already configurable). Empty
+	// defaults to "prnewswire", preserving every existing caller's exact
+	// current behavior/output with zero config change required.
+	SourceName string
 	// WatchlistTickers maps an upper-cased ticker symbol to its known CIK +
 	// exchange, keyed the same way as secwatch's own watchlist -- used to
 	// mint a SKULDMARK-25 ID for regex-extracted tickers that happen to be
@@ -35,6 +45,15 @@ type RunnerConfig struct {
 	// expected: no CIK on file means no ID minted, not a guess. Optional;
 	// nil means no minting happens here at all.
 	WatchlistTickers map[string]WatchlistRef
+}
+
+// sourceName returns cfg.SourceName, defaulting to "prnewswire" -- see
+// RunnerConfig.SourceName's own doc comment for why this default exists.
+func (cfg RunnerConfig) sourceName() string {
+	if cfg.SourceName == "" {
+		return "prnewswire"
+	}
+	return cfg.SourceName
 }
 
 // WatchlistRef is the subset of a watchlist entry prwatch needs to mint a
@@ -99,7 +118,7 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 			Type:         "pr_discovered",
 			OccurredAt:   cfg.Now(),
 			PartitionKey: pr.ID,
-			Source:       "prnewswire",
+			Source:       cfg.sourceName(),
 			Data:         mustJSON(eventData(ctx, cfg, pr, cfg.Now())),
 		}
 		if _, err := store.Append(ctx, ev); err != nil {
@@ -114,7 +133,7 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 }
 
 func eventData(ctx context.Context, cfg RunnerConfig, pr PRDiscovery, now time.Time) PressReleaseDiscovered {
-	e := PressReleaseDiscovered{URL: pr.URL, Source: "prnewswire", DiscoveredAt: now.UTC(), ExtractionMethod: "regex", Headline: pr.Headline, Company: pr.Company}
+	e := PressReleaseDiscovered{URL: pr.URL, Source: cfg.sourceName(), DiscoveredAt: now.UTC(), ExtractionMethod: "regex", Headline: pr.Headline, Company: pr.Company}
 	if !pr.Timestamp.IsZero() {
 		e.PublishedAt = pr.Timestamp.UTC().Format(time.RFC3339Nano)
 	}

@@ -22,16 +22,17 @@ import (
 // It carries all fields needed by the front page, ticker page, wire, and archive
 // so those handlers never have to touch the raw event store on a hot path.
 type DocSummary struct {
-	Identity    string
-	Ticker      string
-	SourceType  string
-	Form        string
-	DocumentURL string
-	BodyPreview string // first ~800 runes of cleaned text
-	CharCount   int
-	FilingDate  string    // SEC filing date (YYYY-MM-DD); empty for legacy docs
-	PersistedAt time.Time // pipeline-index timestamp
-	Sequence    uint64    // event store sequence; enables targeted fetch for detail pages
+	Identity       string
+	Ticker         string
+	SourceType     string
+	SourceProvider string // wire service within SourceType=="press_release" -- "prnewswire"/"businesswire"; empty otherwise
+	Form           string
+	DocumentURL    string
+	BodyPreview    string // first ~800 runes of cleaned text
+	CharCount      int
+	FilingDate     string    // SEC filing date (YYYY-MM-DD); empty for legacy docs
+	PersistedAt    time.Time // pipeline-index timestamp
+	Sequence       uint64    // event store sequence; enables targeted fetch for detail pages
 }
 
 // Index holds all doc summaries keyed by ticker and by identity.
@@ -81,16 +82,17 @@ func (idx *Index) Ingest(rec eventstore.Record) error {
 		removeFromTickerSlice(idx.byTicker, existing)
 	}
 	ds := &DocSummary{
-		Identity:    doc.Identity,
-		Ticker:      ticker,
-		SourceType:  doc.SourceType,
-		Form:        doc.Form,
-		DocumentURL: doc.DocumentURL,
-		BodyPreview: previewText(doc.CleanedText, 800),
-		CharCount:   doc.CleanedCharCount,
-		FilingDate:  doc.FilingDate,
-		PersistedAt: doc.PersistedAt,
-		Sequence:    rec.Sequence,
+		Identity:       doc.Identity,
+		Ticker:         ticker,
+		SourceType:     doc.SourceType,
+		SourceProvider: doc.SourceProvider,
+		Form:           doc.Form,
+		DocumentURL:    doc.DocumentURL,
+		BodyPreview:    previewText(doc.CleanedText, 800),
+		CharCount:      doc.CleanedCharCount,
+		FilingDate:     doc.FilingDate,
+		PersistedAt:    doc.PersistedAt,
+		Sequence:       rec.Sequence,
 	}
 	idx.byIdentity[doc.Identity] = ds
 	idx.byTicker[ticker] = append(idx.byTicker[ticker], ds)
