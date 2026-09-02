@@ -86,17 +86,35 @@ separate, lower-risk cleanup (turn scattered literals into named constants, add 
 fails on an unrecognized value reaching a renderer) — worth doing before a third or fourth
 `SourceType` shows up, not required to ship BusinessWire.
 
-## BusinessWire specifically: real, honest current blocker
+## BusinessWire specifically: PAUSED (2026-09-02) — a real infrastructure wall, not a code problem
+
+**Status: paused by the founder ("disable it for now until we can figure out a better idea").
+Do not pick this back up as an open work item without a real plan for the blocker below — it
+will fail the same way again.**
 
 This pass wires the entire type/subtype pipeline (client → event → SourceDocument → docindex →
 signalapi → EDIS) end to end and proves it with the one real, already-working provider
-(`prnewswire`). It does **not** ship a working BusinessWire scraper. Checked directly, not
-assumed: `businesswire.com`'s news-list and newsroom pages both return HTTP 403 to this session's
-own fetch tooling (bot-protection, not a URL mistake — tried the general news page, an
-industry-specific page, and their own RSS help page), and their real RSS feed URLs are
-subscriber-token-gated (`?rss=<opaque token>`), not a generic public endpoint prwatch could poll
-the way it polls PRNewswire's plain HTML today. Writing scrape regexes against markup nobody in
-this session has actually seen would be guessing, not shipping — this is flagged, not silently
-worked around. `prwatch.RunnerConfig.SourceName` and the whole downstream pipeline are ready the
-moment someone with real browser access to businesswire.com hands over its actual list-page HTML
-structure or a real, working feed URL.
+(`prnewswire`) — that part is real, done, and stays enabled. It does **not** ship a working
+BusinessWire scraper, and the reason turned out to be bigger than markup access:
+
+1. `businesswire.com`'s news-list/newsroom pages are client-side JS-rendered (confirmed by the
+   founder in-browser) and 403 a plain HTTP fetch — solved for real by standing up an actual
+   headless Chrome + chromedriver (`PARENA/stdlib/net/webdriver.prn`, no sudo needed, see
+   `PARENA/CHANGELOG.md`) and fixing two real bugs in PARENA's own HTTP/WebDriver client along
+   the way (bare-LF request lines, and a read-until-EOF client hanging against a server that
+   never actually closes the connection).
+2. **The real, final blocker, confirmed directly and not fixable in code**: this box's own
+   outbound IP (`curl ipinfo.io` → `AS63949 Akamai Connected Cloud`, a Linode datacenter range)
+   is broadly flagged by anti-bot systems — a real, live Chrome session hitting
+   `businesswire.com/newsroom` got a Chrome-internal `ERR_HTTP2_PROTOCOL_ERROR` instead of the
+   site, and hitting `google.com` from the same box got a live reCAPTCHA challenge instead of
+   search results. This is IP-reputation-based bot blocking, the same wall any real
+   Selenium/Puppeteer/Playwright scraper hits running from a cloud/VPS IP. No Chrome flag,
+   WebDriver capability, or PARENA code change fixes an IP-reputation problem.
+
+**What would actually unblock this** (an infrastructure decision, not an engineering task): route
+the scrape through a residential/mobile proxy or IP-rotation service, or run it from a
+non-datacenter IP. `prwatch.RunnerConfig.SourceName`, `SourceProvider`, `cmd/prwatch`'s poll
+jitter flags, and the whole webdriver/HTTP-client fix chain are all real, tested, and ready the
+moment that infrastructure decision is made — nothing here needs to be re-verified, only a real
+network path that doesn't get IP-blocked before the JS-rendering problem even gets tested.
