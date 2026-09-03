@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-03 (3)
+- kanban 432432423: GKE Autopilot vs. Standard cluster decision made final in
+  `docs/northstar/KUBERNETES_MIGRATION.md` — checked the real, current 17-process pipeline
+  inventory against Autopilot's restrictions (no privileged pods/hostNetwork/DaemonSets/custom
+  node tuning) and found no disqualifying workload; confirms Phase 5.1's original Autopilot lean
+  rather than reversing it. One real, named future-facing flag: `PARENA/docs/
+  NATIVE_PCAP_NORTHSTAR.md`'s own `AF_PACKET`/`CAP_NET_RAW` need would force revisiting this if
+  ever deployed in-cluster (no such plan exists today). Phase 5.1 (`S207-02`) itself stays open —
+  still blocked on interactive `gcloud auth login`, unaffected by this decision.
+
 ## 2026-09-03 (2)
 - S243-06: real Host-header (subdomain) routing added to the FatBaby broker (`broker/model.go`,
   `registry.go`, `middleware.go`) -- founder real-time, continuing the Emily for Business

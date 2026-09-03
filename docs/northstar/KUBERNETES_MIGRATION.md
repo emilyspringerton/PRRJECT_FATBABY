@@ -116,11 +116,60 @@ principle exists to prevent).
   before cutover: Kubernetes `Secret` objects (or GCP Secret Manager) replace that, not attempted
   here.
 
+## Decision: GKE Autopilot over Standard (2026-09-03, kanban priority-queue card 432432423)
+
+Priority-queue card 432432423 asked to decide Autopilot vs. Standard explicitly. Phase 5.1 above
+already leaned Autopilot ("least ops overhead") when this doc was first written; this section
+checks that lean against the real, current process inventory rather than leaving it as an
+unexamined default, and makes the decision final.
+
+**Real inventory checked**: `PRRJECT_FATBABY/CLAUDE.md`'s own process table lists 17 real
+processes today (`secwatch`, `prwatch`, `prwatch-body`, `processor`, `dashboard`, `newssite`,
+`feedserver`, `broker`, `signalapi`, `observation-watcher`, `eps-processor`, `eps-reconciler`,
+`guidance-watcher`, `jon-agent`, `form4-watcher`, `dividend-watcher`, `buyback-watcher`,
+`nt-watcher`) — every one a plain Go binary doing HTTP serving, TCP framing, or outbound polling
+against local `./var/<name>/` disk state (Phase 5.2's PVC-per-process plan). **None of the 17
+need anything Autopilot restricts**: no privileged containers, no `hostNetwork`/`hostPath`, no
+DaemonSets, no custom node-level sysctls or kernel modules, no GPU/exotic hardware. The parent
+architecture doc's own aspirational Phase 5 inventory (Kafka/Redpanda/NATS, Postgres, Redis,
+vector DB) is real but **not yet deployed** — those are Phase 2-4 scaffolding-only items (see
+"Real, honest finding" above), not part of today's actual cutover surface, so they don't weigh
+against Autopilot for this decision; if/when a stateful bus is actually stood up, GKE Autopilot
+supports StatefulSets + `Persistent Disk CSI` PVCs today (this isn't a "wait for Standard" gap
+either — only genuinely host-level/privileged workloads are).
+
+**One real, concrete future-facing flag, named honestly rather than silently missed**: this same
+session's own `PARENA/docs/NATIVE_PCAP_NORTHSTAR.md` (native packet capture) needs a raw
+`AF_PACKET`/`SOCK_RAW` socket, which needs `CAP_NET_RAW` — Autopilot does not grant elevated
+Linux capabilities or `hostNetwork` to pods. **If** a future PRRJECT_FATBABY process ever needs
+in-cluster raw packet capture (no such process exists or is planned today — this is a real,
+checked non-issue for the current decision, not a hedge), that specific workload would need
+either a Standard cluster/node pool or to run outside the cluster entirely. Not a reason to pick
+Standard now — a reason to re-open this decision later if that specific need ever materializes.
+
+**Cost model checked**: Autopilot bills per-pod requested vCPU/memory (with a per-pod minimum),
+Standard bills per-node regardless of bin-packing efficiency. With 17 mostly-small, mostly
+low-traffic processes, small deliberate pod resource requests keep Autopilot's per-pod billing
+competitive with a Standard node pool that would otherwise sit under-utilized outside SEC/PR
+filing bursts — matching this team's own "small-team-real-leverage" value already named in the
+root `CLAUDE.md` and quoted in Phase 5.1 above.
+
+**Decision, final**: **GKE Autopilot.** Confirms Phase 5.1's original lean rather than reversing
+it — the real inventory check above found no disqualifying workload, and Autopilot's own
+zero-node-management overhead is a genuine, real fit for this team's size. Phase 5.1 itself
+(`S207-02` in `EMILY/BACKLOG.md`) stays open — this decision unblocks *what kind* of cluster to
+provision, not the still-real, still-unresolved need for interactive `gcloud auth login` before
+provisioning can happen at all.
+
 ## Related
 
 - `docs/architecture-distributed-event-intelligence.md` — the parent plan this doc's own Phase 5
   makes concrete; Phases 2-4 (event bus, GCS object layout, canonical envelope) are real,
   separate, still-scaffolding-only work this doc found, not resolved.
+- `PRRJECT_FATBABY/CLAUDE.md`'s own process table — the real, current 17-process inventory the
+  Autopilot-vs-Standard decision above was checked against.
+- `PARENA/docs/NATIVE_PCAP_NORTHSTAR.md` — the one real, named, currently-hypothetical workload
+  shape (`CAP_NET_RAW`) that would force revisiting the Autopilot decision if it ever becomes real.
 - `emily.cli/cmd/backup.go` — the real, already-live GCS backup mechanism ("the data is already
   there") this doc's own opening section cites directly.
 - `EMILY/docs/THE_EMILY_WAY.md` Principle 15 (Operational Health Is Not Optional) — governs the
