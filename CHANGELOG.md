@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-09-03 (2)
+- S243-06: real Host-header (subdomain) routing added to the FatBaby broker (`broker/model.go`,
+  `registry.go`, `middleware.go`) -- founder real-time, continuing the Emily for Business
+  multi-tenancy thread: "we can use the fatbaby proxies for offering custom subdomains for
+  partners/customers." Real, checked-before-building finding: the broker's `Route` type only
+  supported two matchers (`TenantKey` bearer token, `PathPrefix`) -- no Host-based matching
+  existed at all, a genuine, decisive gap for a per-tenant-subdomain onboarding flow (e.g.
+  `acme.console.okemily.com`). New `Route.Host` field (exact match, case-insensitive), new
+  `Registry.ResolveByHost`, wired into `AuthMiddleware` and checked FIRST (before PathPrefix and
+  bearer-token matching) so a tenant subdomain's own paths can never be shadowed by an unrelated
+  global PathPrefix route. Deliberate design choice: a Host route is NOT gated by the broker's
+  own HTTP Basic Auth (unlike PathPrefix) -- the real auth boundary for a tenant subdomain is
+  that tenant's own upstream IDUNA instance (JWT/OAuth), not the broker itself; the broker's job
+  for a Host route is purely routing. Handles a `Host:` header carrying a port suffix (a real,
+  found-live-in-tests edge case for direct non-443 testing) via a new `hostWithoutPort` helper.
+  4 new tests (`broker/proxy_test.go`): exact + case-insensitive host resolution, no-Basic-Auth-
+  needed for a Host route (with and without a port suffix), and Host-before-PathPrefix precedence
+  proven directly (a request to a path that collides with an unrelated PathPrefix route still
+  resolves to the Host route). `go build/vet/test ./...` clean across the whole repo, zero
+  regressions. Real, honestly named, not attempted in this pass: actually provisioning a new
+  per-tenant IDUNA instance + broker route entry + subdomain DNS/cert is still a manual,
+  config-file-edit process — no real onboarding automation (a `console.okemily.com` signup flow)
+  exists yet; this closes the routing-capability gap the onboarding flow will need, not the
+  onboarding flow itself. See `IDUNA/docs/EMILY_FOR_BUSINESS_NORTHSTAR.md`'s own updated
+  "Multi-tenancy architecture direction" section for the fuller picture (DB-per-install,
+  console.okemily.com, wildcard-cert considerations). (sess-20260902-2008-ed50169e)
+
 ## 2026-09-03
 - S189-42: real TINA desk engine (`cmd/tina-engine`) — on every real guidance RAISE in `var/guidance/articles.ndjson`, looks up that same event's own source press-release body in `var/prwatch-body` (keyed by `source_identity`/`PRDiscoveryID`), then drafts a real, disclosure-compliant TINA article via the Anthropic API, matching the exact real voice/format/disclosure convention already established by the four hand-written TINA posts live in `IDUNA/var/blog.db` (read directly to build the system prompt). Real, deliberate safety boundary, per `docs/northstar/tina-engine.md`'s own still-open compliance question: writes drafts only to `var/tina-drafts/<id>.json`, never calls IDUNA's blog Create API — no auto-publish path exists in this code at all. Standard `-one-shot`/`-dry-run`/`.seen`-file incremental-processing shape, matching `guidance-watcher`/`eps-processor`'s own conventions. New `cmd/tina-engine/main_test.go` (6 tests) covers the deterministic half end to end: raise-filtering + malformed-line tolerance, seen-set round trip, JSON-object extraction from model prose, draft-file round trip, and a real dry-run-never-dials-out guarantee. `go build`/`go vet`/`go test ./...` all clean across the whole repo, zero regressions. Real, live-verified against actual production data: a `-dry-run` pass against the real, current `var/guidance/articles.ndjson` (113 real raise records) correctly resolved 18+ of them to their exact real source press-release URLs (Deere, Ross Stores, BMO, J.M. Smucker, Synopsys, Workday, Autodesk, Medtronic, Palo Alto Networks, MongoDB, and others). Real, honest, external, NOT a code defect: a single live (non-dry-run) draft attempt against one real record (Medtronic) returned a genuine Anthropic API error, `"Your credit balance is too low to access the Anthropic API."` — confirmed this is handled correctly: the error is logged and the record is deliberately NOT marked seen, so production will retry it once the account's credit balance is restored. Flagging this billing gap for the founder rather than routing around it. Real, deliberate, deferred next step, named in the file's own doc comment: the backlog item's architecture note calls for a PARENA-side `stdlib/fatbaby.prn` FFI declaration for the deterministic detection step (mirroring `stdlib/editor/plugin.prn`'s existing host/plugin split) — not built in this pass; this file is 100% Go today.
 

@@ -103,6 +103,102 @@ func TestAuthMiddleware_PathBasedRouteRequiresBasicAuth(t *testing.T) {
 	}
 }
 
+// TestRegistry_ResolveByHost -- real, per-tenant subdomain routing (S243-06, 2026-09-03: "we can
+// use the fatbaby proxies for offering custom subdomains for partners/customers"). Exact
+// Host-header match, case-insensitive, distinct from an unrelated host.
+func TestRegistry_ResolveByHost(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "routes.json")
+	_ = os.WriteFile(p, []byte(`{"routes":[
+		{"tenant_id":"acme","host":"acme.console.okemily.com","upstream_base":"http://acme-upstream","enabled":true},
+		{"tenant_id":"widgetco","host":"widgetco.console.okemily.com","upstream_base":"http://widgetco-upstream","enabled":true}
+	]}`), 0o644)
+	r, err := LoadRegistry(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, ok := r.ResolveByHost("acme.console.okemily.com")
+	if !ok || route.TenantID != "acme" {
+		t.Fatalf("expected acme, got %+v ok=%v", route, ok)
+	}
+	// Real Host headers vary in case in the wild -- comparison must be case-insensitive.
+	route, ok = r.ResolveByHost("ACME.console.okemily.com")
+	if !ok || route.TenantID != "acme" {
+		t.Fatalf("expected case-insensitive match for acme, got %+v ok=%v", route, ok)
+	}
+	route, ok = r.ResolveByHost("widgetco.console.okemily.com")
+	if !ok || route.TenantID != "widgetco" {
+		t.Fatalf("expected widgetco, got %+v ok=%v", route, ok)
+	}
+	_, ok = r.ResolveByHost("unrelated.example.com")
+	if ok {
+		t.Fatal("expected no match for an unrelated host")
+	}
+}
+
+// TestAuthMiddleware_HostBasedRouteSkipsBasicAuth -- a Host-routed tenant subdomain has no Basic
+// Auth gate at the broker layer at all (see model.go's own doc comment: the upstream tenant's
+// own real IDUNA instance is the real auth boundary for these), unlike a PathPrefix route.
+func TestAuthMiddleware_HostBasedRouteSkipsBasicAuth(t *testing.T) {
+	byHost := map[string]*Route{
+		"acme.console.okemily.com": {TenantID: "acme", UpstreamBase: "http://x", Host: "acme.console.okemily.com", Enabled: true},
+	}
+	reg := &Registry{}
+	reg.byHost.Store(&byHost)
+	h := AuthMiddleware(reg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route, ok := RouteFromContext(r.Context())
+		if !ok || route.TenantID != "acme" {
+			t.Errorf("expected acme route in context, got %+v ok=%v", route, ok)
+		}
+		w.WriteHeader(200)
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/anything/at/all", nil)
+	req.Host = "acme.console.okemily.com"
+	h.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("no credentials needed for a Host route: got %d, want 200", rr.Code)
+	}
+
+	// A port suffix on the Host header (e.g. a direct non-443 request) must not break matching.
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest("GET", "/anything", nil)
+	req.Host = "acme.console.okemily.com:8443"
+	h.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("Host with port suffix: got %d, want 200", rr.Code)
+	}
+}
+
+// TestAuthMiddleware_HostRouteCheckedBeforePathPrefix -- a tenant subdomain's own paths must
+// never be shadowed by an unrelated global PathPrefix route (e.g. a shared "/jewel/" route),
+// even if the tenant happens to request a path that collides with one.
+func TestAuthMiddleware_HostRouteCheckedBeforePathPrefix(t *testing.T) {
+	byHost := map[string]*Route{
+		"acme.console.okemily.com": {TenantID: "acme", UpstreamBase: "http://acme-x", Host: "acme.console.okemily.com", Enabled: true},
+	}
+	byPath := []*Route{
+		{TenantID: "jewel", UpstreamBase: "http://jewel-x", PathPrefix: "/jewel/", Enabled: true},
+	}
+	reg := &Registry{}
+	reg.byHost.Store(&byHost)
+	reg.byPath.Store(&byPath)
+	h := AuthMiddleware(reg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route, _ := RouteFromContext(r.Context())
+		w.Header().Set("X-Tenant", route.TenantID)
+		w.WriteHeader(200)
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/jewel/lab", nil)
+	req.Host = "acme.console.okemily.com"
+	h.ServeHTTP(rr, req)
+	if rr.Header().Get("X-Tenant") != "acme" {
+		t.Fatalf("expected the Host route (acme) to win over the PathPrefix route, got tenant %q", rr.Header().Get("X-Tenant"))
+	}
+}
+
 func TestRegistry_ResolveByPath_LongestPrefixWins(t *testing.T) {
 	d := t.TempDir()
 	p := filepath.Join(d, "routes.json")

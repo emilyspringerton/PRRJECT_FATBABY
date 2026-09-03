@@ -13,11 +13,12 @@ type routesFile struct {
 	Routes []*Route `json:"routes"`
 }
 
-// Registry resolves inbound requests (by bearer token or by URL path) to routes.
+// Registry resolves inbound requests (by bearer token, by URL path, or by Host header) to routes.
 type Registry struct {
 	path   string
 	ptr    atomic.Pointer[map[string]*Route]
-	byPath atomic.Pointer[[]*Route] // sorted longest-PathPrefix-first
+	byPath atomic.Pointer[[]*Route]          // sorted longest-PathPrefix-first
+	byHost atomic.Pointer[map[string]*Route] // exact Host-header match, see model.go's own doc comment
 }
 
 // LoadRegistry loads and parses the routes file at path.
@@ -46,6 +47,7 @@ func (r *Registry) Reload() error {
 	}
 	next := make(map[string]*Route, len(rf.Routes))
 	var nextByPath []*Route
+	nextByHost := make(map[string]*Route)
 	for _, route := range rf.Routes {
 		if route == nil || !route.Enabled {
 			continue
@@ -57,11 +59,28 @@ func (r *Registry) Reload() error {
 		if rc.PathPrefix != "" {
 			nextByPath = append(nextByPath, &rc)
 		}
+		if rc.Host != "" {
+			nextByHost[strings.ToLower(rc.Host)] = &rc
+		}
 	}
 	sort.Slice(nextByPath, func(i, j int) bool { return len(nextByPath[i].PathPrefix) > len(nextByPath[j].PathPrefix) })
 	r.ptr.Store(&next)
 	r.byPath.Store(&nextByPath)
+	r.byHost.Store(&nextByHost)
 	return nil
+}
+
+// ResolveByHost returns the Route whose Host exactly matches host, if any. host is normalized
+// the same way AuthMiddleware normalizes r.Host before calling this -- a port suffix, if
+// present, is stripped first, and comparison is case-insensitive (real Host headers vary in
+// case in the wild).
+func (r *Registry) ResolveByHost(host string) (*Route, bool) {
+	m := r.byHost.Load()
+	if m == nil {
+		return nil, false
+	}
+	route, ok := (*m)[strings.ToLower(host)]
+	return route, ok
 }
 
 // ResolveByPath returns the longest-PathPrefix route matching path, if any.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"net"
 	"net/http"
 	"strings"
 
@@ -12,12 +13,20 @@ import (
 
 type routeContextKey struct{}
 
-// AuthMiddleware authenticates inbound requests -- by URL path (real HTTP Basic Auth, browser-
-// facing routes like JEWEL) or by tenant bearer token (the original M2M shape) -- and attaches
-// route metadata. Path-based routes are checked first: a route reachable by path never falls
-// through to bearer-token auth, and vice versa (see Route's own doc comment in model.go).
+// AuthMiddleware authenticates inbound requests -- by Host header (per-tenant subdomains), by
+// URL path (real HTTP Basic Auth, browser-facing routes like JEWEL), or by tenant bearer token
+// (the original M2M shape) -- and attaches route metadata. Host-based routes are checked FIRST
+// (a tenant subdomain's own paths must never be shadowed by an unrelated global PathPrefix
+// route), then path-based, then bearer token -- see Route's own doc comment in model.go for why
+// Host routes skip this middleware's own Basic Auth (the upstream tenant's own real auth is
+// the actual gate for those).
 func AuthMiddleware(reg *Registry, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if route, ok := reg.ResolveByHost(hostWithoutPort(r.Host)); ok {
+			ctx := context.WithValue(r.Context(), routeContextKey{}, route)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 		if route, ok := reg.ResolveByPath(r.URL.Path); ok {
 			if !checkBasicAuth(route, r) {
 				w.Header().Set("WWW-Authenticate", `Basic realm="`+route.TenantID+`"`)
@@ -72,6 +81,20 @@ func checkBasicAuth(route *Route, r *http.Request) bool {
 	userMatch := subtle.ConstantTimeCompare([]byte(user), []byte(route.BasicAuthUser)) == 1
 	passMatch := bcrypt.CompareHashAndPassword([]byte(route.BasicAuthPasswordHash), []byte(pass)) == nil
 	return userMatch && passMatch
+}
+
+// hostWithoutPort strips a ":port" suffix from an http.Request.Host value, if present -- a real
+// inbound Host header from a browser or nginx's own proxy_set_header Host $host commonly carries
+// no port, but a direct request (e.g. curl to a non-443/80 port during local testing) does.
+// net.SplitHostPort errors on a bare hostname with no port at all, which is the common real
+// case, so that error path falls back to returning host unchanged rather than treating it as a
+// real failure.
+func hostWithoutPort(host string) string {
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		return host
+	}
+	return h
 }
 
 func bearerToken(v string) string {

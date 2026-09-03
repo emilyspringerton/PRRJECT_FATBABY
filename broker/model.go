@@ -2,7 +2,7 @@ package broker
 
 // Route defines one tenant-to-upstream contract.
 //
-// Two independent ways a request can match a Route:
+// Three independent ways a request can match a Route:
 //   - Tenant bearer token (TenantKey) -- the original M2M shape, e.g. emily-agent calling
 //     gpt2-alpine-c's serve.py. Authorization: Bearer <TenantKey>.
 //   - PathPrefix -- for browser-facing services (e.g. JEWEL) that can't reasonably be expected
@@ -12,8 +12,16 @@ package broker
 //     asking for a new feature" -- one sudo-gated nginx location proxying everything to this
 //     broker, with the broker itself (no sudo needed to redeploy, see ops/systemd/
 //     fatbaby-broker.service) owning per-service routing/auth from here on.
+//   - Host -- exact Host-header match, for per-tenant subdomains (Emily for Business console
+//     onboarding, S243-02/06: "we can use the fatbaby proxies for offering custom subdomains for
+//     partners/customers"). Added 2026-09-03. Unlike PathPrefix, a Host route is NOT gated by
+//     this broker's own Basic Auth -- the upstream is expected to be that tenant's own real
+//     IDUNA instance, which does its own real JWT/OAuth auth; the broker's job for a Host route
+//     is purely "get the packet to the right tenant's upstream," not authenticate it itself.
+//     Checked before PathPrefix (see AuthMiddleware) so a tenant subdomain's own paths are never
+//     shadowed by an unrelated global PathPrefix route.
 //
-// A Route may set either or both matchers, but in practice a given route is one or the other.
+// A Route may set any of the three matchers, but in practice a given route is exactly one.
 type Route struct {
 	TenantID      string            `json:"tenant_id"`
 	TenantKey     string            `json:"tenant_key"`
@@ -36,6 +44,10 @@ type Route struct {
 	// SupportsUpgrade opts a route into real WebSocket proxying (ProxyHandler.handleUpgrade) --
 	// off by default since the original bearer-token M2M routes never need it.
 	SupportsUpgrade bool `json:"supports_upgrade"`
+	// Host, when non-empty, makes this route reachable by an exact Host-header match (e.g.
+	// "acme.console.okemily.com") -- see the type doc comment above. Not gated by this broker's
+	// own Basic Auth; deliberately relies on the upstream tenant's own real auth.
+	Host string `json:"host"`
 }
 
 // RouteTenant is a minimal tenant identity used by feedserver session auth.
