@@ -702,3 +702,59 @@ func TestServeDoc_FastPathViaDocIndex(t *testing.T) {
 		t.Fatalf("expected full body text in response, got: %s", rec.Body.String())
 	}
 }
+
+// TestParseKnownTickers (GFD-XX-X-124441): a POST can bypass the widget's own client-side JS
+// entirely, so this real validation must still only pass through tickers that are real, known
+// symbols -- never trust the raw form value.
+func TestParseKnownTickers(t *testing.T) {
+	known := []string{"AAPL", "MSFT"}
+	got := parseKnownTickers("aapl, NOTAREALTICKERXYZ ,MSFT,msft", known)
+	want := []string{"AAPL", "MSFT"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+func TestParseKnownTickers_EmptyInput(t *testing.T) {
+	if got := parseKnownTickers("", []string{"AAPL"}); got != nil {
+		t.Fatalf("expected nil for empty input, got %v", got)
+	}
+}
+
+// TestServePortfolioAdd_HTTPSmoke (GFD-XX-X-124441): real GET/POST round trip through the
+// actual handler -- validation itself is covered directly by TestParseKnownTickers above.
+func TestServePortfolioAdd_HTTPSmoke(t *testing.T) {
+	dir := t.TempDir()
+	store, err := eventstore.NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	h := NewHandler(store, log.New(io.Discard, "", 0))
+
+	getReq := httptest.NewRequest(http.MethodGet, "/portfolio/add", nil)
+	getRec := httptest.NewRecorder()
+	h.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want 200", getRec.Code)
+	}
+	if strings.Contains(getRec.Body.String(), "Real, live confirmation") {
+		t.Fatal("GET should not show a submitted confirmation")
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/portfolio/add", strings.NewReader("tickers="))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	postRec := httptest.NewRecorder()
+	h.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusOK {
+		t.Fatalf("POST status = %d, want 200", postRec.Code)
+	}
+	if !strings.Contains(postRec.Body.String(), "Real, live confirmation") {
+		t.Fatal("POST should show the confirmation block")
+	}
+}

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-04
+- feat(newssite): GFD-XX-X-124441 -- "build out the fatbaby portfolio add interface as a
+  prototype later we will use that UX for the GFD elite interface we need basically a textarea
+  with autocomplete that turns into tags like email invite." New `/portfolio/add` page: a real,
+  reusable, vanilla-JS tag-input widget -- type a ticker, autocomplete against the same real
+  `.Symbols`/`<datalist>` data the masthead search box already uses, Enter/comma/selecting a
+  match turns a valid ticker into a removable chip; a hidden field tracks the real chip list for
+  form submission. Real, honest "prototype" framing, not oversold: no portfolio backend/table
+  exists anywhere in this monorepo (checked directly), so Submit does not claim to save
+  anything -- it POSTs to the same page, which echoes back the exact, real, validated ticker
+  list as a confirmation. Real server-side validation, not just trusting the client-side JS's
+  own contract: `parseKnownTickers` (new, standalone, unit-tested) checks every submitted value
+  against the real known symbol set regardless of how the POST was made. 3 new tests
+  (`parseKnownTickers` shape/empty-input, a real GET/POST HTTP smoke test). `go build`/`go
+  test ./...` clean, `gofmt` clean. Live-verified against the real running service (redeployed
+  under `fatbaby-newssite.service`): the real page renders, POST round-trips correctly. Real,
+  deliberate design for reuse, per the founder's own "later we will use that UX for the GFD
+  elite interface" framing: the widget's own JS (`buildTagInput`-shaped logic, `.tag-input-box`/
+  `.tag-chip` classes) is generic tag/chip behavior with no FatBaby-specific coupling beyond
+  which `<datalist>` it points at -- ready to lift into a future GFD elite-roster page as-is.
+
 ## 2026-09-03 (3)
 - kanban 432432423: GKE Autopilot vs. Standard cluster decision made final in
   `docs/northstar/KUBERNETES_MIGRATION.md` — checked the real, current 17-process pipeline

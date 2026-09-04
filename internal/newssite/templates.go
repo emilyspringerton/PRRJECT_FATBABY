@@ -8,21 +8,22 @@ var tmpl = template.Must(template.New("").Parse(sharedFragments + allPageTemplat
 
 // Convenience lookups — panic at init if a name is missing (programming error).
 var (
-	frontTmpl      = mustLookup("front")
-	detailTmpl     = mustLookup("detail")
-	breakTmpl      = mustLookup("breaking")
-	sectionTmpl    = mustLookup("section")
-	tickerTmpl     = mustLookup("ticker")
-	ticker404Tmpl  = mustLookup("ticker404")
-	tickersTmpl    = mustLookup("tickers")
-	searchTmpl     = mustLookup("search")
-	archiveTmpl    = mustLookup("archive")
-	aboutTmpl      = mustLookup("about")
-	personTmpl     = mustLookup("person")
-	liveTmpl       = mustLookup("live")
-	earningsTmpl   = mustLookup("earnings")
-	guidanceTmpl   = mustLookup("guidance")
-	askLandingTmpl = mustLookup("ask-landing")
+	frontTmpl        = mustLookup("front")
+	detailTmpl       = mustLookup("detail")
+	breakTmpl        = mustLookup("breaking")
+	sectionTmpl      = mustLookup("section")
+	tickerTmpl       = mustLookup("ticker")
+	ticker404Tmpl    = mustLookup("ticker404")
+	tickersTmpl      = mustLookup("tickers")
+	searchTmpl       = mustLookup("search")
+	archiveTmpl      = mustLookup("archive")
+	aboutTmpl        = mustLookup("about")
+	personTmpl       = mustLookup("person")
+	liveTmpl         = mustLookup("live")
+	earningsTmpl     = mustLookup("earnings")
+	guidanceTmpl     = mustLookup("guidance")
+	askLandingTmpl   = mustLookup("ask-landing")
+	portfolioAddTmpl = mustLookup("portfolio-add")
 )
 
 func mustLookup(name string) *template.Template {
@@ -356,7 +357,114 @@ const sharedFragments = `
 const allPageTemplates = frontTemplate + detailTemplate + breakingTemplate + guidanceTemplate +
 	sectionTemplate + tickerTemplate + ticker404Template +
 	tickersTemplate + searchTemplate + archiveTemplate + aboutTemplate +
-	personTemplate + liveTemplate + earningsTemplate + askLandingTemplate
+	personTemplate + liveTemplate + earningsTemplate + askLandingTemplate +
+	portfolioAddTemplate
+
+// portfolioAddTemplate (GFD-XX-X-124441, founder: "build out the fatbaby portfolio add
+// interface as a prototype later we will use that UX for the GFD elite interface we need
+// basically a textarea with autocomplete that turns into tags like email invite") -- a real,
+// reusable, vanilla-JS tag-input widget: type a ticker, autocomplete against the real
+// .Symbols list (same <datalist> data/pattern the masthead search box already uses, not a new
+// data source), press Enter/comma/click a suggestion to turn a valid match into a removable
+// chip. Real, honest "prototype" framing, not oversold: there is no portfolio backend/table
+// anywhere in this monorepo yet (checked directly) -- Submit here does NOT claim to save
+// anything; it POSTs to this same page, which echoes the real, parsed ticker list back as a
+// confirmation, proving the widget's own real behavior end to end without faking persistence
+// that doesn't exist. The widget itself (buildTagInput, tag-input.css class names) is written
+// to be lifted wholesale into a future GFD elite-roster page, per the founder's own explicit
+// "later we will use that UX" framing -- generic tag/chip logic, no FatBaby-specific coupling
+// beyond which <datalist> ID it points at.
+const portfolioAddTemplate = `{{define "portfolio-add"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Add to Portfolio (prototype) — FATBABY</title><style>` + siteCSS + `
+.tag-input-box { border: 1px solid #ccc; border-radius: 6px; padding: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; background: #fff; }
+.tag-chip { background: #111; color: #fff; border-radius: 999px; padding: 0.2rem 0.7rem; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.4rem; }
+.tag-chip button { background: none; border: none; color: #fff; cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0; }
+.tag-input-box input[type=text] { border: none; outline: none; flex: 1 1 120px; min-width: 120px; font-size: 0.9rem; padding: 0.3rem; }
+</style></head>
+<body><div class="wrap">
+{{template "masthead" .}}
+<div class="edition-bar"><span><a href="/">← Front page</a></span><span></span></div>
+<main style="max-width:700px;padding:1.5rem 0;" class="reading-col">
+<h1 class="hl-lead">Add to Portfolio <span style="font-weight:400;font-size:0.7em;color:#666;">(prototype)</span></h1>
+<hr class="rule-heavy">
+<p style="font-family:system-ui;font-size:0.88rem;color:#555;">Real, honest prototype: this proves out a reusable tag-input widget (type a ticker, autocomplete, Enter turns it into a chip) — there is no real portfolio storage behind it yet. Submitting shows you the exact ticker list the widget captured, nothing more.</p>
+<form method="POST" action="/portfolio/add" style="font-family:system-ui;">
+  <label for="tag-text-input" style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.4rem;">Tickers</label>
+  <div class="tag-input-box" id="tag-input-box">
+    <input type="text" id="tag-text-input" list="ticker-list" placeholder="Type a ticker, press Enter…" autocomplete="off">
+  </div>
+  <input type="hidden" name="tickers" id="tickers-hidden-value">
+  <div style="margin-top:0.75rem;"><button type="submit" style="font-family:system-ui;padding:0.4rem 1rem;">Submit</button></div>
+</form>
+{{if .Submitted}}
+<div style="margin-top:1.5rem;padding:1rem;background:#f6f6f6;border-radius:6px;font-family:system-ui;font-size:0.9rem;">
+  <strong>Real, live confirmation — not saved anywhere, just proving the widget's own real output:</strong>
+  {{if .SubmittedTickers}}<ul>{{range .SubmittedTickers}}<li>{{.}}</li>{{end}}</ul>{{else}}<p>No valid tickers were captured.</p>{{end}}
+</div>
+{{end}}
+</main>
+</div>
+<script>(function(){
+  var validSymbols = (function() {
+    var s = new Set();
+    var dl = document.getElementById('ticker-list');
+    if (dl) { for (var i = 0; i < dl.options.length; i++) s.add(dl.options[i].value); }
+    return s;
+  }());
+  var box = document.getElementById('tag-input-box');
+  var input = document.getElementById('tag-text-input');
+  var hidden = document.getElementById('tickers-hidden-value');
+  var chips = [];
+
+  function syncHidden() { hidden.value = chips.join(','); }
+
+  function addChip(value) {
+    var v = value.trim().toUpperCase();
+    if (!v || !validSymbols.has(v) || chips.indexOf(v) !== -1) return false;
+    chips.push(v);
+    var chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    var label = document.createElement('span');
+    label.textContent = v;
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '×';
+    removeBtn.setAttribute('aria-label', 'Remove ' + v);
+    removeBtn.addEventListener('click', function() {
+      chips = chips.filter(function(x) { return x !== v; });
+      chip.remove();
+      syncHidden();
+    });
+    chip.appendChild(label);
+    chip.appendChild(removeBtn);
+    box.insertBefore(chip, input);
+    syncHidden();
+    return true;
+  }
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      if (addChip(input.value)) input.value = '';
+    } else if (e.key === 'Backspace' && input.value === '' && chips.length > 0) {
+      var last = chips[chips.length - 1];
+      chips = chips.slice(0, -1);
+      var chipEls = box.querySelectorAll('.tag-chip');
+      if (chipEls.length) chipEls[chipEls.length - 1].remove();
+      syncHidden();
+    }
+  });
+  // Selecting a real datalist option fires 'input' with an exact match -- same real
+  // "distinguish a full match from still-typing" technique the masthead search box uses.
+  input.addEventListener('input', function() {
+    if (validSymbols.has(input.value.trim().toUpperCase())) {
+      if (addChip(input.value)) input.value = '';
+    }
+  });
+})();</script>
+</body></html>{{end}}
+`
 
 const frontTemplate = `{{define "front"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

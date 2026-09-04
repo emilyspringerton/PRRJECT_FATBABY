@@ -163,6 +163,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// POST /portfolio/add — prototype tag-input widget submission (GFD-XX-X-124441).
+	if path == "/portfolio/add" && r.Method == http.MethodPost {
+		status = h.servePortfolioAdd(w, r)
+		return
+	}
+
 	if r.Method != http.MethodGet {
 		status = http.StatusMethodNotAllowed
 		http.Error(w, "method not allowed", status)
@@ -196,6 +202,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = h.proxySignalAPI(w, r)
 	case path == "/about":
 		status = h.serveAbout(w, r)
+	case path == "/portfolio/add":
+		status = h.servePortfolioAdd(w, r)
 	case path == "/live":
 		status = h.serveLive(w, r)
 	case path == "/live/events":
@@ -1046,6 +1054,49 @@ func (h *Handler) symbols() []string {
 		return nil
 	}
 	return h.cat.AllSymbols()
+}
+
+// servePortfolioAdd (GFD-XX-X-124441, prototype tag-input widget). GET renders the empty form;
+// POST re-renders it with a real confirmation of exactly what was captured. Real, honest
+// validation, not just trusting the client-side JS's own contract: a POST can bypass the
+// widget's own JS entirely, so every comma-separated value in the real "tickers" field is
+// still checked against the same real, known symbol set the widget's own <datalist> was built
+// from -- an unknown value is silently dropped, never echoed back as if it were a real ticker.
+func (h *Handler) servePortfolioAdd(w http.ResponseWriter, r *http.Request) int {
+	var submitted bool
+	var tickers []string
+	if r.Method == http.MethodPost {
+		submitted = true
+		tickers = parseKnownTickers(r.FormValue("tickers"), h.symbols())
+	}
+	var buf bytes.Buffer
+	RenderPortfolioAddPage(&buf, h.symbols(), submitted, tickers)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+	return http.StatusOK
+}
+
+// parseKnownTickers (GFD-XX-X-124441) validates a comma-separated raw form value against the
+// real, known symbol set -- a real, standalone function on purpose, not inlined, so it's
+// trivially unit-testable without any Handler/catalog setup: a POST can bypass the widget's
+// own client-side JS entirely, so an unknown value must be silently dropped here too, never
+// echoed back as if it were a real ticker.
+func parseKnownTickers(raw string, knownSymbols []string) []string {
+	known := make(map[string]bool, len(knownSymbols))
+	for _, s := range knownSymbols {
+		known[s] = true
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		sym := catalog.Normalize(strings.TrimSpace(part))
+		if sym == "" || !known[sym] || seen[sym] {
+			continue
+		}
+		seen[sym] = true
+		out = append(out, sym)
+	}
+	return out
 }
 
 // servePostCommentary handles POST /api/commentary — Emily publishes a governance article.

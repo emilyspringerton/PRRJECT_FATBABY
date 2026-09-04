@@ -285,6 +285,21 @@ type AboutView struct {
 	RulesRecent    bool   // true if rules changed within the last 14 days
 }
 
+// PortfolioAddView (GFD-XX-X-124441) -- real, honest prototype: Submitted/SubmittedTickers only
+// ever reflect what the widget itself just captured and POSTed, never a claim of real storage.
+type PortfolioAddView struct {
+	Base
+	Submitted        bool
+	SubmittedTickers []string
+}
+
+func RenderPortfolioAddPage(w io.Writer, symbols []string, submitted bool, submittedTickers []string) {
+	view := PortfolioAddView{Base: Base{Symbols: symbols}, Submitted: submitted, SubmittedTickers: submittedTickers}
+	if err := portfolioAddTmpl.Execute(w, view); err != nil {
+		fmt.Fprintf(w, "render error: %v", err)
+	}
+}
+
 // ── Person (director dossier) page ────────────────────────────────────────────
 
 // AppearanceView is one filing entry in the person page vote-history table.
