@@ -29,6 +29,7 @@ func main() {
 		pollJitter      = flag.Duration("poll-jitter", 0, "additionally randomize each round's wait (fixed or ranged) by +/- this much (0 = no extra jitter, the old behavior). \"can we still add some basic jitter in the timing of the runner\" -- basic pacing variance, not active evasion (an occasional-decoy-click/wandering idea was raised and then explicitly paused by the founder in the same conversation, not built).")
 		maxPolls        = flag.Int("max-polls", 0, "optional max poll rounds (0 = unbounded)")
 		watchlistPath   = flag.String("watchlist", filepath.Join("config", "watchlist.json"), "watchlist config path -- used only to mint SKULDMARK-25 IDs for regex-extracted tickers that happen to be on it")
+		graphDir        = flag.String("graph-dir", filepath.Join("var", "entity-graph"), "entity-graph data directory -- FB-12343's own real 'ticker mentioned in a press release' signal is written here, watched tickers only")
 	)
 	flag.Parse()
 
@@ -40,10 +41,14 @@ func main() {
 
 	watchlistTickers := loadWatchlistTickers(*watchlistPath, logger)
 
+	if err := os.MkdirAll(*graphDir, 0o755); err != nil {
+		logger.Fatalf("mkdir graph-dir %s: %v", *graphDir, err)
+	}
+
 	round := 0
 	for {
 		round++
-		if _, err := prwatch.RunDiscovery(ctx, prwatch.RunnerConfig{StoreRoot: *storeRoot, DryRun: *dryRun, Logger: logger, Client: client, WatchlistTickers: watchlistTickers}); err != nil {
+		if _, err := prwatch.RunDiscovery(ctx, prwatch.RunnerConfig{StoreRoot: *storeRoot, DryRun: *dryRun, Logger: logger, Client: client, WatchlistTickers: watchlistTickers, GraphDir: *graphDir}); err != nil {
 			logger.Printf("prwatch run failed round=%d: %v", round, err)
 		} else {
 			logger.Printf("prwatch poll round=%d complete", round)

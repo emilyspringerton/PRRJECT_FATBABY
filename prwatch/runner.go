@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/entitygraph"
 	identitypkg "github.com/example/prrject-fatbaby/internal/identity"
 	prid "github.com/example/prrject-fatbaby/internal/prwatch"
 	"github.com/example/prrject-fatbaby/internal/skuldmarkid"
@@ -45,6 +46,13 @@ type RunnerConfig struct {
 	// expected: no CIK on file means no ID minted, not a guess. Optional;
 	// nil means no minting happens here at all.
 	WatchlistTickers map[string]WatchlistRef
+	// GraphDir, when set, is where FB-12343's own real "TICKER mentioned in a
+	// press release" signal (entitygraph.SignalTickerMentionedInPR) gets
+	// written -- see that SignalType's own doc comment for the real scoping
+	// (watched tickers only). Optional; empty means no signal emission here
+	// at all, matching WatchlistTickers' own "optional, no-op when unset"
+	// convention.
+	GraphDir string
 }
 
 // sourceName returns cfg.SourceName, defaulting to "prnewswire" -- see
@@ -104,6 +112,7 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 		return Summary{}, err
 	}
 	s := Summary{}
+	var signals []entitygraph.Signal
 	for _, pr := range disc {
 		if _, ok := seen[pr.ID]; ok {
 			s.SeenSkipped++
@@ -113,23 +122,72 @@ func RunDiscovery(ctx context.Context, cfg RunnerConfig) (Summary, error) {
 		if cfg.DryRun {
 			continue
 		}
+		data := eventData(ctx, cfg, pr, cfg.Now())
 		ev := eventstore.Event{
 			ID:           "pr_discovered:" + pr.ID,
 			Type:         "pr_discovered",
 			OccurredAt:   cfg.Now(),
 			PartitionKey: pr.ID,
 			Source:       cfg.sourceName(),
-			Data:         mustJSON(eventData(ctx, cfg, pr, cfg.Now())),
+			Data:         mustJSON(data),
 		}
 		if _, err := store.Append(ctx, ev); err != nil {
 			return s, fmt.Errorf("append event %s: %w", pr.ID, err)
 		}
 		seen[pr.ID] = struct{}{}
+		if cfg.GraphDir != "" {
+			signals = append(signals, tickerMentionSignals(data, pr.URL, cfg.Now())...)
+		}
+	}
+	if len(signals) > 0 {
+		if err := entitygraph.WriteSignals(cfg.GraphDir, signals); err != nil {
+			return s, fmt.Errorf("write ticker-mention signals: %w", err)
+		}
 	}
 	if cfg.Logger != nil {
-		cfg.Logger.Printf("prwatch summary discovered=%d seen=%d dry_run=%t", s.Discovered, s.SeenSkipped, cfg.DryRun)
+		cfg.Logger.Printf("prwatch summary discovered=%d seen=%d dry_run=%t signals=%d", s.Discovered, s.SeenSkipped, cfg.DryRun, len(signals))
 	}
 	return s, nil
+}
+
+// tickerMentionSignals -- FB-12343 ("as soon as we tickerize a press release we want to publish
+// a signal for TICKER mentioned in a press release"). Real, deliberate scope: only refs whose
+// SkuldmarkID was actually minted (i.e. a real, watched ticker with a known CIK/exchange on
+// file -- see mintSkuldmarkIDs's own doc comment) get a real signal; an unwatched-ticker mention
+// from prwatch's own PR Newswire firehose is not treated as a real signal, matching this whole
+// pipeline's own "an unminted record is honest; a wrong ID is not" discipline applied to signal
+// noise instead of identifier minting.
+func tickerMentionSignals(e PressReleaseDiscovered, prURL string, now time.Time) []entitygraph.Signal {
+	var out []entitygraph.Signal
+	today := now.UTC().Format("2006-01-02")
+	for _, ref := range e.Identity.AllTickers {
+		if ref.SkuldmarkID == "" {
+			continue
+		}
+		out = append(out, entitygraph.Signal{
+			SignalID:       fmt.Sprintf("ticker-mention-%s-%s", ref.Symbol, sha256Hex(prURL)[:12]),
+			Type:           entitygraph.SignalTickerMentionedInPR,
+			Ticker:         ref.Symbol,
+			Severity:       entitygraph.SeverityLow,
+			Confidence:     float64(ref.Confidence),
+			Score:          0.05,
+			DetectedAt:     today,
+			FilingDate:     today,
+			ValidThrough:   today,
+			Interpretation: fmt.Sprintf("%s was mentioned in a press release.", ref.Symbol),
+			Metadata: map[string]string{
+				"source_url":   prURL,
+				"headline":     e.Headline,
+				"skuldmark_id": ref.SkuldmarkID,
+			},
+		})
+	}
+	return out
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 func eventData(ctx context.Context, cfg RunnerConfig, pr PRDiscovery, now time.Time) PressReleaseDiscovered {

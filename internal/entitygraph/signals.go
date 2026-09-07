@@ -65,6 +65,21 @@ const (
 	// friction — this fires on entrenchment alone as a forward prediction.
 	// Base rate per northstar: ~50% of failed structural votes precede a 13D within 6 months.
 	SignalPostFailureActivistPrediction SignalType = "post_failure_activist_prediction"
+	// SignalTickerMentionedInPR fires the moment prwatch's own discovery step
+	// (FB-12343, founder real-time: "as soon as we tickerize a press release we
+	// want to publish a signal for TICKER mentioned in a press release")
+	// successfully identifies a WATCHED ticker in a newly discovered press
+	// release -- real, deliberate scope: only tickers already on the
+	// watchlist (i.e. a SKULDMARK-25 ID was actually minted for them, same
+	// "no CIK on file means no ID minted, not a guess" discipline
+	// prwatch.mintSkuldmarkIDs itself already applies), not every ticker
+	// prwatch's own firehose happens to regex-match -- most of those aren't
+	// names we track at all, and a signal for every one would drown the
+	// real, curated signal feed in noise. Deliberately the lowest-severity,
+	// lowest-confidence real signal type here: a mention alone is not an
+	// investment-relevant event the way a dividend cut or insider buy is --
+	// it's attention/coverage data, named honestly as such.
+	SignalTickerMentionedInPR SignalType = "ticker_mentioned_in_pr"
 )
 
 // AllSignalTypes is the canonical ordered list used to zero-fill signals_by_type
@@ -101,6 +116,7 @@ var AllSignalTypes = []SignalType{
 	SignalDirectorLongTenure,
 	SignalGovernancePeerUnderperformer,
 	SignalPostFailureActivistPrediction,
+	SignalTickerMentionedInPR,
 }
 
 // Signal represents a governance intelligence signal generated from parsed filings.
