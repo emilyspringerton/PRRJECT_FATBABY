@@ -1,11 +1,14 @@
 package main
 
 import (
+	"log"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/example/prrject-fatbaby/internal/movers"
+	"github.com/example/prrject-fatbaby/secwatch"
 )
 
 func TestBuildArticleBody_SortsByAbsChangePercentDescending(t *testing.T) {
@@ -16,7 +19,7 @@ func TestBuildArticleBody_SortsByAbsChangePercentDescending(t *testing.T) {
 			{Symbol: "MID", Name: "Mid Co", ChangePercent: 7.5},
 		},
 	}
-	body := buildArticleBody(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
 
 	iBig := strings.Index(body, "BIG")
 	iMid := strings.Index(body, "MID")
@@ -34,7 +37,7 @@ func TestBuildArticleBody_FlagsTrackedTickers(t *testing.T) {
 		},
 	}
 	tracked := map[string]bool{"AAPL": true}
-	body := buildArticleBody(snap, tracked, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(snap, tracked, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
 
 	var appleLine, randomLine string
 	for _, line := range strings.Split(body, "\n") {
@@ -54,7 +57,7 @@ func TestBuildArticleBody_FlagsTrackedTickers(t *testing.T) {
 }
 
 func TestBuildArticleBody_HandlesEmptySections(t *testing.T) {
-	body := buildArticleBody(movers.Snapshot{}, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(movers.Snapshot{}, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
 	if !strings.Contains(body, "No qualifying names today.") {
 		t.Errorf("expected graceful empty-section message, body:\n%s", body)
 	}
@@ -65,7 +68,7 @@ func TestBuildArticleBody_HandlesEmptySections(t *testing.T) {
 
 func TestBuildArticle_HeadlineAndKind(t *testing.T) {
 	snap := movers.Snapshot{Gainers: []movers.Quote{{Symbol: "X", ChangePercent: 1}}}
-	art := buildArticle(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
+	art := buildArticle(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
 
 	if art["kind"] != "market_movers" {
 		t.Errorf("kind = %v, want market_movers", art["kind"])
@@ -84,7 +87,7 @@ func TestBuildArticle_BodyHTML_HasRealAbsoluteTickerLinks(t *testing.T) {
 	snap := movers.Snapshot{
 		Gainers: []movers.Quote{{Symbol: "aapl", Name: "Apple Inc.", Exchange: "NasdaqGS", ChangePercent: 3.5}},
 	}
-	art := buildArticle(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
+	art := buildArticle(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
 
 	bodyHTML, _ := art["body_html"].(string)
 	if bodyHTML == "" {
@@ -102,7 +105,7 @@ func TestBuildArticleBody_PlainTextHasNoMarkup(t *testing.T) {
 	snap := movers.Snapshot{
 		Gainers: []movers.Quote{{Symbol: "AAPL", Name: "Apple Inc.", Exchange: "NYSE", ChangePercent: 3.5}},
 	}
-	body := buildArticleBody(snap, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
 	if strings.Contains(body, "<a ") {
 		t.Errorf("plain-text body must not contain HTML markup, got:\n%s", body)
 	}
@@ -125,5 +128,39 @@ func TestNormalizeExchange(t *testing.T) {
 		if got := normalizeExchange(in); got != want {
 			t.Errorf("normalizeExchange(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestMintTrackedSkuldmarks_OnlyMintsForCompleteEntries(t *testing.T) {
+	wl := secwatch.Watchlist{Entries: []secwatch.WatchEntry{
+		{Ticker: "AAPL", CIK: "320193", Exchange: "Nasdaq", Enabled: true},
+		{Ticker: "NOEXCH", CIK: "123456", Enabled: true},         // no Exchange -- must not mint
+		{Ticker: "DISABLED", CIK: "999999", Exchange: "NYSE"},    // not Enabled -- must not mint
+	}}
+	logger := log.New(os.Stderr, "", 0)
+	got := mintTrackedSkuldmarks(wl, logger)
+
+	id, ok := got["AAPL"]
+	if !ok || id == "" {
+		t.Fatalf("expected a real minted SKULDMARK ID for AAPL, got %+v", got)
+	}
+	if len(id) != 25 {
+		t.Errorf("expected a 25-char SKULDMARK-25 ID, got %q (%d chars)", id, len(id))
+	}
+	if _, ok := got["NOEXCH"]; ok {
+		t.Errorf("expected no ID minted for an entry missing Exchange, got %+v", got)
+	}
+	if _, ok := got["DISABLED"]; ok {
+		t.Errorf("expected no ID minted for a disabled entry, got %+v", got)
+	}
+}
+
+func TestBuildArticleBodyHTML_IncludesSkuldmarkTagForTrackedNames(t *testing.T) {
+	snap := movers.Snapshot{Gainers: []movers.Quote{{Symbol: "AAPL", Name: "Apple Inc.", Exchange: "Nasdaq", ChangePercent: 3.0}}}
+	tracked := map[string]bool{"AAPL": true}
+	skuldmarks := map[string]string{"AAPL": "EINXNASAAPLXXX0000320193K"}
+	bodyHTML := buildArticleBodyHTML(snap, tracked, skuldmarks, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
+	if !strings.Contains(bodyHTML, `data-skuldmark="EINXNASAAPLXXX0000320193K"`) {
+		t.Errorf("expected the SKULDMARK tag to be rendered for a tracked name with a minted ID, got:\n%s", bodyHTML)
 	}
 }

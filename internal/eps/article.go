@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/example/prrject-fatbaby/internal/gauntlet"
 )
 
 // Article is a generated earnings headline ready for publishing.
@@ -16,6 +18,13 @@ type Article struct {
 	Dek            string        `json:"dek"`
 	Body           string        `json:"body"`
 	SourceURL      string        `json:"source_url,omitempty"`
+	// SkuldmarkID is the real SKULDMARK-25 instrument identifier (see the
+	// SKULDMARK repo), when one was already minted at discovery time
+	// (prwatch's own mintSkuldmarkIDs) for this ticker -- set post-Generate
+	// by the caller (cmd/eps-processor), same "set after Generate" pattern
+	// as SourceURL. Empty when the ticker isn't on the watchlist or its
+	// CIK/Exchange weren't on file -- never guessed.
+	SkuldmarkID    string        `json:"skuldmark_id,omitempty"`
 	Period         EarningsPeriod `json:"period"`
 	EPSValue       float64       `json:"eps_value"`
 	IsGAAP         bool          `json:"is_gaap"`
@@ -46,7 +55,7 @@ func Generate(e *EarningsData) (Article, bool) {
 
 	headline := buildHeadline(issuer, e.Period, val, isGAAP)
 	dek := buildDek(e, val, isGAAP)
-	body := buildBody(e, val, isGAAP)
+	body := buildBody(e, issuer, val, isGAAP)
 
 	return Article{
 		SourceIdentity: e.SourceIdentity,
@@ -114,9 +123,15 @@ func buildDek(e *EarningsData, val float64, isGAAP bool) string {
 	return strings.Join(parts, "; ")
 }
 
-func buildBody(e *EarningsData, val float64, isGAAP bool) string {
+// buildBody -- issuer is passed in (rather than re-derived from e.Issuer)
+// so it matches whatever Generate already resolved (e.Issuer falling back
+// to e.Ticker when empty), keeping the gauntlet.PlainIssuer reference and
+// the headline's own issuer name consistent.
+func buildBody(e *EarningsData, issuer string, val float64, isGAAP bool) string {
 	var sb strings.Builder
 
+	sb.WriteString(gauntlet.PlainIssuer(issuer, e.Ticker))
+	sb.WriteString("\n\n")
 	sb.WriteString(fmt.Sprintf("Period: %s", formatPeriodLabel(e.Period)))
 	if e.Period.PeriodEnd != "" {
 		sb.WriteString(fmt.Sprintf(" (ended %s)", e.Period.PeriodEnd))
@@ -153,7 +168,7 @@ func buildBody(e *EarningsData, val float64, isGAAP bool) string {
 		sb.WriteString("\nNote: EPS is on a continuing operations basis.\n")
 	}
 
-	return sb.String()
+	return gauntlet.AppendDisclaimer(sb.String())
 }
 
 // formatPeriodLabel returns a human-readable period string, e.g. "Q1 2026" or "full-year 2026".

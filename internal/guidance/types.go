@@ -65,6 +65,11 @@ type Article struct {
 	ID             string  `json:"id"`
 	SourceIdentity string  `json:"source_identity"`
 	Ticker         string  `json:"ticker"`
+	// SkuldmarkID is the real SKULDMARK-25 instrument identifier (see the
+	// SKULDMARK repo), when one was already minted at discovery time
+	// (prwatch's own mintSkuldmarkIDs) -- set post-Generate by the caller
+	// (cmd/guidance-watcher), same pattern as internal/eps's own Article.
+	SkuldmarkID    string  `json:"skuldmark_id,omitempty"`
 	Issuer         string  `json:"issuer"`
 	Headline       string  `json:"headline"`
 	Body           string  `json:"body"`

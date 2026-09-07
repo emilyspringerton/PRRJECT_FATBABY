@@ -20,6 +20,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/guidance"
+	"github.com/example/prrject-fatbaby/internal/identity"
 	"github.com/example/prrject-fatbaby/internal/prspam"
 	"github.com/example/prrject-fatbaby/prwatch"
 )
@@ -89,7 +90,7 @@ type batchConfig struct {
 	cursor     uint64
 }
 
-func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerByID map[string]string, logger *log.Logger, cfg batchConfig) uint64 {
+func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerByID map[string]identity.SecurityRef, logger *log.Logger, cfg batchConfig) uint64 {
 	recs, err := bodyStore.ReadFrom(ctx, cfg.cursor, cfg.batchSize)
 	if err != nil {
 		logger.Printf("read batch cursor=%d err=%v", cfg.cursor, err)
@@ -110,7 +111,8 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerByID m
 		if err := json.Unmarshal(rec.Event.Data, &ev); err != nil {
 			continue
 		}
-		ticker := tickerByID[ev.PRDiscoveryID]
+		ref := tickerByID[ev.PRDiscoveryID]
+		ticker := ref.Symbol
 		if ticker == "" {
 			skipped++
 			continue
@@ -140,6 +142,8 @@ func runBatch(ctx context.Context, bodyStore eventstore.EventStore, tickerByID m
 			skipped++
 			continue
 		}
+
+		art.SkuldmarkID = ref.SkuldmarkID
 
 		if err := appendArticle(cfg.outDir, art); err != nil {
 			logger.Printf("append article err=%v", err)
@@ -195,8 +199,11 @@ func writeCursor(path string, seq uint64, logger *log.Logger) {
 	}
 }
 
-func buildTickerMap(ctx context.Context, store eventstore.EventStore, logger *log.Logger) map[string]string {
-	m := make(map[string]string)
+// buildTickerMap -- see eps-processor's own loadTickerMap doc comment
+// (CP-GAUNTLET-1): propagates the already-minted SkuldmarkID off
+// identity.SecurityRef, never mints one itself.
+func buildTickerMap(ctx context.Context, store eventstore.EventStore, logger *log.Logger) map[string]identity.SecurityRef {
+	m := make(map[string]identity.SecurityRef)
 	err := store.Scan(ctx, 1, func(rec eventstore.Record) error {
 		if rec.Event.Type != "pr_discovered" {
 			return nil
@@ -207,7 +214,7 @@ func buildTickerMap(ctx context.Context, store eventstore.EventStore, logger *lo
 		}
 		if ev.Identity.PrimaryTicker != nil && ev.Identity.PrimaryTicker.Symbol != "" {
 			if id, ok := ev.Metadata["id"]; ok {
-				m[id] = ev.Identity.PrimaryTicker.Symbol
+				m[id] = *ev.Identity.PrimaryTicker
 			}
 		}
 		return nil

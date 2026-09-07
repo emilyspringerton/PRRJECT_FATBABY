@@ -27,8 +27,11 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/gauntlet"
+	"github.com/example/prrject-fatbaby/internal/identity"
 	"github.com/example/prrject-fatbaby/internal/marketcal"
 	"github.com/example/prrject-fatbaby/internal/movers"
+	"github.com/example/prrject-fatbaby/internal/skuldmarkid"
 	"github.com/example/prrject-fatbaby/internal/tickerlink"
 	"github.com/example/prrject-fatbaby/secwatch"
 )
@@ -74,6 +77,7 @@ func main() {
 			tracked[e.Ticker] = true
 		}
 	}
+	skuldmarks := mintTrackedSkuldmarks(wl, logger)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	snap, err := movers.FetchSnapshot(ctx, client, *count)
@@ -83,7 +87,7 @@ func main() {
 	logger.Printf("fetched snapshot gainers=%d losers=%d", len(snap.Gainers), len(snap.Losers))
 
 	if *dryRun {
-		fmt.Println(buildArticleBody(snap, tracked, now))
+		fmt.Println(buildArticleBody(snap, tracked, skuldmarks, now))
 		return
 	}
 
@@ -91,7 +95,7 @@ func main() {
 		logger.Printf("WARNING: failed to record snapshot event (continuing anyway): %v", err)
 	}
 
-	art := buildArticle(snap, tracked, now, *baseURL)
+	art := buildArticle(snap, tracked, skuldmarks, now, *baseURL)
 	if err := postCommentary(ctx, client, *commentaryURL, *apiKey, art); err != nil {
 		logger.Fatalf("publish article: %v", err)
 	}
@@ -130,12 +134,37 @@ func emitSnapshotEvent(ctx context.Context, store eventstore.EventStore, snap mo
 // same boundary every other watcher uses, not a direct Go import.
 type commentaryArticle map[string]any
 
-func buildArticle(snap movers.Snapshot, tracked map[string]bool, now time.Time, baseURL string) commentaryArticle {
+// mintTrackedSkuldmarks mints a real SKULDMARK-25 ID (internal/skuldmarkid,
+// the same real, live pipeline prwatch's own mintSkuldmarkIDs already uses)
+// for every enabled watchlist entry whose CIK/Exchange are on file --
+// founder real-time, 2026-09-07: "ensure SKULDMARK (the updated version) is
+// included in GAUNTLET obviously." Movers outside the watchlist (most of
+// Yahoo's own broad gainers/losers screener) never get an ID minted here,
+// same "an unminted record is honest; a wrong ID is not" rule
+// skuldmarkid.FromSecurityRef itself already documents -- these are Yahoo
+// screener names with no CIK on file, not something to guess at.
+func mintTrackedSkuldmarks(wl secwatch.Watchlist, logger *log.Logger) map[string]string {
+	out := make(map[string]string, len(wl.Entries))
+	for _, e := range wl.Entries {
+		if !e.Enabled || e.CIK == "" || e.Exchange == "" {
+			continue
+		}
+		id, err := skuldmarkid.FromSecurityRef(identity.SecurityRef{Symbol: e.Ticker, CIK: e.CIK}, e.Exchange)
+		if err != nil {
+			logger.Printf("skuldmark mint skipped ticker=%s cik=%s: %v", e.Ticker, e.CIK, err)
+			continue
+		}
+		out[e.Ticker] = id
+	}
+	return out
+}
+
+func buildArticle(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time, baseURL string) commentaryArticle {
 	dateStr := now.Format("January 2, 2006")
 	id := "movers-" + now.Format("2006-01-02")
 	headline := "Stocks on the Move — " + dateStr
-	body := buildArticleBody(snap, tracked, now)
-	bodyHTML := buildArticleBodyHTML(snap, tracked, now, baseURL)
+	body := buildArticleBody(snap, tracked, skuldmarks, now)
+	bodyHTML := buildArticleBodyHTML(snap, tracked, skuldmarks, now, baseURL)
 	preview := "Today's biggest market-wide gainers and losers, tracked live."
 
 	return commentaryArticle{
@@ -150,20 +179,20 @@ func buildArticle(snap movers.Snapshot, tracked map[string]bool, now time.Time, 
 	}
 }
 
-func buildArticleBody(snap movers.Snapshot, tracked map[string]bool, now time.Time) string {
+func buildArticleBody(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Stocks on the Move — %s\n\n", now.Format("January 2, 2006"))
 	fmt.Fprintf(&b, "A look at today's biggest market-wide gainers and losers, sourced live "+
 		"from the market. Names we track closely for filings and signals are marked below; "+
 		"everything else here is price action alone.\n\n")
 
-	writeMoverSection(&b, "TOP GAINERS", snap.Gainers, tracked)
-	writeMoverSection(&b, "TOP LOSERS", snap.Losers, tracked)
+	writeMoverSection(&b, "TOP GAINERS", snap.Gainers, tracked, skuldmarks)
+	writeMoverSection(&b, "TOP LOSERS", snap.Losers, tracked, skuldmarks)
 
-	return b.String()
+	return gauntlet.AppendDisclaimer(b.String())
 }
 
-func writeMoverSection(b *strings.Builder, title string, quotes []movers.Quote, tracked map[string]bool) {
+func writeMoverSection(b *strings.Builder, title string, quotes []movers.Quote, tracked map[string]bool, skuldmarks map[string]string) {
 	fmt.Fprintf(b, "%s\n\n", title)
 	if len(quotes) == 0 {
 		fmt.Fprintf(b, "No qualifying names today.\n\n")
@@ -178,6 +207,9 @@ func writeMoverSection(b *strings.Builder, title string, quotes []movers.Quote, 
 		if tracked[q.Symbol] {
 			coverage = " (tracked — see filings and signal history on its ticker page)"
 		}
+		if id := skuldmarks[q.Symbol]; id != "" {
+			coverage += " " + gauntlet.SkuldmarkTag(id)
+		}
 		fmt.Fprintf(b, "%s — %s%.2f%%, $%.2f, volume %s%s\n",
 			tickerlink.PlainRef(q.Name, normalizeExchange(q.Exchange), q.Symbol),
 			sign, q.ChangePercent, q.Price, formatVolume(q.Volume), coverage)
@@ -190,19 +222,19 @@ func writeMoverSection(b *strings.Builder, title string, quotes []movers.Quote, 
 // (EMILY/BACKLOG.md SECTION 167), rendered in a <div>, not a <pre>, so it
 // needs its own block-level structure rather than relying on preserved
 // whitespace.
-func buildArticleBodyHTML(snap movers.Snapshot, tracked map[string]bool, now time.Time, baseURL string) string {
+func buildArticleBodyHTML(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time, baseURL string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<p>A look at today's biggest market-wide gainers and losers, sourced live "+
 		"from the market. Names we track closely for filings and signals are marked below; "+
 		"everything else here is price action alone.</p>\n")
 
-	writeMoverSectionHTML(&b, "Top Gainers", snap.Gainers, tracked, baseURL)
-	writeMoverSectionHTML(&b, "Top Losers", snap.Losers, tracked, baseURL)
+	writeMoverSectionHTML(&b, "Top Gainers", snap.Gainers, tracked, skuldmarks, baseURL)
+	writeMoverSectionHTML(&b, "Top Losers", snap.Losers, tracked, skuldmarks, baseURL)
 
-	return b.String()
+	return gauntlet.AppendDisclaimerHTML(b.String())
 }
 
-func writeMoverSectionHTML(b *strings.Builder, title string, quotes []movers.Quote, tracked map[string]bool, baseURL string) {
+func writeMoverSectionHTML(b *strings.Builder, title string, quotes []movers.Quote, tracked map[string]bool, skuldmarks map[string]string, baseURL string) {
 	fmt.Fprintf(b, "<h3>%s</h3>\n", html.EscapeString(title))
 	if len(quotes) == 0 {
 		fmt.Fprintf(b, "<p>No qualifying names today.</p>\n")
@@ -217,6 +249,9 @@ func writeMoverSectionHTML(b *strings.Builder, title string, quotes []movers.Quo
 		coverage := ""
 		if tracked[q.Symbol] {
 			coverage = ` <span class="tracked-note">(tracked — see filings and signal history on its ticker page)</span>`
+		}
+		if id := skuldmarks[q.Symbol]; id != "" {
+			coverage += " " + string(gauntlet.SkuldmarkTagHTML(id))
 		}
 		ref := tickerlink.FormatRef(baseURL, q.Name, normalizeExchange(q.Exchange), q.Symbol)
 		fmt.Fprintf(b, "<li>%s — %s%.2f%%, $%.2f, volume %s%s</li>\n",

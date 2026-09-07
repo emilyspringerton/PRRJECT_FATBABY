@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/example/prrject-fatbaby/internal/gauntlet"
 )
 
 const minConfidence = 0.60
@@ -26,7 +28,7 @@ func Generate(g *GuidanceData, now time.Time) (Article, bool) {
 	if headline == "" {
 		return Article{}, false
 	}
-	body := buildBody(g)
+	body := buildBody(issuer, g)
 	id := fmt.Sprintf("guidance-%s-%s", strings.ToLower(g.Ticker), now.UTC().Format("20060102T150405Z"))
 
 	return Article{
@@ -83,8 +85,12 @@ func buildHeadline(issuer string, g *GuidanceData) string {
 	return ""
 }
 
-func buildBody(g *GuidanceData) string {
+// buildBody -- issuer passed in from Generate's own already-resolved value
+// (g.Issuer falling back to g.Ticker when empty), same reasoning as
+// internal/eps's own buildBody.
+func buildBody(issuer string, g *GuidanceData) string {
 	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s\n\n", gauntlet.PlainIssuer(issuer, g.Ticker))
 	period := formatPeriod(g.Period)
 	action := formatAction(g.Action)
 	fmt.Fprintf(&sb, "The company %s its %s guidance", action, period)
@@ -107,7 +113,7 @@ func buildBody(g *GuidanceData) string {
 		fmt.Fprintf(&sb, ". Revenue guidance: $%.1f%s to $%.1f%s", lo, label, hi, label)
 	}
 	fmt.Fprintf(&sb, ". Extraction confidence: %.0f%%.", g.Confidence*100)
-	return sb.String()
+	return gauntlet.AppendDisclaimer(sb.String())
 }
 
 func formatPeriod(p Period) string {
