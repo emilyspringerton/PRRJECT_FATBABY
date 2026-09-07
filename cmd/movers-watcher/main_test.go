@@ -19,7 +19,7 @@ func TestBuildArticleBody_SortsByAbsChangePercentDescending(t *testing.T) {
 			{Symbol: "MID", Name: "Mid Co", ChangePercent: 7.5},
 		},
 	}
-	body := buildArticleBody(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "")
 
 	iBig := strings.Index(body, "BIG")
 	iMid := strings.Index(body, "MID")
@@ -37,7 +37,7 @@ func TestBuildArticleBody_FlagsTrackedTickers(t *testing.T) {
 		},
 	}
 	tracked := map[string]bool{"AAPL": true}
-	body := buildArticleBody(snap, tracked, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(snap, tracked, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "")
 
 	var appleLine, randomLine string
 	for _, line := range strings.Split(body, "\n") {
@@ -57,7 +57,7 @@ func TestBuildArticleBody_FlagsTrackedTickers(t *testing.T) {
 }
 
 func TestBuildArticleBody_HandlesEmptySections(t *testing.T) {
-	body := buildArticleBody(movers.Snapshot{}, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(movers.Snapshot{}, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "")
 	if !strings.Contains(body, "No qualifying names today.") {
 		t.Errorf("expected graceful empty-section message, body:\n%s", body)
 	}
@@ -68,7 +68,7 @@ func TestBuildArticleBody_HandlesEmptySections(t *testing.T) {
 
 func TestBuildArticle_HeadlineAndKind(t *testing.T) {
 	snap := movers.Snapshot{Gainers: []movers.Quote{{Symbol: "X", ChangePercent: 1}}}
-	art := buildArticle(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
+	art := buildArticle(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com", "")
 
 	if art["kind"] != "market_movers" {
 		t.Errorf("kind = %v, want market_movers", art["kind"])
@@ -87,7 +87,7 @@ func TestBuildArticle_BodyHTML_HasRealAbsoluteTickerLinks(t *testing.T) {
 	snap := movers.Snapshot{
 		Gainers: []movers.Quote{{Symbol: "aapl", Name: "Apple Inc.", Exchange: "NasdaqGS", ChangePercent: 3.5}},
 	}
-	art := buildArticle(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com")
+	art := buildArticle(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "https://news.okemily.com", "")
 
 	bodyHTML, _ := art["body_html"].(string)
 	if bodyHTML == "" {
@@ -105,7 +105,7 @@ func TestBuildArticleBody_PlainTextHasNoMarkup(t *testing.T) {
 	snap := movers.Snapshot{
 		Gainers: []movers.Quote{{Symbol: "AAPL", Name: "Apple Inc.", Exchange: "NYSE", ChangePercent: 3.5}},
 	}
-	body := buildArticleBody(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC))
+	body := buildArticleBody(snap, nil, nil, time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), "")
 	if strings.Contains(body, "<a ") {
 		t.Errorf("plain-text body must not contain HTML markup, got:\n%s", body)
 	}
@@ -152,6 +152,25 @@ func TestMintTrackedSkuldmarks_OnlyMintsForCompleteEntries(t *testing.T) {
 	}
 	if _, ok := got["DISABLED"]; ok {
 		t.Errorf("expected no ID minted for a disabled entry, got %+v", got)
+	}
+}
+
+func TestBuildArticle_SlotProducesADistinctIDAndHeadline(t *testing.T) {
+	snap := movers.Snapshot{Gainers: []movers.Quote{{Symbol: "X", ChangePercent: 1}}}
+	now := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+
+	morning := buildArticle(snap, nil, nil, now, "https://news.okemily.com", "")
+	midday := buildArticle(snap, nil, nil, now, "https://news.okemily.com", "Midday")
+
+	if morning["id"] == midday["id"] {
+		t.Fatalf("expected a slotted run to get a distinct article ID (commentary dedups by exact ID, last-write-wins), got the same id %v for both", morning["id"])
+	}
+	if midday["id"] != "movers-2026-07-20-midday" {
+		t.Errorf("id = %v, want movers-2026-07-20-midday", midday["id"])
+	}
+	middayHeadline, _ := midday["headline"].(string)
+	if !strings.Contains(middayHeadline, "Midday") {
+		t.Errorf("expected the midday headline to say so, got %q", middayHeadline)
 	}
 }
 

@@ -1,0 +1,41 @@
+# FatBaby movers-watcher — midday run, user-level systemd unit (no sudo required)
+#
+# Founder real-time, 2026-09-07: "schedule mid day movers to go out at
+# 10:20am." A second daily run of the SAME binary as
+# fatbaby-movers-watcher.service, with -slot=Midday so it publishes a real,
+# separate article instead of silently overwriting the morning one --
+# commentary's own dedup (internal/newssite/commentary, Refresh()) is by
+# exact article ID, last-write-wins (EMILY/BACKLOG.md S167-05); without a
+# distinct slot, this run's ID would collide with the 9:45am run's
+# "movers-YYYY-MM-DD" and just replace it.
+#
+# Triggered by fatbaby-movers-watcher-midday.timer. See
+# fatbaby-movers-watcher.service (the original 9:45am run) for the shared
+# design notes -- this file only differs in the -slot flag and log path.
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/fatbaby-movers-watcher-midday.service ops/systemd/fatbaby-movers-watcher-midday.timer ~/.config/systemd/user/
+#   go build -o /home/fatbaby/PRRJECT_FATBABY/bin/movers-watcher ./cmd/movers-watcher
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fatbaby-movers-watcher-midday.timer
+
+[Unit]
+Description=FatBaby movers-watcher — midday "Stocks on the Move" article
+After=network-online.target fatbaby-newssite.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/fatbaby/PRRJECT_FATBABY
+# COMMENTARY_API_KEY: same shared secret as fatbaby-newssite.service's
+# EnvironmentFile (POST /api/commentary auth, SECTION 167 S167-01) -- picked
+# up automatically via -api-key's flag default ($COMMENTARY_API_KEY).
+EnvironmentFile=-%h/.config/fatbaby-newssite/env
+ExecStart=/home/fatbaby/PRRJECT_FATBABY/bin/movers-watcher \
+    -store /home/fatbaby/PRRJECT_FATBABY/var/secwatch \
+    -watchlist /home/fatbaby/PRRJECT_FATBABY/config/watchlist.json \
+    -commentary-url http://localhost:8082/api/commentary \
+    -count 15 \
+    -slot Midday
+StandardOutput=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/movers-watcher-midday.log
+StandardError=append:/home/fatbaby/PRRJECT_FATBABY/var/logs/movers-watcher-midday.log

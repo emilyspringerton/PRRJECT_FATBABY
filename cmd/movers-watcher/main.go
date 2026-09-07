@@ -45,6 +45,7 @@ func main() {
 	apiKey := flag.String("api-key", os.Getenv("COMMENTARY_API_KEY"), "bearer token for POST /api/commentary (default: $COMMENTARY_API_KEY)")
 	force := flag.Bool("force", false, "publish even if today is not a recognized market day (testing only)")
 	dryRun := flag.Bool("dry-run", false, "fetch and build the article but do not post it or write to the event store")
+	slot := flag.String("slot", "", "optional intraday run label (e.g. \"midday\") -- when set, both the article ID and headline are distinguished by it, so a second run the same day publishes a real, separate article instead of overwriting the first (commentary's own dedup-by-ID is last-write-wins, EMILY/BACKLOG.md S167-05). Leave empty for the original once-daily run -- its ID/headline stay unchanged for backward compatibility with existing links.")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "movers-watcher ", log.LstdFlags|log.LUTC)
@@ -87,7 +88,7 @@ func main() {
 	logger.Printf("fetched snapshot gainers=%d losers=%d", len(snap.Gainers), len(snap.Losers))
 
 	if *dryRun {
-		fmt.Println(buildArticleBody(snap, tracked, skuldmarks, now))
+		fmt.Println(buildArticleBody(snap, tracked, skuldmarks, now, *slot))
 		return
 	}
 
@@ -95,7 +96,7 @@ func main() {
 		logger.Printf("WARNING: failed to record snapshot event (continuing anyway): %v", err)
 	}
 
-	art := buildArticle(snap, tracked, skuldmarks, now, *baseURL)
+	art := buildArticle(snap, tracked, skuldmarks, now, *baseURL, *slot)
 	if err := postCommentary(ctx, client, *commentaryURL, *apiKey, art); err != nil {
 		logger.Fatalf("publish article: %v", err)
 	}
@@ -159,11 +160,22 @@ func mintTrackedSkuldmarks(wl secwatch.Watchlist, logger *log.Logger) map[string
 	return out
 }
 
-func buildArticle(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time, baseURL string) commentaryArticle {
+// buildArticle -- slot distinguishes an intraday re-run ("Midday", "Close")
+// from the original once-daily run (slot == "") so a second run the same
+// day publishes a real, separate article instead of silently overwriting
+// the first: commentary's own Append/Refresh dedups by exact ID,
+// last-write-wins (EMILY/BACKLOG.md S167-05) -- both id and headline need
+// to differ, or the midday run would just clobber the morning one under
+// readers' feet.
+func buildArticle(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time, baseURL string, slot string) commentaryArticle {
 	dateStr := now.Format("January 2, 2006")
 	id := "movers-" + now.Format("2006-01-02")
 	headline := "Stocks on the Move — " + dateStr
-	body := buildArticleBody(snap, tracked, skuldmarks, now)
+	if slot != "" {
+		id += "-" + strings.ToLower(strings.ReplaceAll(slot, " ", "-"))
+		headline = "Stocks on the Move (" + slot + " Update) — " + dateStr
+	}
+	body := buildArticleBody(snap, tracked, skuldmarks, now, slot)
 	bodyHTML := buildArticleBodyHTML(snap, tracked, skuldmarks, now, baseURL)
 	preview := "Today's biggest market-wide gainers and losers, tracked live."
 
@@ -179,9 +191,13 @@ func buildArticle(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[
 	}
 }
 
-func buildArticleBody(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time) string {
+func buildArticleBody(snap movers.Snapshot, tracked map[string]bool, skuldmarks map[string]string, now time.Time, slot string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Stocks on the Move — %s\n\n", now.Format("January 2, 2006"))
+	if slot != "" {
+		fmt.Fprintf(&b, "Stocks on the Move (%s Update) — %s\n\n", slot, now.Format("January 2, 2006"))
+	} else {
+		fmt.Fprintf(&b, "Stocks on the Move — %s\n\n", now.Format("January 2, 2006"))
+	}
 	fmt.Fprintf(&b, "A look at today's biggest market-wide gainers and losers, sourced live "+
 		"from the market. Names we track closely for filings and signals are marked below; "+
 		"everything else here is price action alone.\n\n")

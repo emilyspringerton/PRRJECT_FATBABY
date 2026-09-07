@@ -1,0 +1,15 @@
+# Fires fatbaby-movers-watcher-midday.service at 10:20am US/Eastern every
+# day -- founder real-time, 2026-09-07: "schedule mid day movers to go out
+# at 10:20am." Same OnCalendar-carries-the-timezone convention as
+# fatbaby-movers-watcher.timer (see that file's own comment for the full
+# rationale) -- handles EST/EDT transitions automatically.
+
+[Unit]
+Description=Midday timer for FatBaby movers-watcher (10:20am ET)
+
+[Timer]
+OnCalendar=*-*-* 10:20:00 America/New_York
+Persistent=false
+
+[Install]
+WantedBy=timers.target
