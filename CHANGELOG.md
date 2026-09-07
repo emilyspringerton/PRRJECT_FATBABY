@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-09-07
+- New entitygraph.SignalTickerMentionedInPR: prwatch now publishes a real, low-severity signal the moment a watched ticker is tickerized in a newly discovered press release. (sess-20260905-0720-ec33e7c5)
 - movers-watcher: new -slot flag + fatbaby-movers-watcher-midday timer/service, live-deployed at 10:20am ET, publishes a real distinct article instead of colliding with the 9:45am run's ID. (sess-20260905-0720-ec33e7c5)
 
 - GAUNTLET v0 (internal/gauntlet): disclaimers, ticker linking, and SKULDMARK-25 propagation wired into movers-watcher, eps-processor, and guidance-watcher. (sess-20260905-0720-ec33e7c5)
