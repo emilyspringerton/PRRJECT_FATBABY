@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-07
+
+- GAUNTLET v0 (internal/gauntlet): disclaimers, ticker linking, and SKULDMARK-25 propagation wired into movers-watcher, eps-processor, and guidance-watcher. (sess-20260905-0720-ec33e7c5)
+
+
 ## 2026-09-04
 - feat(newssite): GFD-XX-X-124441 -- "build out the fatbaby portfolio add interface as a
   prototype later we will use that UX for the GFD elite interface we need basically a textarea
