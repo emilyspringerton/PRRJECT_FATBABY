@@ -161,6 +161,84 @@ zero-node-management overhead is a genuine, real fit for this team's size. Phase
 provision, not the still-real, still-unresolved need for interactive `gcloud auth login` before
 provisioning can happen at all.
 
+## Durable queue decision (2026-09-18, S498) — resolves the PVC-vs-Phase-2 branch above
+
+Founder real-time: "lets focus on getting PRRJECT_FATBABY off the box first... i want to aim to
+do a cut over with ZERO DOWNTIME... i dont want to miss a single 15 second polling window... the
+challenge is storing the data on kubernetes we have to use volumes or whatever not sure how we
+should be storing that... part of the kubes plan was to switch to a queue so we can have a
+durable queue to work from for fanout to other stores like mysql."
+
+This resolves the PVC-vs-Phase-2 branch above differently than either original option: **a
+durable queue replaces the event log's own durability layer, not a PVC and not (only) GCS.** The
+real insight, worth stating plainly: "how do we store data on k8s, we have to use volumes" was
+the wrong frame for the EVENT STREAM specifically — a durable queue sidesteps the volume question
+for that data entirely, since the queue's own durability lives outside any one pod's disk. PVCs
+are still real and still needed, but only for the small number of processes with genuinely local,
+non-event state (e.g. `prwatch-body`'s own `.cursor` file — checked directly, `cmd/prwatch-body/
+main.go`'s `CursorPath` is a real, separate mechanism from the event-log dedup below).
+
+**Queue technology, decided**: Redis Streams, on **GCP Memorystore for Redis (Standard tier, HA
+with automatic failover)** — not a self-hosted Redis on a bare PVC/StatefulSet, which would be a
+real, single-point-of-failure durability risk for a "prove we can hit zero missed windows" bar.
+Memorystore removes the need to build our own failover logic, and removes Redis itself from the
+"do we need a volume for this" question — it's a managed service, not a workload we run in-cluster
+at all.
+
+**Real, new code, live-verified this pass** (`internal/eventsink/redis_stream_sink.go` +
+`redis_stream_consumer.go`, `go-redis/v9` + `miniredis/v2` for a real, in-process, real-protocol
+test double — no live Redis/Memorystore needed to prove the stream mechanics, only to prove
+production reachability, a real, separate, not-yet-done step): `RedisStreamSink` (`XADD`,
+implements the existing `EventSink` interface, drops straight into `FanoutSink` alongside
+`FileSink`/`S3Sink`) and `RedisStreamConsumer` (`XREADGROUP`/`XAck`, one real, independent,
+durably-tracked consumer group per downstream — `processor`, a future GCS archiver, a future
+MySQL sink — exactly the "fanout to other stores like mysql" shape asked for).
+
+### Why this is the real zero-downtime mechanism (not just "add a queue")
+
+Cutover safety splits into two genuinely different halves, verified separately (real, passing
+tests: `TestRedisStreamConsumer_NewConsumerJoiningSameGroupSharesRemainingWork`,
+`TestRedisStreamSinkAndConsumer_TwoIndependentGroupsBothSeeEveryEvent`):
+
+1. **Producers** (`secwatch`, `prwatch-body`, etc. — polling an EXTERNAL API on a timer, e.g. the
+   real `-poll-interval 15s` on `processor`/`prwatch-body` the founder's own "15 second window"
+   concern names directly). No queue primitive helps here — polling SEC EDGAR/PR Newswire isn't
+   reading from Redis. Real, correct cutover: run the new k8s pod and the old systemd process in
+   brief parallel, both polling, both publishing to the same stream; any duplicate discovery is
+   safe because every event already carries a stable `eventstore.Event.ID` (`secwatch`'s own real
+   `LoadSeenIdentities` — checked directly, it derives "already seen" from the event log itself,
+   not a side-channel cursor, so this property survives the migration unchanged as long as
+   whatever's downstream still dedups by ID).
+2. **Consumers** (`processor`, and any future GCS-archiver/MySQL-sink reading FROM the queue).
+   This is where Redis Streams earns its keep over the old systemd model: a NEW pod joins the
+   SAME consumer group as an ADDITIONAL consumer BEFORE the OLD process stops. Redis delivers
+   each stream entry to exactly one consumer per group (tracked in that group's own Pending
+   Entries List until `XAck`) — so during the overlap window, whichever consumer asks first wins,
+   nothing is delivered twice in steady operation, and nothing is silently dropped even if one
+   side is killed mid-flight (its un-acked entries stay in the PEL, recoverable via
+   `XClaim`/`XAutoClaim`, not lost the way an in-memory handoff would be). This is a structural
+   improvement over "stop old, start new" — a hard gap by construction — for anything reading from
+   the queue, and it's the real, concrete answer to "i want the cutover to be clean to prove that
+   we can do such things."
+
+### Real, honest, not yet done
+
+- **No live Memorystore instance provisioned** — this pass proves the stream mechanics against a
+  real in-process Redis protocol implementation (miniredis), not production reachability.
+- **No pipeline process actually wired to publish/consume via these types yet** — `RedisStreamSink`/
+  `RedisStreamConsumer` are real, tested, and drop into the existing `EventSink`/`FanoutSink`
+  machinery, but no `cmd/` binary constructs one today (the same "scaffolding exists, not wired
+  into a running process" gap this doc already found for `S3Sink`).
+- **GKE cluster health unconfirmed as of this pass** — the last real audit (`EMILY/BACKLOG.md`
+  `k9s-99-001`) found the `prrject-fatbaby` Autopilot cluster with zero working compute nodes for
+  32+ hours, escalated to the founder to check the GCP Console/support. This session had no live
+  `gcloud`/`kubectl` credentials to re-check. Real, concrete next step before anything else here
+  matters: confirm the cluster is actually schedulable.
+- **PARENA's real role stays IaC generation only** (per S207-08's own already-shipped
+  `stdlib/k8s`/`stdlib/helm`) — the pipeline processes themselves, including this new Redis
+  Streams code, stay Go; rewriting them in PARENA was considered and rejected (no payoff, pure
+  migration risk for code that already works).
+
 ## Related
 
 - `docs/architecture-distributed-event-intelligence.md` — the parent plan this doc's own Phase 5
