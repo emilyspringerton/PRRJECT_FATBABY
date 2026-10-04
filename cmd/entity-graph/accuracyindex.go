@@ -190,3 +190,40 @@ func loadAccuracyIndex(db *sql.DB) ([]entitygraph.AccuracyRecord, error) {
 	}
 	return out, rows.Err()
 }
+
+// changedAccuracyRecords returns the subset of records that are new to the index or differ from the
+// indexed row in anything but RecordedAt (outcome flipped pending->confirmed, new evidence, ...).
+// The correlators recompute EVERY accuracy record from all signals on every batch, and
+// WriteAccuracyRecords appends whatever it is given — so without this filter accuracy.ndjson grew
+// ~190x (15 GB / 58.5 M lines holding 267 K unique lines, found 2026-10-04 while sizing the k8s PVC
+// migration). The ndjson stays the append-only history of real changes; the index stays the
+// query-of-truth. A DB read error returns all records (duplicate lines beat lost history).
+func changedAccuracyRecords(db *sql.DB, records []entitygraph.AccuracyRecord) []entitygraph.AccuracyRecord {
+	indexed, err := loadAccuracyIndex(db)
+	if err != nil {
+		return records
+	}
+	type key struct{ id, typ string }
+	have := make(map[key]entitygraph.AccuracyRecord, len(indexed))
+	for _, r := range indexed {
+		have[key{r.SignalID, string(r.SignalType)}] = r
+	}
+	var out []entitygraph.AccuracyRecord
+	seen := make(map[key]bool, len(records))
+	for _, r := range records {
+		k := key{r.SignalID, string(r.SignalType)}
+		if old, ok := have[k]; ok {
+			a, b := old, r
+			a.RecordedAt, b.RecordedAt = "", ""
+			if a == b {
+				continue
+			}
+		}
+		if seen[k] { // same key twice in one batch: the later one wins in the index; keep both lines only if they differ
+			continue
+		}
+		seen[k] = true
+		out = append(out, r)
+	}
+	return out
+}

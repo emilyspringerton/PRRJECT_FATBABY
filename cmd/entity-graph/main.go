@@ -722,13 +722,16 @@ func runBatch(ctx context.Context, store eventstore.EventStore, logger *log.Logg
 		accuracyRecords = append(accuracyRecords, longTenureRecords...)
 
 		if len(accuracyRecords) > 0 {
-			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, accuracyRecords); err != nil {
+			// Append only what is new or changed vs the index (see changedAccuracyRecords: appending the
+			// full recomputed set every batch grew accuracy.ndjson to 15 GB of ~190x duplicates).
+			changed := changedAccuracyRecords(cfg.accuracyDB, accuracyRecords)
+			if err := entitygraph.WriteAccuracyRecords(cfg.graphDir, changed); err != nil {
 				logger.Printf("write accuracy records err=%v", err)
 			}
 			// Keep the deduplicated index current for the next batch's
 			// prevAccuracyRecords load -- accuracy.ndjson above is still the
 			// raw append-only history, this is the fast query-of-truth cache.
-			if err := upsertAccuracyRecords(cfg.accuracyDB, accuracyRecords, logger); err != nil {
+			if err := upsertAccuracyRecords(cfg.accuracyDB, changed, logger); err != nil {
 				logger.Printf("accuracy_index: upsert err=%v", err)
 			}
 			accuracyReports = entitygraph.BuildAccuracyReports(accuracyRecords)
