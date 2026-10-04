@@ -39,8 +39,10 @@ for the Ingress). Everything else listens on `unix:///run/fatbaby/<name>.sock`.
 3. `unixgram` append-notify: writers wake tailers instantly, polling stays as the fallback (FB-03).
 4. Pod simulator: run the pod's containers as isolated processes on a shared socket dir (FB-04).
 5. Image + manifests follow the **golden-docs pattern** exactly (FB-05/06/07/12):
-   - image: `Dockerfile.collections` shape — golang build stage, `CGO_ENABLED=0`, distroless
-     static nonroot; one image, per-container `command`.
+   - image: `Dockerfile.collections` shape — golang build stage, small nonroot runtime, one image,
+     per-container `command` — but on **Alpine** (founder: "can we use alpine?"): a shell for
+     `kubectl exec`/exec probes, same base family as gpt2-alpine-c. The cgo `seqlock` mod means musl
+     with `CGO_ENABLED=1` (not static); needs `ca-certificates` + `tzdata` added explicitly.
    - manifests: rendered by `parena-k8s-render` (PARENA-first; extended for multi-container pods),
      committed to the manifests repo, applied by the pull-based `parena-gitops`. No cluster
      credentials in CI.
@@ -51,7 +53,8 @@ for the Ingress). Everything else listens on `unix:///run/fatbaby/<name>.sock`.
 
 ## Honest limits
 
-- No Docker, no `kubectl` credentials, no schedulable cluster from this box: manifests and image
+- No Docker, no musl toolchain, no `kubectl` credentials, no schedulable cluster from this box: the
+  Alpine/musl link is unproven until the first real `docker build`; manifests and image
   are **unverified against a real cluster**; the pod simulator proves the socket wiring, not
   Kubernetes scheduling.
 - A single core pod is a single restart unit and bills the sum of its containers. It is the
