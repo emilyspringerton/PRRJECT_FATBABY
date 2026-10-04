@@ -395,3 +395,19 @@ go test ./...
 - [Northstar: 8-K Intelligence Engine](docs/northstar/northstar.md)
 - [Distributed event intelligence architecture](docs/architecture-distributed-event-intelligence.md)
 - [News site end-to-end runbook](docs/news-site-e2e-runbook.md)
+
+## Kubernetes (in progress — not deployed)
+
+The pipeline is being moved off the single box into one multi-container pod on GKE, with **unix
+domain sockets for same-pod IPC**. Plan: `docs/northstar/FATBABY_K8S_UDS_NORTHSTAR.md`; cutover steps:
+`docs/runbooks/K8S_CUTOVER.md`.
+
+What exists and is tested: `internal/udsipc` (unix:// listeners/clients — `signalapi`/`newssite` take
+`-also-listen unix:///…`, `newssite -signalapi-url unix:///…`, `movers-watcher -commentary-url
+unix:///x.sock:/api/commentary`), `internal/udsnotify` (append wakeups, enabled by
+`FATBABY_NOTIFY_DIR`), `internal/podsim` (`scripts/build-bins.sh /tmp/b && PODSIM_BINS=/tmp/b go test
+./internal/podsim`: real binaries on a shared socket dir; append→visible in ~50 ms with a 10 min poll),
+`scripts/cutover-verify.sh`, `docker/fatbaby.Dockerfile` (Alpine/musl) and rendered manifests in
+`EMILY/gitops`. **Not verified:** the image build (no Docker/musl here), anything on a real cluster
+(no credentials; the cluster had no schedulable nodes), the Secret (none exist on the box today).
+
