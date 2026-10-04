@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/eps"
 	"github.com/example/prrject-fatbaby/internal/identity"
@@ -68,6 +69,8 @@ func main() {
 
 	cursor := loadCursor(*cursorPath, logger)
 
+	sub := udsnotify.SubscribeEnv("eps-processor")
+	defer sub.Close()
 	for {
 		// Refresh the discovery ticker map each batch (it grows over time as new
 		// press releases are discovered; a full scan is cheap since it's append-only).
@@ -87,11 +90,9 @@ func main() {
 			return
 		}
 
-		select {
-		case <-ctx.Done():
+		if !sub.Wait(ctx, *pollInterval) {
 			logger.Printf("shutting down")
 			return
-		case <-time.After(*pollInterval):
 		}
 	}
 }

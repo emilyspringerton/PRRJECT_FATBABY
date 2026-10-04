@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/buyback"
 	"github.com/example/prrject-fatbaby/internal/entitygraph"
@@ -74,15 +75,15 @@ func main() {
 
 	cfg := batchConfig{graphDir: *graphDir, outDir: *outDir, cursorPath: *cursorPath, batchSize: *batchSize, dryRun: *dryRun}
 
+	sub := udsnotify.SubscribeEnv("buyback-watcher")
+	defer sub.Close()
 	for {
 		cursor = runBatch(ctx, bodyStore, tickerMap, cursor, logger, cfg)
 		if *oneShot {
 			return
 		}
-		select {
-		case <-ctx.Done():
+		if !sub.Wait(ctx, *pollInterval) {
 			return
-		case <-time.After(*pollInterval):
 		}
 	}
 }

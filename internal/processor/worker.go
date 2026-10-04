@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 	"github.com/example/prrject-fatbaby/secwatch"
@@ -135,6 +136,8 @@ func Run(ctx context.Context, cfg WorkerConfig) error {
 
 	lastSeq := seenLastSeq + 1
 	cfg.Logger.Printf("processor loop starting from_sequence=%d workers=%d poll_interval=%s", lastSeq, cfg.Workers, cfg.PollInterval)
+	sub := udsnotify.SubscribeEnv("processor")
+	defer sub.Close()
 	for {
 		var recs []eventstore.Record
 		if err := cfg.Store.Scan(ctx, lastSeq, func(rec eventstore.Record) error {
@@ -150,10 +153,8 @@ func Run(ctx context.Context, cfg WorkerConfig) error {
 			lastSeq = batchEnd + 1
 			processBatch(ctx, cfg, recs, seen)
 		}
-		select {
-		case <-ctx.Done():
+		if !sub.Wait(ctx, cfg.PollInterval) {
 			return ctx.Err()
-		case <-time.After(cfg.PollInterval):
 		}
 	}
 }

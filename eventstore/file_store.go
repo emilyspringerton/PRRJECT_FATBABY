@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 	"github.com/example/prrject-fatbaby/eventstore/seqlock"
 )
 
@@ -174,6 +175,9 @@ func (s *FileStore) Append(ctx context.Context, events ...Event) ([]Record, erro
 	}
 	if err := s.persistLatestSequence(s.latest); err != nil {
 		return nil, err
+	}
+	if udsnotify.Dir() != "" {
+		go udsnotify.PublishEnv() // best-effort wakeup for tailers in other containers
 	}
 	return records, nil
 }

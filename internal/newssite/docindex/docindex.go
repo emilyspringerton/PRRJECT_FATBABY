@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/pkg/intelligence"
 )
@@ -298,15 +299,10 @@ func Tail(ctx context.Context, store eventstore.EventStore, idx *Index, interval
 		}
 		poll()
 		ready <- struct{}{}
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				poll()
-			}
+		sub := udsnotify.SubscribeEnv("docindex")
+		defer sub.Close()
+		for sub.Wait(ctx, interval) {
+			poll()
 		}
 	}()
 	return ready

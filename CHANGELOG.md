@@ -2571,3 +2571,4 @@ signal in Emily's hand-written observations.
 ## 2026-10-04
 - feat(udsipc): new `internal/udsipc` — unix-socket Listen/Dial/Serve, HTTP-over-UDS client, stale-socket cleanup, 0660, SO_PEERCRED (K8S-FB-01).
 - feat(k8s): intra-pod couplings accept `unix://` — signalapi/newssite `-addr unix:///…`, newssite `-also-listen`, newssite→signalapi/emily URLs, movers-watcher `-commentary-url unix:///x.sock:/api/commentary`; TCP defaults unchanged on the systemd box (K8S-FB-02). emily-agent's hardcoded :8082 status checks left alone (box-only ops agent, not part of the pod).
+- feat(udsnotify): `internal/udsnotify` unixgram wakeup bus — `FileStore.Append` publishes, tailers (signalindex, docindex, processor, eps-processor, guidance/buyback/dividend-watcher) wake immediately instead of sleeping the full poll interval; polling stays the fallback; off unless `FATBABY_NOTIFY_DIR` is set (K8S-FB-03).

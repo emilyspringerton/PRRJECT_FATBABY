@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/guidance"
 	"github.com/example/prrject-fatbaby/internal/identity"
@@ -62,6 +63,8 @@ func main() {
 
 	cursor := loadCursor(*cursorPath, logger)
 
+	sub := udsnotify.SubscribeEnv("guidance-watcher")
+	defer sub.Close()
 	for {
 		tickerByID := buildTickerMap(ctx, discoveryStore, logger)
 
@@ -75,10 +78,8 @@ func main() {
 		if *oneShot {
 			return
 		}
-		select {
-		case <-ctx.Done():
+		if !sub.Wait(ctx, *pollInterval) {
 			return
-		case <-time.After(*pollInterval):
 		}
 	}
 }
