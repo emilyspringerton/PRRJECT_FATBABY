@@ -32,7 +32,8 @@ import (
 
 func main() {
 	storeRoot := flag.String("store", "var/secwatch", "")
-	addr := flag.String("addr", ":9091", "")
+	addr := flag.String("addr", ":9091", "listen address (host:port, or unix:///path.sock)")
+	alsoListen := flag.String("also-listen", os.Getenv("SIGNALAPI_ALSO_LISTEN"), "second listener serving the same handler, e.g. unix:///run/fatbaby/signalapi.sock for in-pod callers while -addr stays TCP for the Ingress")
 	apiKeys := flag.String("api-keys", "", "")
 	pollInterval := flag.Duration("poll-interval", 30*time.Second, "")
 	maxLimit := flag.Int("max-limit", 100, "")
@@ -228,6 +229,25 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(sctx)
 	}()
+	if *alsoListen != "" {
+		l, err := udsipc.Listen(*alsoListen)
+		if err != nil {
+			logger.Fatalf("also-listen %s: %v", *alsoListen, err)
+		}
+		usrv := &http.Server{Handler: srv.Handler, ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			<-ctx.Done()
+			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = usrv.Shutdown(sctx)
+		}()
+		go func() {
+			if err := usrv.Serve(l); err != nil && err != http.ErrServerClosed {
+				logger.Printf("also-listen serve: %v", err)
+			}
+		}()
+		logger.Printf("signal API also listening on %s", *alsoListen)
+	}
 	logger.Printf("signal API ready addr=%s tickers=%d signals=%d latest_seq=%d scan_took=%s", *addr, len(idx.Summary()), idx.Depth(), idx.LatestSeq(), scanTook)
 	if err := udsipc.Serve(srv); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
