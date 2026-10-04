@@ -213,3 +213,85 @@ func TestCorePodSocketWiring(t *testing.T) {
 	})
 	t.Logf("append -> visible in signalapi in %v (poll interval 10m)", time.Since(start))
 }
+
+// TestCutoverVerifyScript runs scripts/cutover-verify.sh against two real signalapi processes
+// standing in for "old (box)" and "new (pod)": a missing event must be flagged (exit 1) and a
+// caught-up store must pass (exit 0) — the gate that keeps the systemd units running until the pod
+// really has the same data.
+func TestCutoverVerifyScript(t *testing.T) {
+	bins := os.Getenv("PODSIM_BINS")
+	if bins == "" {
+		t.Skip("set PODSIM_BINS to a dir built by scripts/build-bins.sh")
+	}
+	root, _ := os.MkdirTemp("", "podsim")
+	t.Cleanup(func() { os.RemoveAll(root) })
+	appDir := filepath.Join(root, "app")
+	os.MkdirAll(appDir, 0o775)
+	for _, d := range []string{"migrations", "config"} {
+		if out, err := exec.Command("cp", "-r", filepath.Join("..", "..", d), filepath.Join(appDir, d)).CombinedOutput(); err != nil {
+			t.Fatalf("copy %s: %v %s", d, err, out)
+		}
+	}
+	t.Setenv("PODSIM_APPDIR", appDir)
+	t.Setenv("FATBABY_NOTIFY_DIR", "") // plain polling here; notify is covered by the other test
+
+	mk := func(name string, ids ...string) (*eventstore.FileStore, string) {
+		dir := filepath.Join(root, name, "var", "secwatch")
+		os.MkdirAll(dir, 0o775)
+		fs, err := eventstore.NewFileStore(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { fs.Close() })
+		for _, id := range ids {
+			data := fmt.Sprintf(`{"ticker":"AAPL","signal_type":"x","summary":"%s","timestamp":%q}`, id, time.Now().UTC().Format(time.RFC3339))
+			if _, err := fs.Append(context.Background(), eventstore.Event{ID: id, Type: "signal_generated", PartitionKey: "AAPL:" + id, Data: json.RawMessage(data)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return fs, dir
+	}
+	_, oldDir := mk("old", "a", "b", "c")
+	newFS, newDir := mk("new", "a", "b")
+	oldPort, newPort := freePort(t), freePort(t)
+	env := []string{"HOME=" + root}
+	start(t, filepath.Join(bins, "signalapi"), env, "-addr", fmt.Sprintf("127.0.0.1:%d", oldPort), "-store", oldDir, "-poll-interval", "200ms", "-index-db", filepath.Join(root, "old", "idx.db"))
+	start(t, filepath.Join(bins, "signalapi"), env, "-addr", fmt.Sprintf("127.0.0.1:%d", newPort), "-store", newDir, "-poll-interval", "200ms", "-index-db", filepath.Join(root, "new", "idx.db"))
+	oldURL, newURL := fmt.Sprintf("http://127.0.0.1:%d", oldPort), fmt.Sprintf("http://127.0.0.1:%d", newPort)
+	web := &http.Client{Timeout: 2 * time.Second}
+	for _, u := range []string{oldURL, newURL} {
+		u := u
+		waitFor(t, u, 30*time.Second, func() bool {
+			r, err := web.Get(u + "/v1/health")
+			if err != nil {
+				return false
+			}
+			r.Body.Close()
+			return r.StatusCode == 200
+		})
+	}
+	run := func() (int, string) {
+		out, err := exec.Command("../../scripts/cutover-verify.sh", oldURL, newURL).CombinedOutput()
+		code := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+		return code, string(out)
+	}
+	if code, out := run(); code != 1 {
+		t.Fatalf("new is missing event c: want exit 1, got %d\n%s", code, out)
+	}
+	data := fmt.Sprintf(`{"ticker":"AAPL","signal_type":"x","summary":"c","timestamp":%q}`, time.Now().UTC().Format(time.RFC3339))
+	if _, err := newFS.Append(context.Background(), eventstore.Event{ID: "c", Type: "signal_generated", PartitionKey: "AAPL:c", Data: json.RawMessage(data)}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "verify to pass once the new side catches up", 10*time.Second, func() bool {
+		code, _ := run()
+		return code == 0
+	})
+	// An unreachable side is distinguished from a data mismatch.
+	out, err := exec.Command("../../scripts/cutover-verify.sh", oldURL, "http://127.0.0.1:1").CombinedOutput()
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
+		t.Fatalf("unreachable side: want exit 2, got %v\n%s", err, out)
+	}
+}
