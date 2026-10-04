@@ -30,6 +30,7 @@ import (
 	"github.com/example/prrject-fatbaby/internal/gauntlet"
 	"github.com/example/prrject-fatbaby/internal/identity"
 	"github.com/example/prrject-fatbaby/internal/marketcal"
+	"github.com/example/prrject-fatbaby/internal/udsipc"
 	"github.com/example/prrject-fatbaby/internal/movers"
 	"github.com/example/prrject-fatbaby/internal/skuldmarkid"
 	"github.com/example/prrject-fatbaby/internal/tickerlink"
@@ -97,7 +98,12 @@ func main() {
 	}
 
 	art := buildArticle(snap, tracked, skuldmarks, now, *baseURL, *slot)
-	if err := postCommentary(ctx, client, *commentaryURL, *apiKey, art); err != nil {
+	// commentary-url may be unix:///run/fatbaby/newssite.sock:/api/commentary inside the k8s core pod.
+	commentaryClient, commentaryEndpoint, err := udsipc.ClientFor(*commentaryURL, 15*time.Second)
+	if err != nil {
+		logger.Fatalf("bad -commentary-url: %v", err)
+	}
+	if err := postCommentary(ctx, commentaryClient, commentaryEndpoint, *apiKey, art); err != nil {
 		logger.Fatalf("publish article: %v", err)
 	}
 	logger.Printf("published %s", art["id"])

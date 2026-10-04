@@ -20,6 +20,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/apiserver"
+	"github.com/example/prrject-fatbaby/internal/udsipc"
 	"github.com/example/prrject-fatbaby/internal/cooccurrence"
 	"github.com/example/prrject-fatbaby/internal/idunaauth"
 	"github.com/example/prrject-fatbaby/internal/indexcheckpoint"
@@ -228,7 +229,7 @@ func main() {
 		_ = srv.Shutdown(sctx)
 	}()
 	logger.Printf("signal API ready addr=%s tickers=%d signals=%d latest_seq=%d scan_took=%s", *addr, len(idx.Summary()), idx.Depth(), idx.LatestSeq(), scanTook)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := udsipc.Serve(srv); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
 	}
 }

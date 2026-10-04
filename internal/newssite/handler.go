@@ -66,6 +66,8 @@ type Handler struct {
 	companyBios          *companybios.Store  // nil if company-bios-path not configured
 	emilyBaseURL         string              // Emily Prime base URL for /api/ask; empty disables
 	signalapiURL         string              // signalapi base URL for ticker context injection; empty skips
+	signalapiDial        string              // unix:// socket to dial for signalapiURL; empty = TCP
+	emilyDial            string              // unix:// socket to dial for emilyBaseURL; empty = TCP
 	googleClientID       string              // Google OAuth client ID for Sign in with Google; empty disables auth flow
 	idunaBaseURL         string              // IDUNA base URL for Google→IDUNA JWT exchange; empty disables
 	askJWTVerifier       askVerifier         // JWT verifier for authenticated /api/ask; nil → no auth
@@ -683,6 +685,9 @@ func (h *Handler) proxySignalAPI(w http.ResponseWriter, r *http.Request) int {
 	}
 	upstreamStatus := http.StatusOK
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	if h.signalapiDial != "" {
+		proxy.Transport = serviceClient(h.signalapiDial, 0).Transport
+	}
 	orig := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		orig(req)

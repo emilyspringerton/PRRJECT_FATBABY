@@ -15,6 +15,7 @@ import (
 
 	"github.com/example/prrject-fatbaby/eventstore"
 	"github.com/example/prrject-fatbaby/internal/earningscal"
+	"github.com/example/prrject-fatbaby/internal/udsipc"
 	"github.com/example/prrject-fatbaby/internal/iamguard"
 	"github.com/example/prrject-fatbaby/internal/indexcheckpoint"
 	"github.com/example/prrject-fatbaby/internal/newssite"
@@ -59,7 +60,8 @@ func main() {
 	signalapiURL     := flag.String("signalapi-url", os.Getenv("SIGNALAPI_URL"), "signalapi base URL for ticker context injection (default: $SIGNALAPI_URL)")
 	googleClientID   := flag.String("google-client-id", os.Getenv("GOOGLE_CLIENT_ID"), "Google OAuth client ID for Sign in with Google (default: $GOOGLE_CLIENT_ID)")
 	idunaBaseURL     := flag.String("iduna-url", os.Getenv("IDUNA_BASE_URL"), "IDUNA base URL for Google→JWT exchange + JWT validation (default: $IDUNA_BASE_URL)")
-	addr             := flag.String("addr", ":8082", "listen address")
+	addr             := flag.String("addr", ":8082", "listen address (host:port, or unix:///path.sock)")
+	alsoListen       := flag.String("also-listen", os.Getenv("NEWSSITE_ALSO_LISTEN"), "second listener serving the same handler, e.g. unix:///run/fatbaby/newssite.sock for in-pod callers while -addr stays TCP for the Ingress")
 	readTO    := flag.Duration("read-timeout", 10*time.Second, "")
 	writeTO   := flag.Duration("write-timeout", 15*time.Second, "")
 	replayFromSeq := flag.Uint64("replay-from-seq", 1, "emergency degraded-mode lever: start signal/doc index rebuild at this sequence instead of full history (see PRRJECT_FATBABY/docs/northstar/replay-fragility.md §5)")
@@ -368,8 +370,27 @@ func main() {
 		_ = srv.Shutdown(sctx)
 	}()
 
+	if *alsoListen != "" {
+		l, err := udsipc.Listen(*alsoListen)
+		if err != nil {
+			logger.Fatalf("also-listen %s: %v", *alsoListen, err)
+		}
+		usrv := &http.Server{Handler: mux, ReadTimeout: *readTO, WriteTimeout: *writeTO}
+		go func() {
+			<-ctx.Done()
+			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = usrv.Shutdown(sctx)
+		}()
+		go func() {
+			if err := usrv.Serve(l); err != nil && err != http.ErrServerClosed {
+				logger.Printf("also-listen serve: %v", err)
+			}
+		}()
+		logger.Printf("newssite also listening on %s", *alsoListen)
+	}
 	logger.Printf("newssite listening addr=%s store=%s graph-dir=%s", *addr, *storeRoot, *graphDir)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := udsipc.Serve(srv); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("listen: %v", err)
 	}
 }

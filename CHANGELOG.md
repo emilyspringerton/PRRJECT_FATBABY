@@ -2567,3 +2567,7 @@ signal in Emily's hand-written observations.
   forwards to the real signalapi process), and the playground + the spec's own "servers" list both
   use a relative /signalapi URL instead. Works correctly regardless of which domain newssite is
   actually served on (news.okemily.com in production), no CORS, no hardcoded hostname. 2 new tests.
+
+## 2026-10-04
+- feat(udsipc): new `internal/udsipc` — unix-socket Listen/Dial/Serve, HTTP-over-UDS client, stale-socket cleanup, 0660, SO_PEERCRED (K8S-FB-01).
+- feat(k8s): intra-pod couplings accept `unix://` — signalapi/newssite `-addr unix:///…`, newssite `-also-listen`, newssite→signalapi/emily URLs, movers-watcher `-commentary-url unix:///x.sock:/api/commentary`; TCP defaults unchanged on the systemd box (K8S-FB-02). emily-agent's hardcoded :8082 status checks left alone (box-only ops agent, not part of the pod).

@@ -6,23 +6,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/example/prrject-fatbaby/internal/udsipc"
 )
 
 // SetEmilyBaseURL configures the Emily Prime base URL for /api/ask proxying.
 // Example: "http://localhost:8086". Empty string disables the endpoint.
 func (h *Handler) SetEmilyBaseURL(url string) {
-	h.emilyBaseURL = strings.TrimRight(url, "/")
+	h.emilyBaseURL, h.emilyDial = resolveServiceURL(strings.TrimRight(url, "/"))
 }
 
 // SetSignalapiURL configures the signalapi base URL for ticker context injection (S21-03).
 // Example: "http://localhost:9091". Empty string disables context enrichment.
 func (h *Handler) SetSignalapiURL(url string) {
-	h.signalapiURL = strings.TrimRight(url, "/")
+	h.signalapiURL, h.signalapiDial = resolveServiceURL(strings.TrimRight(url, "/"))
 }
 
 // SetGoogleClientID sets the Google OAuth client ID for Sign in with Google (S21-05).
@@ -177,7 +180,7 @@ func (h *Handler) serveAsk(w http.ResponseWriter, r *http.Request) int {
 	}
 	resp.Header.Set("Content-Type", "application/json")
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := serviceClient(h.emilyDial, 30*time.Second)
 	emilyResp, err := httpClient.Do(resp)
 	if err != nil {
 		h.logger.Printf("askeily: emily call: %v", err)
@@ -231,7 +234,7 @@ func (h *Handler) fetchTickerContext(ctx context.Context, ticker string) string 
 	if h.signalapiURL == "" {
 		return ""
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := serviceClient(h.signalapiDial, 5*time.Second)
 	var sb strings.Builder
 
 	// Fetch last 5 governance signals for the ticker.
@@ -389,4 +392,27 @@ func appendWaitlist(email string) error {
 	defer f.Close()
 	_, err = fmt.Fprintf(f, "%s\t%s\n", time.Now().UTC().Format(time.RFC3339), email)
 	return err
+}
+
+// resolveServiceURL turns a configured service URL into (request base URL, unix dial address).
+// Plain http(s) URLs pass through with an empty dial address; "unix:///run/fatbaby/x.sock[:/path]"
+// becomes base "http://unix[/path]" plus the socket to dial (docs/northstar/FATBABY_K8S_UDS_NORTHSTAR.md).
+func resolveServiceURL(raw string) (base, dial string) {
+	if !udsipc.IsUnix(raw) {
+		return raw, ""
+	}
+	b, d, err := udsipc.ParseURL(raw)
+	if err != nil {
+		log.Printf("newssite: bad unix service URL %q: %v", raw, err)
+		return "", ""
+	}
+	return strings.TrimRight(b, "/"), d
+}
+
+// serviceClient returns a client that dials the unix socket when dial is set, else a normal one.
+func serviceClient(dial string, timeout time.Duration) *http.Client {
+	if dial == "" {
+		return &http.Client{Timeout: timeout}
+	}
+	return udsipc.HTTPClient(dial, timeout)
 }

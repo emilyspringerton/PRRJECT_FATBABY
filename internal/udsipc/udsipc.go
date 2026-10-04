@@ -209,3 +209,17 @@ func PeerCred(c net.Conn) (uid, gid uint32, pid int32, err error) {
 	}
 	return cred.Uid, cred.Gid, cred.Pid, nil
 }
+
+// Serve runs srv on its own Addr: a unix:// Addr listens on that socket (stale-socket cleanup,
+// 0660), anything else behaves exactly like srv.ListenAndServe. Drop-in for the pipeline's
+// existing `srv.ListenAndServe()` calls.
+func Serve(srv *http.Server) error {
+	if !IsUnix(srv.Addr) {
+		return srv.ListenAndServe()
+	}
+	l, err := Listen(srv.Addr)
+	if err != nil {
+		return err
+	}
+	return srv.Serve(l)
+}
