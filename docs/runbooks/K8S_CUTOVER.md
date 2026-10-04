@@ -15,6 +15,21 @@ marked **[gate]** must pass before the next one starts.
 | `accuracy.ndjson` deduped (15 GB / 58.5 M lines, ~100× duplicates; PVC is 20 Gi) | K8S-FB-13 | open — see §2 |
 | Secret `fatbaby-env` applied out of band (optional; none exist on the box today) | K8S-FB-07 | tooling done |
 
+## Status 2026-10-04 (parallel run LIVE; DNS/Ingress untouched, box still running)
+
+- Cluster `prrject-fatbaby` (Autopilot, us-central1) schedules nodes; Artifact Registry repo `emily` + Cloud Build enabled;
+  `scripts/build-image.sh` builds `fatbaby:0.1.0` (musl link proven). Apple/budget alerts (25/50/90 %) are STILL not set.
+- PVC `fatbaby-var` = 20Gi GCE persistent disk (`standard-rwo`), seeded from the box (~1.1 GB, deduped `accuracy.ndjson`
+  16 GB -> 80 MB, sha256-verified). `fatbaby-core` pod 19/19 Running, 0 restarts after memory right-sizing.
+- Found while seeding (real, pre-existing): `pr-reaction/events/2026-09-14.ndjson` and `prwatch-body/events/2026-09-14.ndjson`
+  each hold ONE torn line (truncated record glued in front of a complete one). The box's `prwatch-body` and
+  `pr-reaction-watcher` have been DEAD since ~2026-09-14 because of it. Repaired on the PVC copy only (box files untouched).
+- GKE Autopilot gotchas fixed: per-container ephemeral-storage defaults to 1Gi (pod cap 10Gi) -> renderer now emits 256Mi;
+  memory limits sized from idle box RSS OOM'd on real data (newssite ~0.7 GB, signalapi ~0.75 GB) -> raised.
+- `cutover-verify.sh` shows 3 events of depth difference (5003 new vs 5006 old); box has produced no events since the
+  weekend started, so this is index-depth drift, not missing data - re-run on a trading day before the DNS switch.
+- NEXT: soak through Monday's trading day with hourly verify, budget alerts, then section 4 (Ingress + DNS).
+
 ## 1. Why the cutover is group-level, not per-process
 
 Processors share one event store and talk over unix sockets inside one pod, so the pod is the unit:
