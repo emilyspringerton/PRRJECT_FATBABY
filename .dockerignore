@@ -1,0 +1,6 @@
+var/
+bin/
+build/
+.git/
+claude-runs/
+*.db
