@@ -21,11 +21,12 @@ import (
 	"time"
 
 	"github.com/example/prrject-fatbaby/eventstore"
+	"github.com/example/prrject-fatbaby/internal/udsnotify"
 )
 
 // Entry is one ticker's appearance in one day's gainers/losers snapshot.
 type Entry struct {
-	Date          string  `json:"date"` // YYYY-MM-DD, from the snapshot's FetchedAt
+	Date          string  `json:"date"`      // YYYY-MM-DD, from the snapshot's FetchedAt
 	Direction     string  `json:"direction"` // "gainer" or "loser"
 	Price         float64 `json:"price"`
 	Change        float64 `json:"change"`
@@ -173,15 +174,10 @@ func Tail(ctx context.Context, store eventstore.EventStore, idx *Index, interval
 		}
 		poll()
 		ready <- struct{}{}
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				poll()
-			}
+		sub := udsnotify.SubscribeEnv("moversindex")
+		defer sub.Close()
+		for sub.Wait(ctx, interval) {
+			poll()
 		}
 	}()
 	return ready

@@ -20,6 +20,8 @@ WORKDIR /app
 COPY --from=build /out/bin /app/bin
 # Config is baked in (golden-docs pattern): a watchlist change is a new image tag rolled out by GitOps.
 COPY config /app/config
+# signalapi opens ./migrations/mysql relative to WORKDIR for its SQLite read model (found by internal/podsim).
+COPY migrations /app/migrations
 # var/ is the shared RWO PVC mounted at /app/var; /run/fatbaby is the shared emptyDir (unix sockets).
 ENV FATBABY_ROOT=/app
 USER nonroot
