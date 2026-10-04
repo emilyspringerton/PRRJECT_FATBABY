@@ -11,13 +11,18 @@
 # sandbox. scripts/build-bins.sh proves the Go side (all 19 build, cgo, libc-only) on glibc; the musl
 # link is only proven by the first real `docker build`.
 #
-# build (repo root as context):  docker build -f docker/fatbaby.Dockerfile -t <registry>/fatbaby:<tag> .
+# Context is the PARENT of the repos, not the repo root: go.mod `replace`s skuldmark => ../SKULDMARK and
+# norn => ../NORN, so all three must sit side by side (the same layout as /home/fatbaby). Assemble it with
+# scripts/build-image.sh (git ls-files of each repo -> temp context -> Cloud Build or docker build).
 FROM golang:1.25-alpine AS build
 RUN apk add --no-cache gcc musl-dev bash
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY SKULDMARK /src/SKULDMARK
+COPY NORN /src/NORN
+WORKDIR /src/PRRJECT_FATBABY
+COPY PRRJECT_FATBABY/go.mod PRRJECT_FATBABY/go.sum ./
 RUN go mod download
-COPY . .
+COPY PRRJECT_FATBABY/ .
 RUN scripts/build-bins.sh /out/bin
 
 FROM alpine:3.22
@@ -28,9 +33,9 @@ RUN apk add --no-cache ca-certificates tzdata \
 WORKDIR /app
 COPY --from=build /out/bin /app/bin
 # Config is baked in (golden-docs pattern): a watchlist change is a new image tag rolled out by GitOps.
-COPY config /app/config
+COPY PRRJECT_FATBABY/config /app/config
 # signalapi opens ./migrations/mysql relative to WORKDIR for its SQLite read model (found by internal/podsim).
-COPY migrations /app/migrations
+COPY PRRJECT_FATBABY/migrations /app/migrations
 # var/ is the shared RWO PVC mounted at /app/var; /run/fatbaby is the shared emptyDir (unix sockets).
 # uid 65532 matches the pod's fsGroup (stdlib/k8s/pod.prn) so both volumes are writable.
 ENV FATBABY_ROOT=/app
