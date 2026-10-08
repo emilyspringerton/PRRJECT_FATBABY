@@ -6,6 +6,13 @@ Go-based financial signal intelligence pipeline. Watches SEC EDGAR filings and P
 releases, processes them into structured signals (type, sentiment, importance score, summary,
 impact analysis), and streams them via SSE dashboard and a TCP feed server.
 
+**Production runs in Kubernetes**, not as local `go run` processes: GKE namespace `emily`,
+`svc/fatbaby-core` (8082, 9091) and `svc/fatbaby-signals` (9091), image
+`emily/fatbaby:<sha>`. The `go run ./cmd/...` commands below are still the right way to run any
+of these processes locally for dev; see root `CLAUDE.md`'s "Kubernetes Operations" section for
+how to reach the live cluster versions instead (`kubectl port-forward -n emily svc/fatbaby-core
+<port>:8082`).
+
 ## Stack
 
 - **Language**: Go 1.22+
